@@ -232,7 +232,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             this.state.list.splice(pos + 1, 0, { ref: new domui_1.ReactRefEx(), key: (0, base_1.GenerateRandomString)() });
             this.forceUpdate();
         }
-        async dropCell(cellKey) {
+        async deleteCell(cellKey) {
             let pos = this.state.list.findIndex(v => v.key == cellKey);
             try {
                 await this.state.list[pos].ref.current?.close();
@@ -275,7 +275,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             return (this.state.codeContext != null && this.state.error == null) ? React.createElement("div", { style: { width: '100%', overflowX: 'auto' } }, (0, base_1.FlattenArraySync)(this.state.list.map((v, index1) => {
                 let r = [React.createElement(CodeCell, { ref: v.ref, key: v.key, codeContext: this.state.codeContext, customBtns: [
                             { label: 'New', cb: () => this.newCell(v.key) },
-                            { label: 'Drop', cb: () => this.dropCell(v.key) }
+                            { label: 'Del', cb: () => this.deleteCell(v.key) }
                         ], onClearOutputs: () => this.clearConsoleOutput(v.key), onRun: async () => { this.lastRunCellKey = v.key; }, onFocusChange: (focusin) => { if (focusin)
                             this.setState({ lastFocusCellKey: v.key }); }, focusin: this.state.lastFocusCellKey == v.key })];
                 if (v.key in this.state.consoleOutput) {
