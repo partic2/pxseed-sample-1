@@ -229,6 +229,14 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         },reject)`, true);
             return await new backend_1.WebMessage.Connection().connect(worker.workerId, 300);
         }
+        else if (url2.protocol == 'pxseedjs:') {
+            //For user custom connection factory.
+            //potential security issue?
+            let functionDelim = url2.pathname.lastIndexOf('.');
+            let moduleName = url2.pathname.substring(0, functionDelim);
+            let functionName = url2.pathname.substring(functionDelim + 1);
+            return (await new Promise((resolve_2, reject_2) => { require([moduleName], resolve_2, reject_2); }))[functionName](url2.toString());
+        }
         return null;
     }
     let registered = new Map();
@@ -240,7 +248,12 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     }
     async function addClient(url, name) {
         name = (name == undefined || name === '') ? url.toString() : name;
-        let clie = new ClientInfo(name, url);
+        let clie = registered.get(name);
+        if (clie == undefined) {
+            //Skip if existed, To avoid connection lost unexpected.
+            clie = new ClientInfo(name, url);
+        }
+        clie.url = url;
         registered.set(name, clie);
         await exports.persistent.save();
         return clie;
@@ -259,22 +272,6 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     exports.ServiceWorker = 'service worker 1';
     async function addBuiltinClient() {
         if (globalThis.location != undefined && globalThis.WebSocket != undefined) {
-            /*
-            //Moved to pxseedServer2023/webentry, because key is required sometime.
-            if(getRegistered(ServerHostRpcName)==null){
-                let url=requirejs.getConfig().baseUrl as string;
-                if(url.endsWith('/'))url=url.substring(0,url.length-1);
-                let slashAt=url.lastIndexOf('/');
-                let pxseedBase=slashAt>=0?url.substring(0,slashAt):'';
-                let pxprpcUrl=(pxseedBase+'/pxprpc/0').replace(/^http/,'ws');
-                let wstest:WebSocketIo
-                try{
-                    wstest=await new WebSocketIo().connect(pxprpcUrl);
-                    wstest.close();
-                    addClient(pxprpcUrl,ServerHostRpcName);
-                }catch(e){}
-            }
-            */
             if (getRegistered(exports.ServerHostRpcName) != null && getRegistered(exports.ServerHostWorker1RpcName) == null) {
                 addClient('iooverpxprpc:' + exports.ServerHostRpcName + '/' +
                     encodeURIComponent('webworker:' + exports.__name__ + '/worker/1'), exports.ServerHostWorker1RpcName);

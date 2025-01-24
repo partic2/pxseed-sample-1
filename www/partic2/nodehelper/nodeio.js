@@ -1,8 +1,9 @@
-define(["require", "exports", "partic2/jsutils1/base", "net"], function (require, exports, base_1, net_1) {
+define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "partic2/jsutils1/webutils"], function (require, exports, base_1, net_1, extend_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.PxprpcTcpServer = exports.PxprpcIoFromSocket = exports.wrappedStreams = void 0;
     exports.wrapReadable = wrapReadable;
+    exports.createIoPxseedJsUrl = createIoPxseedJsUrl;
     exports.wrappedStreams = Symbol('wrappedStreams');
     function wrapReadable(r) {
         let wrapped = {};
@@ -50,6 +51,21 @@ define(["require", "exports", "partic2/jsutils1/base", "net"], function (require
             }
             return readLen;
         }
+        async readFully(buf) {
+            let end = buf.byteOffset + buf.byteLength;
+            let start = 0;
+            while (start < end) {
+                let readLen = await this.read(buf, start);
+                if (readLen == null) {
+                    if (start < end) {
+                        throw new Error('EOF occured');
+                    }
+                }
+                else {
+                    start += readLen;
+                }
+            }
+        }
         async readAll() {
             let buffList = [];
             for (let t1 = 0; t1 < 1024 * 1024; t1++) {
@@ -69,8 +85,8 @@ define(["require", "exports", "partic2/jsutils1/base", "net"], function (require
             if (this.sock == undefined) {
                 return new Promise((resolve, reject) => {
                     this.sock = new net_1.Socket();
-                    this.sock.once('error', () => {
-                        reject(this.sock);
+                    this.sock.once('error', (err) => {
+                        reject(err);
                     });
                     this.sock.connect(opt, () => resolve(undefined));
                 });
@@ -81,10 +97,10 @@ define(["require", "exports", "partic2/jsutils1/base", "net"], function (require
         }
         async receive() {
             let buf1 = new Uint8Array(4);
-            await wrapReadable(this.sock).read(buf1, 0);
+            await wrapReadable(this.sock).readFully(buf1);
             let size = new DataView(buf1.buffer).getInt32(0, true);
             buf1 = new Uint8Array(size);
-            await wrapReadable(this.sock).read(buf1, 0);
+            await wrapReadable(this.sock).readFully(buf1);
             return buf1;
         }
         async send(data) {
@@ -131,5 +147,22 @@ define(["require", "exports", "partic2/jsutils1/base", "net"], function (require
         }
     }
     exports.PxprpcTcpServer = PxprpcTcpServer;
+    const __name__ = base_1.requirejs.getLocalRequireModule(require);
+    //security issue?
+    extend_1.defaultFuncMap[__name__ + '.createPxprpcIoFromTcpTarget'] = new extend_1.RpcExtendServerCallable(async (connectTo) => {
+        let s = new PxprpcIoFromSocket();
+        await s.connect(JSON.parse(connectTo));
+        return s;
+    }).typedecl('s->o');
+    async function createIoPxseedJsUrl(url) {
+        let type = (0, webutils_1.GetUrlQueryVariable2)(url, 'type');
+        if (type === 'tcp') {
+            let io = new PxprpcIoFromSocket();
+            let host = (0, webutils_1.GetUrlQueryVariable2)(url, 'host') ?? '127.0.0.1';
+            let port = Number((0, webutils_1.GetUrlQueryVariable2)(url, 'port'));
+            await io.connect({ host, port });
+            return io;
+        }
+    }
 });
 //# sourceMappingURL=nodeio.js.map

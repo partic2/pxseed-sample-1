@@ -32,12 +32,75 @@ define(["require", "exports"], function (require, exports) {
     catch (e) {
         new Function('this.globalThis=this')();
     }
+    //AbortController polyfill on https://github.com/mo/abortcontroller-polyfill
+    (function () {
+        class AbortSignal extends EventTarget {
+            constructor() {
+                super();
+                this.aborted = false;
+            }
+            toString() {
+                return '[object AbortSignal]';
+            }
+            dispatchEvent(event) {
+                if (event.type === 'abort') {
+                    this.aborted = true;
+                    if (typeof this.onabort === 'function') {
+                        this.onabort.call(this, event);
+                    }
+                }
+                return super.dispatchEvent(event);
+            }
+            throwIfAborted() {
+                const { aborted, reason = 'Aborted' } = this;
+                if (!aborted)
+                    return;
+                throw reason;
+            }
+            static timeout(time) {
+                const controller = new AbortController();
+                setTimeout(() => controller.abort(new DOMException(`This signal is timeout in ${time}ms`, 'TimeoutError')), time);
+                return controller.signal;
+            }
+        }
+        class AbortController {
+            constructor() {
+                this.signal = new AbortSignal();
+            }
+            abort(reason) {
+                let signalReason = reason;
+                if (reason == undefined) {
+                    signalReason = new Error('This operation was aborted');
+                    signalReason.name = 'AbortError';
+                }
+                const event = new Event('abort');
+                event.reason = reason;
+                this.signal.reason = signalReason;
+                this.signal.dispatchEvent(event);
+            }
+            toString() {
+                return '[object AbortController]';
+            }
+        }
+        if (globalThis.AbortSignal == undefined || globalThis.AbortSignal.prototype.throwIfAborted == undefined) {
+            globalThis.AbortController = AbortController;
+            globalThis.AbortSignal = AbortSignal;
+        }
+    })();
     class Task {
         static locals() {
             return Task.currentTask?.locals();
         }
         static getAbortSignal() {
             return Task.currentTask?.getAbortSignal();
+        }
+        static fork(taskMain) {
+            if (Task.currentTask != undefined) {
+                return Task.currentTask.fork(taskMain);
+            }
+            else {
+                return new Task(taskMain);
+            }
         }
         /*
             Convert Promise to Generator. To use Promise in Task and make correct return type with typescript.
@@ -66,6 +129,7 @@ define(["require", "exports"], function (require, exports) {
             this.name = name;
             this.__locals = {};
             this.__abortController = new AbortController();
+            this.__childrenTask = new Array();
             this.__iter = (typeof taskMain === 'function') ? taskMain() : taskMain;
             let resolver = [undefined, undefined, undefined];
             resolver[0] = new Promise((resolve, reject) => {
@@ -73,6 +137,9 @@ define(["require", "exports"], function (require, exports) {
                 resolver[2] = reject;
             });
             this.__resolver = resolver;
+            this.__abortController.signal.addEventListener('abort', (ev) => {
+                this.onAbort();
+            });
         }
         __step(tNext, error) {
             Task.currentTask = this;
@@ -104,13 +171,28 @@ define(["require", "exports"], function (require, exports) {
             return this;
         }
         abort(reason) {
-            this.__abortController.abort(reason ?? new Error('aborted'));
+            this.__abortController.abort(reason);
         }
         getAbortSignal() {
             return this.__abortController.signal;
         }
         locals() {
             return this.__locals;
+        }
+        //Fork a child task. 
+        //The default behaviour: set the parent locals as prototype of child locals, propagate abort signal to children.
+        fork(taskMain) {
+            let childTask = new Task(taskMain);
+            Object.setPrototypeOf(childTask.__locals, this.locals());
+            this.__childrenTask.push(childTask);
+            const cleanTask = () => this.__childrenTask.splice(this.__childrenTask.indexOf(childTask));
+            childTask.then(cleanTask, cleanTask);
+            return childTask;
+        }
+        onAbort() {
+            for (let t1 of [...this.__childrenTask]) {
+                t1.abort(this.__abortController.signal.reason);
+            }
         }
         then(onfulfilled, onrejected) {
             return this.__resolver[0].then(onfulfilled, onrejected);
@@ -540,6 +622,7 @@ define(["require", "exports"], function (require, exports) {
                 case 'hour':
                 case 'minute':
                 case 'second':
+                case 'milliseconds':
                     return DateAdd(org, { [field + 's']: add });
             }
         }
@@ -562,6 +645,9 @@ define(["require", "exports"], function (require, exports) {
             }
             if (add.seconds != undefined) {
                 d.setSeconds(d.getSeconds() + add.seconds);
+            }
+            if (add.milliseconds) {
+                d.setMilliseconds(d.getMilliseconds() + add.milliseconds);
             }
             return d;
         }
