@@ -2,6 +2,7 @@ define(["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.AssertError = exports.logger = exports.Ref2 = exports.ErrorChain = exports.UidGenerator = exports.requirejs = exports.amdContext = exports.mutex = exports.ArrayWrap2 = exports.CanceledError = exports.future = exports.Task = void 0;
+    exports.setupAwaitHook = setupAwaitHook;
     exports.throwIfAbortError = throwIfAbortError;
     exports.copy = copy;
     exports.clone = clone;
@@ -110,14 +111,14 @@ define(["require", "exports"], function (require, exports) {
             return (yield p);
         }
         /*
-            Avoid losing Task.currentTask after await returned, and also avoid setting incorrent Task when await is pending.
+            Avoid losing Task.currentTask after await returned.
             eg: await Task.awaitWrap(anotherAsyncFunction())
         */
         static async awaitWrap(p) {
             Task.getAbortSignal()?.throwIfAborted();
             let savedTask = Task.currentTask;
-            Task.currentTask = null;
             try {
+                //FIXME:"currentTask" may leak to nextTick.
                 let r = await p;
                 return r;
             }
@@ -142,6 +143,7 @@ define(["require", "exports"], function (require, exports) {
             });
         }
         __step(tNext, error) {
+            let savedTask = Task.currentTask;
             Task.currentTask = this;
             try {
                 if (this.__abortController.signal.aborted) {
@@ -163,7 +165,7 @@ define(["require", "exports"], function (require, exports) {
                 this.__resolver[2](e);
             }
             finally {
-                Task.currentTask = null;
+                Task.currentTask = savedTask;
             }
         }
         run() {
@@ -200,6 +202,13 @@ define(["require", "exports"], function (require, exports) {
     }
     exports.Task = Task;
     Task.currentTask = null;
+    function setupAwaitHook() {
+        Promise.__awaitHook = Task.awaitWrap;
+    }
+    if (('Promise' in globalThis) && !('__awaitHook' in globalThis.Promise)) {
+        //Should we setup await hook automatically?
+        setupAwaitHook();
+    }
     function throwIfAbortError(e) {
         if (e.name === 'AbortError') {
             throw e;

@@ -7,6 +7,8 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     exports.getConnectionFromUrl = getConnectionFromUrl;
     exports.getRegistered = getRegistered;
     exports.listRegistered = listRegistered;
+    exports.getPersistentRegistered = getPersistentRegistered;
+    exports.listPersistentRegistered = listPersistentRegistered;
     exports.addClient = addClient;
     exports.removeClient = removeClient;
     exports.addBuiltinClient = addBuiltinClient;
@@ -121,9 +123,12 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     function createIoPipe() {
         let a2b = new base_1.ArrayWrap2();
         let b2a = new base_1.ArrayWrap2();
-        closed = false;
+        let closed = false;
         function oneSide(r, s) {
-            return {
+            let tio = {
+                isClosed: () => {
+                    return closed;
+                },
                 receive: async () => {
                     if (closed)
                         throw new Error('closed.');
@@ -142,6 +147,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                     s.cancelWaiting();
                 }
             };
+            return tio;
         }
         return [oneSide(a2b, b2a), oneSide(b2a, a2b)];
     }
@@ -163,6 +169,15 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         async io_receive(io) {
             return this.funcs[3].call(io);
         }
+        async jsExec(code, obj) {
+            return this.funcs[4].call(code, obj);
+        }
+        async bufferData(obj) {
+            return this.funcs[5].call(obj);
+        }
+        async anyToString(obj) {
+            return this.funcs[6].call(obj);
+        }
         async ensureInit() {
             if (this.funcs.length == 0) {
                 this.funcs = [
@@ -170,6 +185,9 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                     (await this.client1.getFunc(exports.__name__ + '.getConnectionFromUrl'))?.typedecl('s->o'),
                     (await this.client1.getFunc('pxprpc_pp.io_send'))?.typedecl('ob->'),
                     (await this.client1.getFunc('pxprpc_pp.io_receive'))?.typedecl('o->b'),
+                    (await this.client1.getFunc('builtin.jsExec'))?.typedecl('so->o'),
+                    (await this.client1.getFunc('builtin.bufferData'))?.typedecl('o->b'),
+                    (await this.client1.getFunc('builtin.anyToString'))?.typedecl('o->s')
                 ];
             }
         }
@@ -240,10 +258,20 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         return null;
     }
     let registered = new Map();
+    //Only get current cached registered client. Use "getPersistentRegistered" to get all possible registered client.
     function getRegistered(name) {
         return registered.get(name);
     }
+    //Only get current cached registered client. Use "listPersistentRegistered" to get all possible registered client.
     function listRegistered() {
+        return registered.entries();
+    }
+    async function getPersistentRegistered(name) {
+        await exports.persistent.load();
+        return getRegistered(name);
+    }
+    async function listPersistentRegistered(name) {
+        await exports.persistent.load();
         return registered.entries();
     }
     async function addClient(url, name) {

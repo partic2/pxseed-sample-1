@@ -44,10 +44,35 @@ define(["require", "exports", "fs/promises", "path", "./loaders", "./util"], fun
             let loaders = pxseedConfig.loaders;
             for (let loaderConfig of loaders) {
                 try {
-                    await loaders_1.pxseedBuiltinLoader[loaderConfig.name](dir, loaderConfig, pstat);
+                    //Experimental.
+                    if (loaderConfig.name === 'ensure') {
+                        let packages = loaderConfig.packages;
+                        if (packages != undefined) {
+                            for (let p1 of packages) {
+                                await processDirectory((0, path_1.join)(loaders_1.sourceDir, p1));
+                            }
+                        }
+                    }
+                    else if (loaderConfig.name.startsWith('pxseedjs:')) {
+                        let pathname = new URL(loaderConfig.name).pathname;
+                        let delim = pathname.lastIndexOf('.');
+                        let moduleName = pathname.substring(0, delim);
+                        let funcName = pathname.substring(delim + 1);
+                        try {
+                            let mod = await new Promise((resolve_1, reject_1) => { require([moduleName], resolve_1, reject_1); });
+                            await mod[funcName](dir, loaderConfig, pstat);
+                        }
+                        catch (e) {
+                            pstat.currentBuildError.push(`Failed to load module with message ${e.toString()}`);
+                        }
+                        ;
+                    }
+                    else {
+                        await loaders_1.pxseedBuiltinLoader[loaderConfig.name](dir, loaderConfig, pstat);
+                    }
                 }
                 catch (e) {
-                    pstat.currentBuildError.push(`loader ${loaderConfig.name} failed with error ${String(e)}`);
+                    pstat.currentBuildError.push(`loader "${loaderConfig.name}" failed with error ${String(e)}`);
                 }
             }
             if (pstat.subpackages.length > 0) {

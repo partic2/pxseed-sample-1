@@ -1,23 +1,47 @@
-define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./Inspector"], function (require, exports, acorn_walk_1, acorn, base_1, jsutils1, Inspector_1) {
+define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./Inspector", "partic2/pxprpcClient/registry"], function (require, exports, acorn_walk_1, acorn, base_1, jsutils1, Inspector_1, registry_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.registry = exports.CodeContextShell = exports.jsExecLib = exports.LocalRunCodeContext = exports.ConsoleDataEvent = void 0;
+    exports.registry = exports.CodeContextShell = exports.RemoteEventTarget = exports.jsExecLib = exports.EventQueuePuller = exports.LocalRunCodeContext = exports.CodeContextEvent = void 0;
+    exports.addAwaitHook = addAwaitHook;
     acorn.defaultOptions.allowAwaitOutsideFunction = true;
     acorn.defaultOptions.ecmaVersion = 'latest';
     acorn.defaultOptions.allowReturnOutsideFunction = true;
     acorn.defaultOptions.sourceType = 'module';
+    const __name__ = base_1.requirejs.getLocalRequireModule(require);
+    function addAwaitHook(source) {
+        let replacePlan = [];
+        (0, acorn_walk_1.ancestor)(acorn.parse(source, { ecmaVersion: 'latest' }), {
+            AwaitExpression: (node) => {
+                if (!source.substring(node.argument.start, node.argument.end).startsWith('Promise.__awaitHook(')) {
+                    replacePlan.push({ start: node.argument.start, end: node.argument.start, newString: 'Promise.__awaitHook(' });
+                    replacePlan.push({ start: node.argument.end, end: node.argument.end, newString: ')' });
+                }
+            }
+        });
+        let modified = [];
+        let start = 0;
+        replacePlan.sort((a, b) => a.start - b.start);
+        replacePlan.forEach(plan => {
+            modified.push(source.substring(start, plan.start));
+            modified.push(plan.newString);
+            start = plan.end;
+        });
+        modified.push(source.substring(start));
+        return modified.join('');
+    }
     //RunCodeContext.jsExec run code like this
     async function __jsExecSample(lib, codeContext) {
         //Your code
         return '';
     }
-    class ConsoleDataEvent extends Event {
-        constructor() {
-            super(ConsoleDataEvent.EventType);
+    class CodeContextEvent extends Event {
+        constructor(type, initDict) {
+            super(type ?? __name__ + '.CodeContextEvent', {});
+            this.data = undefined;
+            this.data = initDict?.data;
         }
     }
-    exports.ConsoleDataEvent = ConsoleDataEvent;
-    ConsoleDataEvent.EventType = 'console.data';
+    exports.CodeContextEvent = CodeContextEvent;
     let FuncCallEventType = jsutils1.GenerateRandomString();
     class FuncCallEvent extends Event {
         constructor() {
@@ -64,12 +88,12 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
         }
         return p2.funcCallProbe;
     }
-    //(event:'console.data',cb:onConsoleDataCallback):void;
     class LocalRunCodeContext {
         constructor() {
             this.importHandler = async (source) => {
                 return base_1.requirejs.promiseRequire(source);
             };
+            this.event = new EventTarget();
             this.localScope = {
                 //this CodeContext
                 __priv_codeContext: undefined,
@@ -81,26 +105,29 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                 //some utils provide by codeContext
                 __priv_jsExecLib: exports.jsExecLib,
                 //custom source processor for 'runCode' _ENV.__priv_processSource, run before built in processor.
-                __priv_processSource: null
+                __priv_processSource: null,
+                event: this.event,
+                servePipe: this.servePipe.bind(this)
             };
-            this.event = new EventTarget();
             this.onConsoleLogListener = (e) => {
                 let e2 = e;
                 let name = e2.originalFunction.name;
-                let evt = new ConsoleDataEvent();
-                evt.data = {
-                    level: name,
-                    message: e2.argv.map(v => {
-                        if (typeof v == 'object') {
-                            return JSON.stringify(v);
-                        }
-                        else {
-                            return String(v);
-                        }
-                    }).join()
-                };
+                let evt = new CodeContextEvent('console.data', {
+                    data: {
+                        level: name,
+                        message: e2.argv.map(v => {
+                            if (typeof v == 'object') {
+                                return JSON.stringify(v);
+                            }
+                            else {
+                                return String(v);
+                            }
+                        }).join()
+                    }
+                });
                 this.event.dispatchEvent(evt);
             };
+            this.servingPipe = new Map();
             this.completionHandlers = [
                 ...Inspector_1.defaultCompletionHandlers
             ];
@@ -127,6 +154,21 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                     return true;
                 }
             });
+        }
+        async connectPipe(name) {
+            let pipe1 = this.servingPipe.get(name);
+            if (pipe1 == null) {
+                return null;
+            }
+            else {
+                this.servingPipe.delete(name);
+                return pipe1[0];
+            }
+        }
+        async servePipe(name) {
+            let pipe1 = (0, registry_1.createIoPipe)();
+            this.servingPipe.set(name, pipe1);
+            return pipe1[1];
         }
         async queryTooltip(code, caret) {
             return '';
@@ -272,28 +314,48 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
         }
     }
     exports.LocalRunCodeContext = LocalRunCodeContext;
-    function CreateEventQueue(eventTarget, eventList) {
-        let eventBuffer = new jsutils1.ArrayWrap2();
-        let listener = (event) => {
-            eventBuffer.queueSignalPush(event);
-        };
-        for (let event of eventList) {
-            eventTarget.addEventListener(event, listener);
+    //Usually used by remote puller.
+    class EventQueuePuller {
+        constructor(event) {
+            this.event = event;
+            this.eventBuffer = new jsutils1.ArrayWrap2();
+            this.listenerCb = (event) => {
+                this.eventBuffer.queueSignalPush(event);
+            };
+            this.listeningEventType = new Set();
         }
-        return {
-            next: async () => {
-                let event = await eventBuffer.queueBlockShift();
-                return JSON.stringify({
-                    type: event.type,
-                    data: event.data
-                });
-            },
-            close: () => {
-                for (let event of eventList) {
-                    eventTarget.removeEventListener(event, listener);
-                }
+        ;
+        addPullEventType(type) {
+            this.listeningEventType.add(type);
+            this.event.addEventListener(type, this.listenerCb);
+        }
+        removePullEventType(type) {
+            this.listeningEventType.delete(type);
+            this.event.removeEventListener(type, this.listenerCb);
+        }
+        //Only .data is serialized now.
+        async next() {
+            let event = await this.eventBuffer.queueBlockShift();
+            return JSON.stringify((0, Inspector_1.toSerializableObject)({
+                type: event.type,
+                data: event.data
+            }, { maxDepth: 1000, maxKeyCount: 1000000 }));
+        }
+        async close() {
+            for (let t1 of Array.from(this.listeningEventType)) {
+                this.removePullEventType(t1);
             }
-        };
+        }
+    }
+    exports.EventQueuePuller = EventQueuePuller;
+    function CreateEventQueue(eventTarget, eventList) {
+        let t1 = new EventQueuePuller(eventTarget);
+        if (eventList != undefined) {
+            for (let t2 of eventList) {
+                t1.addPullEventType(t2);
+            }
+        }
+        return t1;
     }
     exports.jsExecLib = {
         jsutils1, LocalRunCodeContext, CreateEventQueue, toSerializableObject: Inspector_1.toSerializableObject, fromSerializableObject: Inspector_1.fromSerializableObject,
@@ -308,6 +370,61 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
             return arr;
         }
     };
+    class RemotePipe extends Inspector_1.RemoteReference {
+        receive() {
+            return this.local.receive();
+        }
+        send(data) {
+            return this.local.send(data);
+        }
+        close() {
+            this.local.close();
+            if (this.context != undefined) {
+                this.context.runCode(`delete _ENV${this.accessPath.map(t1 => `['${t1}']`).join('')}`);
+            }
+        }
+    }
+    //TODO: remove EventListener
+    class RemoteEventTarget extends EventTarget {
+        constructor() {
+            super();
+            this.remoteQueueName = '__eventQueue_' + jsutils1.GenerateRandomString();
+            this.closed = false;
+            this.remotePrepared = new jsutils1.future();
+        }
+        async start() {
+            this.pullInterval();
+        }
+        [Inspector_1.getRemoteReference]() {
+            jsutils1.assert(this.remote != undefined);
+            return this.remote;
+        }
+        async useRemoteReference(remoteReference) {
+            this.remote = remoteReference;
+        }
+        async enableRemoteEvent(type) {
+            await this.remotePrepared.get();
+            await this.codeContext.jsExec(`codeContext.localScope['${this.remoteQueueName}'].addPullEventType('${type}')`);
+        }
+        async pullInterval() {
+            await this.codeContext.jsExec(`codeContext.localScope['${this.remoteQueueName}']=lib.CreateEventQueue(codeContext.localScope${this.remote.accessPath.map(t1 => `['${t1}']`).join('')})`);
+            this.remotePrepared.setResult('');
+            while (!closed) {
+                let msg = await this.codeContext.jsExec(`return await codeContext.localScope['${this.remoteQueueName}'].next()`);
+                let ev = (0, Inspector_1.fromSerializableObject)(JSON.parse(msg), {});
+                this.dispatchEvent(new CodeContextEvent(ev.type, { data: ev.data }));
+            }
+        }
+        addEventListener(type, callback, options) {
+            this.enableRemoteEvent(type);
+            super.addEventListener(type, callback, options);
+        }
+        close() {
+            this.closed = true;
+            this.codeContext.jsExec(`codeContext.localScope['${this.remoteQueueName}'].close()`);
+        }
+    }
+    exports.RemoteEventTarget = RemoteEventTarget;
     class CodeContextShell {
         constructor(codeContext) {
             this.codeContext = codeContext;
@@ -344,6 +461,17 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                 this.returnObjectLogger(result.err, null);
                 throw new Error(result.err.message + '\n' + (result.err.stack ?? ''));
             }
+        }
+        async createRemotePipe() {
+            let remotePipe = new RemotePipe([`__pipe_${jsutils1.GenerateRandomString()}`]);
+            remotePipe.context = this.codeContext;
+            let result = await this.codeContext.runCode(`_ENV.${remotePipe.accessPath[0]}=await _ENV.servePipe('${remotePipe.accessPath[0]}')`);
+            if (result.err != null) {
+                throw new Error(result.err.message + '\n' + (result.err.stack ?? ''));
+            }
+            ;
+            remotePipe.local = (await this.codeContext.connectPipe(remotePipe.accessPath[0]));
+            return remotePipe;
         }
         async importModule(mod, asName) {
             let importResult = await this.codeContext.runCode(`import * as ${asName} from '${mod}' `);
@@ -390,7 +518,7 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
             return await (0, Inspector_1.inspectCodeContextVariable)(new Inspector_1.CodeContextRemoteObjectFetcher(this.codeContext), accessPath, { maxDepth: 50, maxKeyCount: 10000 });
         }
         async init() {
-            this.codeContext.event.addEventListener(ConsoleDataEvent.EventType, this.onConsoleData);
+            this.codeContext.event.addEventListener('console.data', this.onConsoleData);
         }
     }
     exports.CodeContextShell = CodeContextShell;

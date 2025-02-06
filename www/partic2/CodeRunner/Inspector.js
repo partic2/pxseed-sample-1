@@ -1,7 +1,7 @@
 define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/jsutils1/webutils"], function (require, exports, base_1, JsEnviron_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.defaultCompletionHandlers = exports.builtInCompletionHandlers = exports.CustomFunctionParameterCompletionSymbol = exports.MiscObject = exports.RemoteReference = exports.UnidentifiedArray = exports.UnidentifiedObject = exports.CodeContextRemoteObjectFetcher = exports.serializingEscapeMark = exports.DelayOnceCall = void 0;
+    exports.defaultCompletionHandlers = exports.builtInCompletionHandlers = exports.CustomFunctionParameterCompletionSymbol = exports.MiscObject = exports.RemoteReference = exports.getRemoteReference = exports.UnidentifiedArray = exports.UnidentifiedObject = exports.CodeContextRemoteObjectFetcher = exports.serializingEscapeMark = exports.DelayOnceCall = void 0;
     exports.toSerializableObject = toSerializableObject;
     exports.fromSerializableObject = fromSerializableObject;
     exports.inspectCodeContextVariable = inspectCodeContextVariable;
@@ -123,8 +123,8 @@ define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/j
                     value: (0, base_1.ArrayBufferToBase64)(v)
                 };
             }
-            else if (v instanceof RemoteReference) {
-                return { [exports.serializingEscapeMark]: 'RemoteReference', accessPath: v.accessPath };
+            else if (exports.getRemoteReference in v) {
+                return { [exports.serializingEscapeMark]: 'RemoteReference', accessPath: v[exports.getRemoteReference]().accessPath };
             }
             else {
                 let r = {};
@@ -224,11 +224,15 @@ define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/j
     }
     exports.UnidentifiedArray = UnidentifiedArray;
     //Usually used in client to make dereference on server side, by 'fromSerializableObject'.
+    exports.getRemoteReference = Symbol(__name__ + '.getRemoteReference');
     class RemoteReference {
         constructor(accessPath) {
             this.accessPath = accessPath;
         }
         ;
+        [exports.getRemoteReference]() {
+            return this;
+        }
     }
     exports.RemoteReference = RemoteReference;
     class MiscObject {
