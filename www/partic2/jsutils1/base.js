@@ -2,7 +2,6 @@ define(["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.AssertError = exports.logger = exports.Ref2 = exports.ErrorChain = exports.UidGenerator = exports.requirejs = exports.amdContext = exports.mutex = exports.ArrayWrap2 = exports.CanceledError = exports.future = exports.Task = void 0;
-    exports.setupAwaitHook = setupAwaitHook;
     exports.throwIfAbortError = throwIfAbortError;
     exports.copy = copy;
     exports.clone = clone;
@@ -110,22 +109,6 @@ define(["require", "exports"], function (require, exports) {
         static *yieldWrap(p) {
             return (yield p);
         }
-        /*
-            Avoid losing Task.currentTask after await returned.
-            eg: await Task.awaitWrap(anotherAsyncFunction())
-        */
-        static async awaitWrap(p) {
-            Task.getAbortSignal()?.throwIfAborted();
-            let savedTask = Task.currentTask;
-            try {
-                //FIXME:"currentTask" may leak to nextTick.
-                let r = await p;
-                return r;
-            }
-            finally {
-                Task.currentTask = savedTask;
-            }
-        }
         constructor(taskMain, name) {
             this.name = name;
             this.__locals = {};
@@ -202,12 +185,9 @@ define(["require", "exports"], function (require, exports) {
     }
     exports.Task = Task;
     Task.currentTask = null;
-    function setupAwaitHook() {
-        Promise.__awaitHook = Task.awaitWrap;
-    }
     if (('Promise' in globalThis) && !('__awaitHook' in globalThis.Promise)) {
-        //Should we setup await hook automatically?
-        setupAwaitHook();
+        //Should we setup empty await hook automatically?
+        Promise.__awaitHook = () => { };
     }
     function throwIfAbortError(e) {
         if (e.name === 'AbortError') {

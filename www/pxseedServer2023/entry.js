@@ -1,65 +1,16 @@
-define(["require", "exports", "ws", "partic2/jsutils1/base", "http", "path", "pxprpc/extend", "pxprpc/base", "koa", "koa-router", "fs/promises", "koa-files", "partic2/jsutils1/webutils", "child_process", "./workerInit"], function (require, exports, ws_1, base_1, http_1, path_1, extend_1, base_2, koa_1, koa_router_1, fs, koa_files_1, webutils_1, child_process_1) {
+define(["require", "exports", "partic2/jsutils1/base", "http", "path", "pxprpc/extend", "pxprpc/base", "koa", "koa-router", "fs/promises", "koa-files", "partic2/jsutils1/webutils", "child_process", "ws", "partic2/nodehelper/nodeio", "./workerInit"], function (require, exports, base_1, http_1, path_1, extend_1, base_2, koa_1, koa_router_1, fs, koa_files_1, webutils_1, child_process_1, ws_1, nodeio_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.ensureInit = exports.config = exports.koaRouter = exports.koaServ = exports.httpServ = exports.WsServer = exports.__name__ = void 0;
+    exports.ensureInit = exports.rootConfig = exports.config = exports.koaRouter = exports.koaServ = exports.httpServ = exports.WsServer = exports.__name__ = void 0;
     exports.nodeRun = nodeRun;
     exports.__name__ = 'pxseedServer2023/entry';
-    class NodeWsIo {
-        constructor(ws) {
-            this.ws = ws;
-            this.priv__cached = new base_1.ArrayWrap2([]);
-            this.closed = false;
-            ws.on('message', (data, isBin) => {
-                if (data instanceof ArrayBuffer) {
-                    this.priv__cached.queueBlockPush(new Uint8Array(data));
-                }
-                else if (data instanceof Buffer) {
-                    this.priv__cached.queueBlockPush(data);
-                }
-                else if (data instanceof Array) {
-                    this.priv__cached.queueBlockPush(new Uint8Array((0, base_1.ArrayBufferConcat)(data)));
-                }
-                else {
-                    throw new Error('Unknown data type');
-                }
-            });
-            ws.on('close', (code, reason) => {
-                this.closed = true;
-                this.priv__cached.cancelWaiting();
-            });
-        }
-        async receive() {
-            try {
-                let wsdata = await this.priv__cached.queueBlockShift();
-                return wsdata;
-            }
-            catch (e) {
-                if (e instanceof base_1.CanceledError && this.closed) {
-                    this.ws.close();
-                    throw new Error('closed.');
-                }
-                else {
-                    this.ws.close();
-                    throw e;
-                }
-            }
-        }
-        async send(data) {
-            this.ws.send((0, base_1.ArrayBufferConcat)(data));
-        }
-        close() {
-            this.ws.close();
-            this.closed = true;
-            this.priv__cached.cancelWaiting();
-        }
-    }
     exports.WsServer = {
         ws: new ws_1.WebSocketServer({ noServer: true }),
         handle: function (req, socket, head) {
             let url = new URL(req.url, `http://${req.headers.host}`);
             if (url.pathname in this.router) {
                 this.ws.handleUpgrade(req, socket, head, (client, req) => {
-                    this.router[url.pathname](new NodeWsIo(client), req.url, req.headers);
+                    this.router[url.pathname](new nodeio_1.NodeWsIo(client), req.url, req.headers);
                 });
             }
             else {
@@ -90,6 +41,7 @@ define(["require", "exports", "ws", "partic2/jsutils1/base", "http", "path", "px
         blockFilesMatch: ['^/www/pxseedServer2023/config.json$'],
         serveDirectory: ['www', 'source']
     };
+    exports.rootConfig = { ...exports.config };
     let noderunJs = (0, webutils_1.getWWWRoot)() + '/noderun.js';
     function nodeRun(moduleName, args) {
         console.info(noderunJs, moduleName, ...args);
@@ -106,17 +58,21 @@ define(["require", "exports", "ws", "partic2/jsutils1/base", "http", "path", "px
             try {
                 let configData = await fs.readFile(__dirname + '/config.json');
                 console.log(`config file ${__dirname + '/config.json'} found. `);
-                let rootConfig = JSON.parse(new TextDecoder().decode(configData));
+                let readinConfig = JSON.parse(new TextDecoder().decode(configData));
+                exports.rootConfig = Object.assign(readinConfig);
+                if (globalThis.process == undefined)
+                    return null;
                 let subprocessAt = process.argv.indexOf('--subprocess');
-                if (process.argv[2] == exports.__name__ && subprocessAt >= 0) {
+                if (process.argv[2] == 'pxseedServer2023/entry' && subprocessAt >= 0) {
                     //This is subprocee spawn by deamon.
                     let subprocessIndex = Number(process.argv[subprocessAt + 1]);
-                    Object.assign(exports.config, rootConfig, rootConfig.deamonMode.subprocessConfig[subprocessIndex]);
+                    Object.assign(exports.config, exports.rootConfig, exports.rootConfig.deamonMode.subprocessConfig[subprocessIndex]);
                     exports.config.deamonMode.enabled = false;
                     exports.config.deamonMode.subprocessConfig = [];
+                    exports.config.subprocessIndex = subprocessIndex;
                 }
                 else {
-                    Object.assign(exports.config, rootConfig);
+                    Object.assign(exports.config, exports.rootConfig);
                 }
             }
             catch (e) {
@@ -159,7 +115,7 @@ define(["require", "exports", "ws", "partic2/jsutils1/base", "http", "path", "px
             console.log(JSON.stringify(exports.config, undefined, 2));
             exports.WsServer.router[exports.config.pxseedBase + exports.config.pxprpcPath] = (io, url, headers) => {
                 let pass = false;
-                if (exports.config.pxprpcCheckOrigin === false) {
+                if (exports.config.pxprpcCheckOrigin === false || headers.origin == undefined) {
                     pass = true;
                 }
                 else if (headers.origin != undefined) {
@@ -274,6 +230,21 @@ define(["require", "exports", "ws", "partic2/jsutils1/base", "http", "path", "px
                 let subprocess = nodeRun(exports.__name__, ['--subprocess', String(index)]);
                 subprocs[index] = subprocess;
             }).typedecl('i->');
+            //Usually to used to restart process self.
+            extend_1.defaultFuncMap['pxseedServer2023.subprocess.restartOnExit'] = new extend_1.RpcExtendServerCallable(async (index) => {
+                console.info('restart', index);
+                let task = base_1.Task.fork(function* () {
+                    while (subprocs[index].exitCode == null) {
+                        yield (0, base_1.sleep)(1000);
+                    }
+                    let subprocess = nodeRun(exports.__name__, ['--subprocess', String(index)]);
+                    subprocs[index] = subprocess;
+                }).run();
+                return { close: () => {
+                        //To avoid abort restart
+                        (0, base_1.sleep)(3000).then(() => task.abort());
+                    } };
+            }).typedecl('i->o');
         }
     })();
 });

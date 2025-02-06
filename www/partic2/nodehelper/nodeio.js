@@ -1,7 +1,7 @@
-define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "partic2/jsutils1/webutils"], function (require, exports, base_1, net_1, extend_1, webutils_1) {
+define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "partic2/jsutils1/webutils", "ws"], function (require, exports, base_1, net_1, extend_1, webutils_1, ws_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.PxprpcTcpServer = exports.PxprpcIoFromSocket = exports.wrappedStreams = void 0;
+    exports.NodeWsIo = exports.PxprpcTcpServer = exports.PxprpcIoFromSocket = exports.wrappedStreams = void 0;
     exports.wrapReadable = wrapReadable;
     exports.createIoPxseedJsUrl = createIoPxseedJsUrl;
     exports.wrappedStreams = Symbol('wrappedStreams');
@@ -164,5 +164,56 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "
             return io;
         }
     }
+    class NodeWsIo {
+        constructor(ws) {
+            this.ws = ws;
+            this.priv__cached = new base_1.ArrayWrap2([]);
+            this.closed = false;
+            ws.on('message', (data, isBin) => {
+                if (data instanceof ArrayBuffer) {
+                    this.priv__cached.queueBlockPush(new Uint8Array(data));
+                }
+                else if (data instanceof Buffer) {
+                    this.priv__cached.queueBlockPush(data);
+                }
+                else if (data instanceof Array) {
+                    this.priv__cached.queueBlockPush(new Uint8Array((0, base_1.ArrayBufferConcat)(data)));
+                }
+                else {
+                    throw new Error('Unknown data type');
+                }
+            });
+            ws.on('close', (code, reason) => {
+                this.closed = true;
+                this.priv__cached.cancelWaiting();
+            });
+        }
+        async receive() {
+            try {
+                let wsdata = await this.priv__cached.queueBlockShift();
+                return wsdata;
+            }
+            catch (e) {
+                if (e instanceof base_1.CanceledError && this.closed) {
+                    this.ws.close();
+                    throw new Error('closed.');
+                }
+                else {
+                    this.ws.close();
+                    throw e;
+                }
+            }
+        }
+        async send(data) {
+            this.ws.send((0, base_1.ArrayBufferConcat)(data));
+        }
+        close() {
+            this.ws.close();
+            this.closed = true;
+            this.priv__cached.cancelWaiting();
+        }
+    }
+    exports.NodeWsIo = NodeWsIo;
+    globalThis.WebSocket = ws_1.WebSocket;
 });
 //# sourceMappingURL=nodeio.js.map
