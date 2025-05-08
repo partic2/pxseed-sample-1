@@ -7,12 +7,12 @@ define(["require", "exports", "partic2/CodeRunner/CodeContext", "partic2/CodeRun
     exports.__name__ = 'partic2/JsNotebook/notebook';
     //LWRP = LocalWindowRequireProvider, setup to requirejs
     let LWRPSetuped = [false, new base_1.future()];
-    let defaultFs = new JsEnviron_1.LocalWindowSFS();
     async function ensureLWRPInstalled() {
         if (!LWRPSetuped[0]) {
-            await defaultFs.ensureInited();
+            await (0, JsEnviron_1.ensureDefaultFileSystem)();
+            await JsEnviron_1.defaultFileSystem.ensureInited();
             LWRPSetuped[0] = true;
-            LWRPSetuped[1].setResult(await (0, JsEnviron_1.installRequireProvider)(defaultFs));
+            LWRPSetuped[1].setResult(await (0, JsEnviron_1.installRequireProvider)(JsEnviron_1.defaultFileSystem));
         }
         await LWRPSetuped[1].get();
     }
@@ -123,8 +123,8 @@ define(["require", "exports", "partic2/CodeRunner/CodeContext", "partic2/CodeRun
             });
             if (this.fs == undefined) {
                 if (this.rpc == undefined) {
-                    await defaultFs.ensureInited();
-                    this.fs = defaultFs;
+                    await (0, JsEnviron_1.ensureDefaultFileSystem)();
+                    this.fs = JsEnviron_1.defaultFileSystem;
                 }
             }
             if (this.rpc == undefined) {
@@ -231,8 +231,15 @@ define(["require", "exports", "partic2/CodeRunner/CodeContext", "partic2/CodeRun
             if (cellList.at(-1)?.key == cellKey) {
                 this.autoScrollToBottom = true;
             }
-            let nextCell = await (await this.rref.list.waitValid()).newCell(cellKey);
-            (await this.rref.list.waitValid()).setCurrentEditing(nextCell);
+            let runCellAt = cellList.findIndex(t1 => t1.key === cellKey);
+            if (runCellAt == cellList.length - 1) {
+                let nextCell = await (await this.rref.list.waitValid()).newCell(cellKey);
+                (await this.rref.list.waitValid()).setCurrentEditing(nextCell);
+            }
+            else {
+                let nextCell = cellList[runCellAt + 1].key;
+                (await this.rref.list.waitValid()).setCurrentEditing(nextCell);
+            }
         }
         async doRunCode(code) {
             let cl = (await this.rref.list.waitValid());

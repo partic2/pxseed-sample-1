@@ -292,6 +292,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                 }
                 else {
                     found = { type: 'file', name: path2[path2.length - 1], dataKey: [{ key: dataKey, size: data.length }], mtime: (0, base_1.GetCurrentTime)().getTime() };
+                    parent.children.push(found);
                 }
                 found.size = data.length;
                 await this.db.setItem(dataKey, data);
