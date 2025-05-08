@@ -126,6 +126,9 @@ define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/j
             else if (exports.getRemoteReference in v) {
                 return { [exports.serializingEscapeMark]: 'RemoteReference', accessPath: v[exports.getRemoteReference]().accessPath };
             }
+            else if (v instanceof Error) {
+                return { constructor: 'Error', message: v.message, stack: v.stack, ...v };
+            }
             else {
                 let r = {};
                 let keys = listProps(v);
@@ -163,33 +166,6 @@ define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/j
                 ))`);
             return JSON.parse(resp);
         }
-        async iterator(accessPath, iteratorName) {
-            let accessChain = accessPath.map(v => typeof (v) === 'string' ? `['${v}']` : `[${v}]`).join('');
-            let result = await this.codeContext.jsExec(`if(Symbol.iterator in codeContext.localScope${accessChain}){
-            codeContext.localScope.${iteratorName}=codeContext.localScope${accessChain}[Symbol.iterator]()
-        }else if(Symbol.asyncIterator in codeContext){
-            codeContext.localScope.${iteratorName}=codeContext.localScope${accessChain}[Symbol.asyncIterator]()
-        }else{
-            return 'Not iteratable'
-        }
-        return 'ok';
-        `);
-            if (result != 'ok') {
-                throw new Error(result);
-            }
-        }
-        async iteratorFetch(iteratorName, count, opt) {
-            let resp = await this.codeContext.jsExec(`
-            return JSON.stringify(lib.toSerializableObject(
-                    await lib.iteratorNext(
-                    codeContext.localScope.${iteratorName},${count}),
-                    ${JSON.stringify(opt)}))`);
-            return JSON.parse(resp);
-        }
-        async deleteName(name) {
-            await this.codeContext.jsExec(`
-            delete codeContext.localScope.${name}`);
-        }
     }
     exports.CodeContextRemoteObjectFetcher = CodeContextRemoteObjectFetcher;
     class UnidentifiedObject {
@@ -212,10 +188,6 @@ define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/j
     }
     exports.UnidentifiedObject = UnidentifiedObject;
     class UnidentifiedArray extends UnidentifiedObject {
-        constructor() {
-            super(...arguments);
-            this.iterTimeout = 600000;
-        }
         toJSON(key) {
             let objectJson = super.toJSON(key);
             objectJson.isArray = true;
@@ -359,7 +331,11 @@ define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/j
             else {
                 let r1 = {};
                 for (let k1 in v) {
-                    r1[k1] = fromSerializableObject(v[k1], { ...opt, accessPath: [...opt.accessPath, k1] });
+                    let opt2 = { ...opt };
+                    if (opt2.accessPath != undefined) {
+                        opt2.accessPath = [...opt.accessPath, k1];
+                    }
+                    r1[k1] = fromSerializableObject(v[k1], opt2);
                 }
                 return r1;
             }

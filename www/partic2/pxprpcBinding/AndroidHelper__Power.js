@@ -21,10 +21,6 @@ define(["require", "exports", "./pxprpc_config"], function (require, exports, px
             }
             return __v1;
         }
-        async onReceive(context, intent) {
-            let __v1 = await this.ensureFunc('onReceive', 'oo->');
-            let __v2 = await __v1.call(context, intent);
-        }
         async accuireCpuWakeLock() {
             let __v1 = await this.ensureFunc('accuireCpuWakeLock', '->');
             let __v2 = await __v1.call();

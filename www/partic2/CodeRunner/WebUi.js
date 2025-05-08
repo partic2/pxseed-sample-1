@@ -8,6 +8,13 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
         outputCell: (0, base_1.GenerateRandomString)(),
     };
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.outputCell, ['overflow:auto']);
+    function countBracket(s) {
+        let bracketMatch = 0;
+        bracketMatch += (s.match(/\{/g)?.length ?? 0) - (s.match(/\}/g)?.length ?? 0);
+        bracketMatch += (s.match(/\(/g)?.length ?? 0) - (s.match(/\)/g)?.length ?? 0);
+        bracketMatch += (s.match(/\[/g)?.length ?? 0) - (s.match(/\]/g)?.length ?? 0);
+        return bracketMatch;
+    }
     class CodeCell extends React.Component {
         constructor(props, ctx) {
             super(props, ctx);
@@ -20,9 +27,11 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                     codeCompleteCandidate: await this.props.codeContext.codeComplete(this.getCellInput(), this.rref.codeInput.current.getTextCaretOffset())
                 });
             }, 300);
+            this.__tempDisableEnter2RunCode = false;
             this.setState({ codeCompleteCandidate: null, focusin: false });
         }
         async runCode() {
+            this.props.onRun?.();
             try {
                 this.setState({ cellOutput: 'Running...' });
                 let resultVariable = this.state.resultVariable ?? ('__result_' + (0, base_1.GenerateRandomString)());
@@ -42,9 +51,31 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             }
             this.setState({ codeCompleteCandidate: [] });
         }
-        onCellKeyDown(ev) {
-            if (ev.code === 'Enter' && ev.ctrlKey) {
-                this.onBtnRun();
+        getRunCodeKey() {
+            return this.props.runCodeKey ?? 'Ctl+Ent';
+        }
+        async onCellKeyDown(ev) {
+            if (ev.code === 'Enter') {
+                if (this.getRunCodeKey() === 'Ctl+Ent' && ev.ctrlKey) {
+                    this.onBtnRun();
+                }
+                if (this.getRunCodeKey() == 'Enter') {
+                    if (ev.ctrlKey) {
+                        //prevent trigger input('\n').Is there better way?
+                        this.__tempDisableEnter2RunCode = true;
+                        this.rref.codeInput.current?.insertText('\n');
+                        setTimeout(() => this.__tempDisableEnter2RunCode = false, 50);
+                    }
+                    else {
+                        let fullText = (await this.rref.codeInput.waitValid()).getPlainText();
+                        if (countBracket(fullText) == 0) {
+                            await new Promise(resolve => requestAnimationFrame(resolve));
+                            this.rref.codeInput.current?.deleteText(1);
+                            this.runCode();
+                            return;
+                        }
+                    }
+                }
             }
             else if (ev.code == 'Tab') {
                 if (this.state.codeCompleteCandidate != null) {
@@ -60,19 +91,13 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                 this.requestCodeComplete.call();
             }
             if (inputData.char == '\n') {
-                let backwardText = editor.getPlainText().substring(0, editor.getTextCaretOffset()).split('\n');
+                let fullText = editor.getPlainText();
+                let backwardText = fullText.substring(0, editor.getTextCaretOffset()).split('\n');
                 if (backwardText.length > 1) {
                     let lastLine = backwardText.at(-2);
                     let leadingSpace = lastLine.match(/^ */)?.at(0) ?? '';
                     //count braket
-                    let bracketMatch = 0;
-                    if (bracketMatch == 0) {
-                        bracketMatch = (lastLine.match(/\{/g)?.length ?? 0) - (lastLine.match(/\}/g)?.length ?? 0);
-                    }
-                    if (bracketMatch == 0) {
-                        bracketMatch = (lastLine.match(/\(/g)?.length ?? 0) - (lastLine.match(/\)/g)?.length ?? 0);
-                    }
-                    if (bracketMatch > 0) {
+                    if (countBracket(lastLine) > 0) {
                         leadingSpace += '  ';
                     }
                     editor.insertText(leadingSpace);
@@ -131,7 +156,6 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             }
         }
         async onBtnRun() {
-            this.props.onRun?.();
             this.runCode();
         }
         async onBtnClearOutputs() {
@@ -153,7 +177,10 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                         result.push(React.createElement("a", { href: "javascript:;", onClick: () => t1.cb() }, t1.label));
                     }
                 }
-                result.push(React.createElement("a", { href: "javascript:;", onClick: () => this.onBtnRun() }, "Run(Ctl+Ent)"));
+                result.push(React.createElement("a", { href: "javascript:;", onClick: () => this.onBtnRun() },
+                    "Run(",
+                    this.getRunCodeKey(),
+                    ")"));
                 result.push(React.createElement("a", { href: "javascript:;", onClick: () => this.onBtnClearOutputs() }, "ClearOutputs"));
             }
             result = result.map(v => [React.createElement("span", null, "\u00A0\u00A0"), v, React.createElement("span", null, "\u00A0\u00A0")]);
@@ -229,8 +256,17 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             let pos = this.state.list.findIndex(v => v.key == afterCellKey);
             if (pos < 0)
                 pos = this.state.list.length - 1;
-            this.state.list.splice(pos + 1, 0, { ref: new domui_1.ReactRefEx(), key: (0, base_1.GenerateRandomString)() });
-            this.forceUpdate();
+            let newKey = (0, base_1.GenerateRandomString)();
+            this.state.list.splice(pos + 1, 0, { ref: new domui_1.ReactRefEx(), key: newKey });
+            await new Promise(resolve => this.forceUpdate(resolve));
+            this.props.onCellListChange?.();
+            return newKey;
+        }
+        async setCurrentEditing(cellKey) {
+            let cell2 = this.state.list.find(v => v.key == cellKey);
+            if (cell2 != undefined && cell2.ref.current != undefined) {
+                await cell2.ref.current.setAsEditTarget();
+            }
         }
         async deleteCell(cellKey) {
             let pos = this.state.list.findIndex(v => v.key == cellKey);
@@ -241,8 +277,9 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             ;
             if (pos >= 0) {
                 this.state.list.splice(pos, 1);
-                this.forceUpdate();
+                await new Promise(resolve => this.forceUpdate(resolve));
             }
+            this.props.onCellListChange?.();
         }
         async runCell(cellKey) {
             let cell = this.state.list.find(v => v.key == cellKey);
@@ -270,14 +307,17 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             });
             this.forceUpdate();
         }
+        getCellList() {
+            return this.state.list;
+        }
         render(props, state, context) {
             this.beforeRender();
             return (this.state.codeContext != null && this.state.error == null) ? React.createElement("div", { style: { width: '100%', overflowX: 'auto' } }, (0, base_1.FlattenArraySync)(this.state.list.map((v, index1) => {
                 let r = [React.createElement(CodeCell, { ref: v.ref, key: v.key, codeContext: this.state.codeContext, customBtns: [
                             { label: 'New', cb: () => this.newCell(v.key) },
                             { label: 'Del', cb: () => this.deleteCell(v.key) }
-                        ], onClearOutputs: () => this.clearConsoleOutput(v.key), onRun: async () => { this.lastRunCellKey = v.key; }, onFocusChange: (focusin) => { if (focusin)
-                            this.setState({ lastFocusCellKey: v.key }); }, focusin: this.state.lastFocusCellKey == v.key })];
+                        ], onClearOutputs: () => this.clearConsoleOutput(v.key), onRun: async () => { this.lastRunCellKey = v.key; this.props.onRun?.(v.key); }, onFocusChange: (focusin) => { if (focusin)
+                            this.setState({ lastFocusCellKey: v.key }); }, focusin: this.state.lastFocusCellKey == v.key, ...this.props.cellProps })];
                 if (v.key in this.state.consoleOutput) {
                     r.push(React.createElement("pre", null, this.state.consoleOutput[v.key].content));
                 }
@@ -306,10 +346,10 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                 })),
                 consoleOutput: this.state.consoleOutput
             };
-            return JSON.stringify(saved);
+            return JSON.stringify((0, Inspector_1.toSerializableObject)(saved, {}));
         }
         async validLoadFromData(data) {
-            let loaded = JSON.parse(data);
+            let loaded = JSON.parse((0, Inspector_1.fromSerializableObject)(data, {}));
             for (let t1 of loaded.cellList) {
                 (0, base_1.assert)(typeof (t1.cellInput) === 'string');
                 (0, base_1.assert)(t1.cellOutput.length == 2);

@@ -38,6 +38,19 @@ define(["require", "exports", "./pxprpc_config"], function (require, exports, px
             let __v2 = await __v1.call(timeoutSec);
             return __v2;
         }
+        async eventDispatcher() {
+            let __v1 = await this.ensureFunc('eventDispatcher', '->o');
+            let __v2 = await __v1.call();
+            return __v2;
+        }
+        async startListenEvent(action) {
+            let __v1 = await this.ensureFunc('startListenEvent', 's->');
+            let __v2 = await __v1.call(action);
+        }
+        async stopListenEvent(action) {
+            let __v1 = await this.ensureFunc('stopListenEvent', 's->');
+            let __v2 = await __v1.call(action);
+        }
     }
     exports.Invoker = Invoker;
     let defaultInvoker = null;

@@ -33,6 +33,9 @@ define(["require", "exports", "fs/promises", "fs", "path", "./buildlib"], functi
         }
         else if (command == 'clean') {
             await (0, buildlib_1.cleanBuildStatus)(buildlib_1.sourceDir);
+            if (process.argv.includes('--js')) {
+                await (0, buildlib_1.cleanJsFiles)(buildlib_1.outputDir);
+            }
         }
         else {
             console.error(`unknown command ${command}`);

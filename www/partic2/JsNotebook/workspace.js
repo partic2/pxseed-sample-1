@@ -194,6 +194,7 @@ define(["require", "exports", "partic2/pComponentUi/domui", "preact", "./filebro
             await this.doOpenFileRequest(notebookFile);
             for (let tab of (await this.rref.tv.waitValid()).getTabs()) {
                 if (tab instanceof notebook_1.RunCodeTab && tab.path === notebookFile) {
+                    tab.ignoreRpcConfigOnLoading = true;
                     await tab.inited.get();
                     await tab.useCodeContext(supportedContext);
                 }

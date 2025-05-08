@@ -75,7 +75,7 @@ define(["require", "exports", "partic2/pComponentUi/domui", "preact", "partic2/p
             let data = await this.fs.readAll(this.path);
             data = data ?? new Uint8Array(0);
             this.dataUrl = URL.createObjectURL(new Blob([data]));
-            this.tabView.get()?.forceUpdate();
+            this.requestPageViewUpdate();
         }
         async onClose() {
             if (this.dataUrl != undefined) {

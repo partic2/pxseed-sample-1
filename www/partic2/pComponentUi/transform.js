@@ -1,7 +1,7 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils"], function (require, exports, base_1, webutils_1) {
+define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./domui"], function (require, exports, base_1, webutils_1, domui_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.cssAnimation = exports.DraggableAndScalable = exports.TransformHelper = exports.PointTrace = void 0;
+    exports.cssAnimation = exports.DragController = exports.DraggableAndScalable = exports.TransformHelper = exports.PointTrace = void 0;
     class PointTrace {
         constructor(opt) {
             this.opt = opt;
@@ -41,7 +41,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             this.opt.preventDefault = this.opt.preventDefault ?? true;
         }
         start(initClientPosition, stopOnUp) {
-            this.startPos = { ...initClientPosition };
+            this.startPos = { ...this.startPos, ...initClientPosition };
             document.addEventListener('mousemove', this.__onMouseMove, { passive: false });
             document.addEventListener('touchmove', this.__onTouchMove, { passive: false });
             if (stopOnUp === true) {
@@ -218,6 +218,60 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
     }
     exports.DraggableAndScalable = DraggableAndScalable;
+    class DragController {
+        constructor() {
+            this.dragged = {};
+            this.positionInitialized = false;
+            this.moved = false;
+            this._moveTrace = new PointTrace({
+                onMove: (curr, start) => {
+                    this.dragged.newPos?.({ left: curr.x - start.x, top: curr.y - start.y });
+                    this.moved = true;
+                }
+            });
+            this.trigger = {
+                onMouseDown: (ev) => {
+                    let { left, top } = this.dragged.curPos?.() ?? { left: 0, top: 0 };
+                    this._moveTrace.start({ x: ev.clientX - left, y: ev.clientY - top }, true);
+                },
+                onTouchStart: (ev) => {
+                    let { left, top } = this.dragged.curPos?.() ?? { left: 0, top: 0 };
+                    this._moveTrace.start({ x: ev.touches[0].clientX - left, y: ev.touches[0].clientY - top }, true);
+                }
+            };
+        }
+        draggedRef(initPos) {
+            let ref = new domui_1.ReactRefEx();
+            this.dragged.curPos = () => {
+                let elem = ref.current;
+                if (elem == null)
+                    return { left: 0, top: 0 };
+                return { left: Number(elem.style.left.replace(/px/, '')), top: Number(elem.style.top.replace(/px/, '')) };
+            };
+            this.dragged.newPos = (pos) => {
+                let elem = ref.current;
+                if (elem != null) {
+                    elem.style.left = pos.left + 'px';
+                    elem.style.top = pos.top + 'px';
+                }
+            };
+            if (initPos != undefined && !this.positionInitialized) {
+                this.positionInitialized = true;
+                ref.waitValid().then((elem) => {
+                    elem.style.left = initPos.left + 'px';
+                    elem.style.top = initPos.top + 'px';
+                });
+            }
+            return ref;
+        }
+        //Usually used for click handle
+        checkIsMovedSinceLastCheck() {
+            let moved = this.moved;
+            this.moved = false;
+            return moved;
+        }
+    }
+    exports.DragController = DragController;
     exports.cssAnimation = {
         registerSimpleKeyframes: function (name, skf) {
             webutils_1.DynamicPageCSSManager.PutCss('@keyframes ' + name, [skf.map(v => v.percent + '% { ' + v.rule.join(';') + '} ').join('')]);

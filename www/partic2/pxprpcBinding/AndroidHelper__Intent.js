@@ -72,6 +72,11 @@ define(["require", "exports", "./pxprpc_config"], function (require, exports, px
             let __v2 = await __v1.call(path);
             return __v2;
         }
+        async getUriForFile(path) {
+            let __v1 = await this.ensureFunc('getUriForFile', 's->s');
+            let __v2 = await __v1.call(path);
+            return __v2;
+        }
         async requestSystemAlertWindowPermission() {
             let __v1 = await this.ensureFunc('requestSystemAlertWindowPermission', '->c');
             let __v2 = await __v1.call();

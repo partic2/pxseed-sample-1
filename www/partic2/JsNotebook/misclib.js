@@ -3,6 +3,7 @@ define(["require", "exports", "preact", "partic2/pxprpcClient/registry", "partic
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.CodeContextChooser = exports.DefaultActionBar = void 0;
     exports.findRpcClientInfoFromClient = findRpcClientInfoFromClient;
+    exports.openCodeContextChooser = openCodeContextChooser;
     class DefaultActionBar extends React.Component {
         processKeyEvent(evt) {
             if (evt.code === 'KeyS' && evt.ctrlKey) {
@@ -20,9 +21,6 @@ define(["require", "exports", "preact", "partic2/pxprpcClient/registry", "partic
                 }
                 else if (name === 'reload') {
                     btn.push({ id: name, label: 'Reload' });
-                }
-                else if (name === 'reloadCodeWorker') {
-                    btn.push({ id: name, label: 'Reload Code Worker' });
                 }
                 else {
                     btn.push({ id: name, label: name });
@@ -74,5 +72,19 @@ define(["require", "exports", "preact", "partic2/pxprpcClient/registry", "partic
         }
     }
     exports.CodeContextChooser = CodeContextChooser;
+    async function openCodeContextChooser() {
+        return new Promise((resolve, reject) => {
+            let wnd2 = React.createElement(window_1.WindowComponent, { onClose: () => {
+                    (0, window_1.removeFloatWindow)(wnd2);
+                    resolve(null);
+                }, title: 'choose code context' },
+                React.createElement("div", { style: { backgroundColor: 'white', padding: '1px' } },
+                    React.createElement(CodeContextChooser, { onChoose: (rpc) => {
+                            resolve(rpc);
+                            (0, window_1.removeFloatWindow)(wnd2);
+                        } })));
+            (0, window_1.appendFloatWindow)(wnd2);
+        });
+    }
 });
 //# sourceMappingURL=misclib.js.map

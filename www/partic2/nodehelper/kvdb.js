@@ -1,9 +1,9 @@
-define(["require", "exports", "fs/promises", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/CodeRunner/Inspector"], function (require, exports, fs, base_1, webutils_1, Inspector_1) {
+define(["require", "exports", "fs/promises", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/CodeRunner/Inspector", "path"], function (require, exports, fs, base_1, webutils_1, Inspector_1, path) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.FsBasedKvDbV1 = void 0;
     exports.setupImpl = setupImpl;
-    var __name__ = 'partic2/JsNotebookServer/entry';
+    var __name__ = base_1.requirejs.getLocalRequireModule(require);
     class FsBasedKvDbV1 {
         constructor() {
             this.baseDir = '';
@@ -49,13 +49,13 @@ define(["require", "exports", "fs/promises", "partic2/jsutils1/base", "partic2/j
             let { fileName, type } = this.config.fileList[key];
             try {
                 if (type === 'ArrayBuffer') {
-                    return (await fs.readFile(fileName)).buffer;
+                    return (await fs.readFile(`${this.baseDir}/${fileName}`)).buffer;
                 }
                 else if (type === 'Uint8Array') {
-                    return new Uint8Array((await fs.readFile(fileName)).buffer);
+                    return new Uint8Array((await fs.readFile(`${this.baseDir}/${fileName}`)).buffer);
                 }
                 else if (type === 'Int8Array') {
-                    return new Int8Array((await fs.readFile(fileName)).buffer);
+                    return new Int8Array((await fs.readFile(`${this.baseDir}/${fileName}`)).buffer);
                 }
                 else if (type === 'json') {
                     let data = await fs.readFile(`${this.baseDir}/${fileName}`);
@@ -88,11 +88,35 @@ define(["require", "exports", "fs/promises", "partic2/jsutils1/base", "partic2/j
         }
     }
     exports.FsBasedKvDbV1 = FsBasedKvDbV1;
+    let cachePath = path.join((0, webutils_1.getWWWRoot)(), __name__, '..');
     function setupImpl() {
         (0, webutils_1.setKvStoreBackend)(async (dbname) => {
+            let dbMap = {};
+            //deprecate base64 to be filesystem independent.
+            let filename = btoa(dbname);
+            await fs.mkdir(path.join(cachePath, 'data'), { recursive: true });
+            try {
+                dbMap = JSON.parse(new TextDecoder().decode(await fs.readFile(path.join(cachePath, 'data', 'meta-dbMap'))));
+            }
+            catch (e) { }
+            ;
+            if (dbname in dbMap) {
+                filename = dbMap[dbname];
+            }
+            try {
+                await fs.access(path.join(cachePath, 'data', filename));
+                if (!(dbname in dbMap)) {
+                    dbMap[dbname] = filename;
+                }
+            }
+            catch (e) {
+                filename = (0, base_1.GenerateRandomString)();
+                dbMap[dbname] = filename;
+            }
+            await fs.writeFile(path.join(cachePath, 'data', 'meta-dbMap'), JSON.stringify(dbMap));
             let db = new FsBasedKvDbV1();
-            await fs.mkdir(__dirname + '/data/' + btoa(dbname), { recursive: true });
-            await db.init(__dirname + '/data/' + btoa(dbname));
+            await fs.mkdir(path.join(cachePath, 'data', filename), { recursive: true });
+            await db.init(path.join(cachePath, 'data', filename));
             return db;
         });
     }

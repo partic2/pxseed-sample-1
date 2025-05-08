@@ -18,7 +18,7 @@ define(["require", "exports", "child_process", "path", "fs/promises"], function 
         return JSON.parse(new TextDecoder().decode(await (0, promises_1.readFile)(path)));
     }
     async function writeJson(path, obj) {
-        await (0, promises_1.writeFile)(path, new TextEncoder().encode(JSON.stringify(obj)));
+        await (0, promises_1.writeFile)(path, new TextEncoder().encode(JSON.stringify(obj, undefined, 2)));
     }
     async function runBuild() {
         await runCommand('node ' + exports.buildScriptPath);

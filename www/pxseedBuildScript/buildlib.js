@@ -4,6 +4,7 @@ define(["require", "exports", "fs/promises", "path", "./loaders", "./util"], fun
     exports.outputDir = exports.sourceDir = void 0;
     exports.processDirectory = processDirectory;
     exports.cleanBuildStatus = cleanBuildStatus;
+    exports.cleanJsFiles = cleanJsFiles;
     Object.defineProperty(exports, "sourceDir", { enumerable: true, get: function () { return loaders_1.sourceDir; } });
     Object.defineProperty(exports, "outputDir", { enumerable: true, get: function () { return loaders_1.outputDir; } });
     let PxseedStatusDefault = {
@@ -64,6 +65,7 @@ define(["require", "exports", "fs/promises", "path", "./loaders", "./util"], fun
                         }
                         catch (e) {
                             pstat.currentBuildError.push(`Failed to load module with message ${e.toString()}`);
+                            throw e;
                         }
                         ;
                     }
@@ -79,7 +81,7 @@ define(["require", "exports", "fs/promises", "path", "./loaders", "./util"], fun
                 for (let t1 of pstat.subpackages) {
                     await processDirectory((0, path_1.join)(dir, t1));
                 }
-                //Don't save to file.
+                //Don't save ".subpackages" to file.
                 pstat.subpackages = [];
             }
             pstat.lastBuildTime = new Date().getTime();
@@ -105,6 +107,24 @@ define(["require", "exports", "fs/promises", "path", "./loaders", "./util"], fun
                 await fs.rm((0, path_1.join)(dir, t1.name));
             }
         }
+    }
+    async function cleanJsFiles(dir) {
+        let children = await fs.readdir(dir, { withFileTypes: true });
+        for (let t1 of children) {
+            if (t1.isDirectory() && !t1.isSymbolicLink()) {
+                await cleanJsFiles((0, path_1.join)(dir, t1.name));
+            }
+            else if (t1.name.endsWith('.js') || t1.name.endsWith('.js.map')) {
+                await fs.rm((0, path_1.join)(dir, t1.name));
+            }
+        }
+        children = await fs.readdir(dir, { withFileTypes: true });
+        try {
+            if (children.length == 0) {
+                await fs.rmdir(dir);
+            }
+        }
+        catch (e) { }
     }
 });
 //# sourceMappingURL=buildlib.js.map

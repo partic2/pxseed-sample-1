@@ -2,6 +2,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.rpcId = exports.persistent = exports.ServiceWorker = exports.WebWorker1RpcName = exports.ServerHostWorker1RpcName = exports.ServerHostRpcName = exports.IoOverPxprpc = exports.ClientInfo = exports.RpcWorker = exports.rpcWorkerInitModule = exports.__name__ = void 0;
+    exports.getRpcFunctionOn = getRpcFunctionOn;
     exports.createIoPipe = createIoPipe;
     exports.getAttachedRemoteRigstryFunction = getAttachedRemoteRigstryFunction;
     exports.getConnectionFromUrl = getConnectionFromUrl;
@@ -20,6 +21,23 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     extend_1.defaultFuncMap[exports.__name__ + '.getConnectionFromUrl'] = new extend_1.RpcExtendServerCallable(async (url) => {
         return await getConnectionFromUrl(url);
     }).typedecl('s->o');
+    let attachedRemoteFunction = Symbol('AttachedRemoteRigstryFunction');
+    async function getRpcFunctionOn(client, funcName, typ) {
+        let attachedFunc = {};
+        if (attachedRemoteFunction in client) {
+            attachedFunc = client[attachedRemoteFunction];
+        }
+        else {
+            client[attachedRemoteFunction] = attachedFunc;
+        }
+        if (!(funcName in attachedFunc)) {
+            let fn = await client.getFunc(funcName);
+            if (fn != null)
+                fn.typedecl(typ);
+            attachedFunc[funcName] = fn;
+        }
+        return attachedFunc[funcName];
+    }
     class RpcWorker {
         constructor(workerId) {
             this.initDone = new base_1.future();
@@ -32,7 +50,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                     this.conn = await new backend_1.WebMessage.Connection().connect(this.workerId, 1000);
                 }
                 catch (e) {
-                    if (e instanceof Error && e.message.match(/server not found/)) {
+                    if (e instanceof Error && e.message.match(/server not found/) != null) {
                         //mute
                     }
                     else {
@@ -68,6 +86,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             this.name = name;
             this.url = url;
             this.client = null;
+            this.connecting = new base_1.mutex();
         }
         connected() {
             if (this.client === null)
@@ -83,18 +102,24 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             return fn.loadModule(name);
         }
         async ensureConnected() {
-            if (this.client !== null && this.client.conn.isRunning()) {
-                return this.client;
-            }
-            else {
-                let io1 = await getConnectionFromUrl(this.url.toString());
-                if (io1 == null) {
-                    let purl = new URL(this.url);
-                    throw new Error('No protocol handler for ' + purl.protocol);
+            try {
+                await this.connecting.lock();
+                if (this.client !== null && this.client.conn.isRunning()) {
+                    return this.client;
                 }
-                this.client = new extend_1.RpcExtendClient1(new base_2.Client(io1));
-                await this.client.init();
-                return this.client;
+                else {
+                    let io1 = await getConnectionFromUrl(this.url.toString());
+                    if (io1 == null) {
+                        let purl = new URL(this.url);
+                        throw new Error('No protocol handler for ' + purl.protocol);
+                    }
+                    this.client = new extend_1.RpcExtendClient1(new base_2.Client(io1));
+                    await this.client.init();
+                    return this.client;
+                }
+            }
+            finally {
+                await this.connecting.unlock();
             }
         }
     }
@@ -151,7 +176,6 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
         return [oneSide(a2b, b2a), oneSide(b2a, a2b)];
     }
-    let attachedRemoteFunction = Symbol('AttachedRemoteRigstryFunction');
     class RemoteRegistryFunctionImpl {
         constructor() {
             this.funcs = [];
@@ -220,7 +244,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             let firstSlash = url2.pathname.indexOf('/');
             let firstRpcName = decodeURIComponent(url2.pathname.substring(0, firstSlash));
             let restRpcPath = url2.pathname.substring(firstSlash + 1);
-            let cinfo = getRegistered(firstRpcName);
+            let cinfo = await getPersistentRegistered(firstRpcName);
             if (cinfo == null) {
                 cinfo = await addClient(firstRpcName, firstRpcName);
             }
@@ -351,10 +375,16 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             });
         }
         //Critical Security Risk
-        new backend_1.WebMessage.Server((conn) => {
-            //mute error
-            new extend_1.RpcExtendServer1(new base_2.Server(conn)).serve().catch(() => { });
-        }).listen(exports.rpcId);
+        if (globalThis.document != undefined) {
+            try {
+                new backend_1.WebMessage.Server((conn) => {
+                    //mute error
+                    new extend_1.RpcExtendServer1(new base_2.Server(conn)).serve().catch(() => { });
+                }).listen(exports.rpcId);
+            }
+            catch (err) { }
+            ;
+        }
         backend_1.WebMessage.postMessageOptions.targetOrigin = '*';
     }
 });

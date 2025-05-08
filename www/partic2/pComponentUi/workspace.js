@@ -1,12 +1,30 @@
-define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base"], function (require, exports, React, domui_1, base_1) {
+define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "./window"], function (require, exports, React, domui_1, base_1, window_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.TabView = exports.TabInfoBase = void 0;
+    exports.TabView = exports.TabInfoBase = exports.openNewWindow = void 0;
+    exports.setOpenNewWindowImpl = setOpenNewWindowImpl;
+    let openNewWindow = async function (contentVNode, options) {
+        let closeFuture = new base_1.future();
+        let windowVNode = React.createElement(window_1.WindowComponent, { onClose: () => closeFuture.setResult(true), title: options?.title }, contentVNode);
+        (0, window_1.appendFloatWindow)(windowVNode, true);
+        return {
+            onClose: async function () {
+                await closeFuture.get();
+                this.close();
+                return;
+            },
+            close: function () { (0, window_1.removeFloatWindow)(windowVNode); }
+        };
+    };
+    exports.openNewWindow = openNewWindow;
+    function setOpenNewWindowImpl(impl) {
+        exports.openNewWindow = impl;
+    }
     class TabInfoBase {
         constructor() {
             this.id = '';
             this.title = '';
-            this.tabView = new base_1.Ref2(null);
+            this.container = new base_1.Ref2(null);
         }
         renderPage() {
             throw new Error('Not Implemented');
@@ -20,6 +38,15 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base"], fun
             }
             return this;
         }
+        async requestPageViewUpdate() {
+            let tabView = this.container.get();
+            if (tabView != null) {
+                return new Promise(r => tabView.forceUpdate(r));
+            }
+            else {
+                return new Promise(r => r());
+            }
+        }
     }
     exports.TabInfoBase = TabInfoBase;
     var eventProcessed = Symbol('eventProcessed');
@@ -27,11 +54,11 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base"], fun
         addTab(tabInfo) {
             let foundIndex = this.state.tabs.findIndex(v => v.id == tabInfo.id);
             if (foundIndex < 0) {
-                tabInfo.tabView.set(this);
+                tabInfo.container.set(this);
                 this.state.tabs.push(tabInfo);
             }
             else {
-                tabInfo.tabView.set(this);
+                tabInfo.container.set(this);
                 this.state.tabs.splice(foundIndex, 1, tabInfo);
             }
             this.forceUpdate();

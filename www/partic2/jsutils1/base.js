@@ -1,7 +1,7 @@
 define(["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.AssertError = exports.logger = exports.Ref2 = exports.ErrorChain = exports.UidGenerator = exports.requirejs = exports.amdContext = exports.mutex = exports.ArrayWrap2 = exports.CanceledError = exports.future = exports.Task = void 0;
+    exports.AssertError = exports.logger = exports.Ref2 = exports.ErrorChain = exports.requirejs = exports.amdContext = exports.mutex = exports.ArrayWrap2 = exports.CanceledError = exports.future = exports.Task = void 0;
     exports.throwIfAbortError = throwIfAbortError;
     exports.copy = copy;
     exports.clone = clone;
@@ -9,7 +9,6 @@ define(["require", "exports"], function (require, exports) {
     exports.ParseDate = ParseDate;
     exports.GetBlobArrayBufferContent = GetBlobArrayBufferContent;
     exports.sleep = sleep;
-    exports.ArrayEquals = ArrayEquals;
     exports.GenerateRandomString = GenerateRandomString;
     exports.FlattenArray = FlattenArray;
     exports.FlattenArraySync = FlattenArraySync;
@@ -185,10 +184,6 @@ define(["require", "exports"], function (require, exports) {
     }
     exports.Task = Task;
     Task.currentTask = null;
-    if (('Promise' in globalThis) && !('__awaitHook' in globalThis.Promise)) {
-        //Should we setup empty await hook automatically?
-        Promise.__awaitHook = () => { };
-    }
     function throwIfAbortError(e) {
         if (e.name === 'AbortError') {
             throw e;
@@ -232,7 +227,7 @@ define(["require", "exports"], function (require, exports) {
             "hh": date.getHours() % 12,
             "mm": date.getMinutes(),
             "ss": date.getSeconds(),
-            "SS": date.getMilliseconds()
+            "SSS": date.getMilliseconds()
         };
         outstr = outstr.replace(/yyyy/, date.getFullYear().toString().padStart(4, '0'));
         for (var k in o) {
@@ -254,7 +249,9 @@ define(["require", "exports"], function (require, exports) {
         let minute = pos >= 0 ? Number.parseInt(dateStr.substring(pos, pos + 2)) : 0;
         pos = layout.indexOf('ss');
         let second = pos >= 0 ? Number.parseInt(dateStr.substring(pos, pos + 2)) : 0;
-        return new Date(year, month, date, hour, minute, second);
+        pos = layout.indexOf('SSS');
+        let millisecond = pos >= 0 ? Number.parseInt(dateStr.substring(pos, pos + 3)) : 0;
+        return new Date(year, month, date, hour, minute, second, millisecond);
     }
     function GetBlobArrayBufferContent(blob) {
         return new Promise(function (resolve, reject) {
@@ -287,12 +284,14 @@ define(["require", "exports"], function (require, exports) {
         setResult(result) {
             if (!this.done) {
                 this.done = true;
+                this.result = result;
                 this.resolveCallback(result);
             }
         }
         setException(exception) {
             if (!this.done) {
                 this.done = true;
+                this.exception = exception;
                 this.rejectCallback(exception);
             }
         }
@@ -301,6 +300,7 @@ define(["require", "exports"], function (require, exports) {
     class CanceledError extends Error {
         constructor() {
             super('canceled.');
+            this.name = 'Canceled';
         }
     }
     exports.CanceledError = CanceledError;
@@ -385,8 +385,9 @@ define(["require", "exports"], function (require, exports) {
             return this.arr()[Symbol.iterator];
         }
         static *IntSequence(start, end, step) {
-            step = step ?? 1;
-            for (let t1 = start; t1 < end; t1 += step) {
+            assert(step !== 0);
+            step = step ?? (end >= start ? 1 : -1);
+            for (let t1 = start; (step > 0) ? (t1 < end) : (t1 > end); t1 += step) {
                 yield t1;
             }
         }
@@ -516,19 +517,29 @@ define(["require", "exports"], function (require, exports) {
         getLocalRequireModule(localRequire) {
             //partic2-iamdee feature
             return localRequire.localRequireModule;
+        },
+        definingHook: null,
+        async addDefiningHook(hook) {
+            //partic2-iamdee feature
+            if (this.definingHook === null) {
+                this.definingHook = [];
+                let { onDefining } = await this.getConfig();
+                if (onDefining != undefined) {
+                    this.definingHook.push(onDefining);
+                }
+                exports.amdContext.requirejs.config({
+                    onDefining: (defineParameter) => {
+                        if (this.definingHook != null) {
+                            for (let t1 of this.definingHook) {
+                                t1(defineParameter);
+                            }
+                        }
+                    }
+                });
+            }
+            this.definingHook.push(hook);
         }
     };
-    function ArrayEquals(obj1, obj2) {
-        if (obj1.length != obj2.length) {
-            return false;
-        }
-        for (var i = 0; i < obj1.length; i++) {
-            if (obj1[i] != obj2[i]) {
-                return false;
-            }
-        }
-        return true;
-    }
     function GenerateRandomString(maxRandLenX4) {
         let s = 'rnd1';
         if (maxRandLenX4 == undefined)
@@ -541,25 +552,6 @@ define(["require", "exports"], function (require, exports) {
         }
         return s;
     }
-    exports.UidGenerator = {
-        idnum: [0],
-        generate: function () {
-            let i = 0;
-            for (i = 0; i < this.idnum.length; i++) {
-                if (this.idnum[i] < 0x7fffffff) {
-                    this.idnum[i]++;
-                    break;
-                }
-                else {
-                    this.idnum[i] = 0;
-                }
-            }
-            if (i == this.idnum.length) {
-                this.idnum.push(1);
-            }
-            return this.idnum.map(v => v.toString(16)).join('-');
-        }
-    };
     class ErrorChain extends Error {
         constructor(message) {
             super(message);
@@ -611,7 +603,7 @@ define(["require", "exports"], function (require, exports) {
                 case 'hour':
                 case 'minute':
                 case 'second':
-                case 'milliseconds':
+                case 'millisecond':
                     return DateAdd(org, { [field + 's']: add });
             }
         }

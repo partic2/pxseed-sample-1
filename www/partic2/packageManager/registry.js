@@ -554,13 +554,6 @@ define(["require", "exports", "path", "fs/promises", "fs", "pxseedBuildScript/bu
             throw new Error(`Can not handle url:${source}`);
         }
     }
-    async function startDebugger() {
-        try {
-            (await new Promise((resolve_8, reject_8) => { require(['inspector'], resolve_8, reject_8); })).open(9229, '127.0.0.1', true);
-        }
-        catch (e) { }
-        debugger;
-    }
     async function createPackageTemplate1(pxseedConfig) {
         let pkgloc = (0, path_1.join)(sourceDir, pxseedConfig.name);
         try {
@@ -577,6 +570,39 @@ define(["require", "exports", "path", "fs/promises", "fs", "pxseedBuildScript/bu
 !.gitignore
 tsconfig.json
 `);
+        if (pxseedConfig.options?.[exports.__name__] != undefined) {
+            let opt = pxseedConfig.options[exports.__name__];
+            if (opt.webui?.entry != undefined && opt.webui.entry != '') {
+                let entryMod = opt.webui.entry;
+                if (entryMod.startsWith(pxseedConfig.name + '/')) {
+                    let entModPath = (0, path_1.join)(sourceDir, ...entryMod.split('/')) + '.tsx';
+                    await (0, promises_1.mkdir)((0, path_1.dirname)(entModPath), { recursive: true });
+                    await (0, promises_1.writeFile)(entModPath, `
+import * as React from 'preact'
+import { openNewWindow } from 'partic2/pComponentUi/workspace'
+import { requirejs } from 'partic2/jsutils1/base';
+import { GetJsEntry } from 'partic2/jsutils1/webutils';
+import { DomRootComponent, ReactRender } from 'partic2/pComponentUi/domui';
+
+const __name__=requirejs.getLocalRequireModule(require);
+
+//Open from packageManager.
+export function *main(args:string){
+    if(args=='webui'){
+        openNewWindow(<div>WebUI Demo</div>);
+    }
+}
+
+//Optinal support when module is open from url directly. like http://xxxx/pxseed/index.html?__jsentry=<moduleName>
+(async ()=>{
+    if(__name__==GetJsEntry()){
+        ReactRender(<div>WebUI Demo</div>,DomRootComponent);
+    }
+})();
+`);
+                }
+            }
+        }
         await installLocalPackage(pkgloc);
         await initGitRepo(pkgloc);
     }

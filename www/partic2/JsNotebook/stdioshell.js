@@ -22,7 +22,7 @@ define(["require", "exports", "partic2/pComponentUi/texteditor", "preact", "./fi
                 let tjs = await (0, tjs_1.tjsFrom)(this.props.ws.jseio);
                 if (cmdline == undefined) {
                     cmdline = 'sh';
-                    if (tjs.platform == 'windows') {
+                    if (tjs.system.platform == 'windows') {
                         cmdline = 'cmd';
                     }
                 }

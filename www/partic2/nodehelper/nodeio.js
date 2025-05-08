@@ -1,7 +1,7 @@
 define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "partic2/jsutils1/webutils", "ws"], function (require, exports, base_1, net_1, extend_1, webutils_1, ws_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.NodeWsIo = exports.PxprpcTcpServer = exports.PxprpcIoFromSocket = exports.wrappedStreams = void 0;
+    exports.NodeWritableDataSink = exports.NodeReadableDataSource = exports.NodeWsIo = exports.PxprpcTcpServer = exports.PxprpcIoFromSocket = exports.wrappedStreams = void 0;
     exports.wrapReadable = wrapReadable;
     exports.createIoPxseedJsUrl = createIoPxseedJsUrl;
     exports.wrappedStreams = Symbol('wrappedStreams');
@@ -18,6 +18,7 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "
         }
         return wrapped.readStream;
     }
+    //tjs.Reader
     class ReadStream4NodeIo {
         constructor(nodeInput) {
             this.nodeInput = nodeInput;
@@ -33,6 +34,7 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "
             });
         }
         async read(buf, offset) {
+            offset = offset ?? 0;
             if (this.endOfStream)
                 return null;
             if (this.remainbuf === null) {
@@ -215,5 +217,41 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "
     }
     exports.NodeWsIo = NodeWsIo;
     globalThis.WebSocket = ws_1.WebSocket;
+    class NodeReadableDataSource {
+        constructor(nodeReadable) {
+            this.nodeReadable = nodeReadable;
+        }
+        async pull(controller) {
+            let errorHandler = null;
+            let resolveHandler = null;
+            try {
+                let chunk = await new Promise((resolve, reject) => {
+                    errorHandler = reject;
+                    this.nodeReadable.on('error', errorHandler);
+                    resolveHandler = resolve;
+                    this.nodeReadable.on('data', resolveHandler);
+                });
+                controller.enqueue(chunk);
+            }
+            finally {
+                if (errorHandler != null) {
+                    this.nodeReadable.off('error', errorHandler);
+                }
+                if (resolveHandler != null) {
+                    this.nodeReadable.off('data', resolveHandler);
+                }
+            }
+        }
+    }
+    exports.NodeReadableDataSource = NodeReadableDataSource;
+    class NodeWritableDataSink {
+        constructor(nodeWritable) {
+            this.nodeWritable = nodeWritable;
+        }
+        async write(chunk, controller) {
+            this.nodeWritable.write(chunk);
+        }
+    }
+    exports.NodeWritableDataSink = NodeWritableDataSink;
 });
 //# sourceMappingURL=nodeio.js.map

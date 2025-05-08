@@ -1,34 +1,15 @@
-define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./Inspector", "partic2/pxprpcClient/registry"], function (require, exports, acorn_walk_1, acorn, base_1, jsutils1, Inspector_1, registry_1) {
+define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./Inspector", "partic2/pxprpcClient/registry", "./pxseedLoader", "./jsutils2"], function (require, exports, acorn_walk_1, acorn, base_1, jsutils1, Inspector_1, registry_1, pxseedLoader_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.registry = exports.CodeContextShell = exports.RemoteEventTarget = exports.jsExecLib = exports.EventQueuePuller = exports.LocalRunCodeContext = exports.CodeContextEvent = void 0;
-    exports.addAwaitHook = addAwaitHook;
+    exports.registry = exports.CodeContextShell = exports.RemoteEventTarget = exports.jsExecLib = exports.EventQueuePuller = exports.LocalRunCodeContext = exports.CodeContextEvent = exports.TaskLocalEnv = void 0;
+    exports.enableDebugger = enableDebugger;
     acorn.defaultOptions.allowAwaitOutsideFunction = true;
     acorn.defaultOptions.ecmaVersion = 'latest';
     acorn.defaultOptions.allowReturnOutsideFunction = true;
     acorn.defaultOptions.sourceType = 'module';
     const __name__ = base_1.requirejs.getLocalRequireModule(require);
-    function addAwaitHook(source) {
-        let replacePlan = [];
-        (0, acorn_walk_1.ancestor)(acorn.parse(source, { ecmaVersion: 'latest' }), {
-            AwaitExpression: (node) => {
-                if (!source.substring(node.argument.start, node.argument.end).startsWith('Promise.__awaitHook(')) {
-                    replacePlan.push({ start: node.argument.start, end: node.argument.start, newString: 'Promise.__awaitHook(' });
-                    replacePlan.push({ start: node.argument.end, end: node.argument.end, newString: ')' });
-                }
-            }
-        });
-        let modified = [];
-        let start = 0;
-        replacePlan.sort((a, b) => a.start - b.start);
-        replacePlan.forEach(plan => {
-            modified.push(source.substring(start, plan.start));
-            modified.push(plan.newString);
-            start = plan.end;
-        });
-        modified.push(source.substring(start));
-        return modified.join('');
-    }
+    exports.TaskLocalEnv = new jsutils2_1.TaskLocalRef({ __noenv: true });
+    (0, pxseedLoader_1.setupAsyncHook)();
     //RunCodeContext.jsExec run code like this
     async function __jsExecSample(lib, codeContext) {
         //Your code
@@ -67,6 +48,15 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
         }
     }
     let CodeContextProp = Symbol('CodeContextProp');
+    async function enableDebugger() {
+        try {
+            if (globalThis?.process?.versions?.node != undefined) {
+                (await new Promise((resolve_1, reject_1) => { require(['inspector'], resolve_1, reject_1); })).open(9229);
+            }
+        }
+        catch (err) { }
+        ;
+    }
     function ensureFunctionProbe(o, p) {
         let func = o[p];
         let p2;
@@ -104,25 +94,30 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                 },
                 //some utils provide by codeContext
                 __priv_jsExecLib: exports.jsExecLib,
-                //custom source processor for 'runCode' _ENV.__priv_processSource, run before built in processor.
-                __priv_processSource: null,
+                //custom source processor for 'runCode' _ENV.__priv_processSource, run before builtin processor.
+                __priv_processSource: [],
+                servePipe: this.servePipe.bind(this),
                 event: this.event,
-                servePipe: this.servePipe.bind(this)
+                //Will be close when LocalRunCodeContext is closing.
+                autoClosable: {},
+                enableDebugger
             };
             this.onConsoleLogListener = (e) => {
                 let e2 = e;
                 let name = e2.originalFunction.name;
+                let outputTexts = [];
+                for (let t1 of e2.argv) {
+                    if (typeof t1 == 'object') {
+                        outputTexts.push(JSON.stringify((0, Inspector_1.toSerializableObject)(t1, {})));
+                    }
+                    else {
+                        outputTexts.push(t1);
+                    }
+                }
                 let evt = new CodeContextEvent('console.data', {
                     data: {
                         level: name,
-                        message: e2.argv.map(v => {
-                            if (typeof v == 'object') {
-                                return JSON.stringify(v);
-                            }
-                            else {
-                                return String(v);
-                            }
-                        }).join()
+                        message: outputTexts.join(' ')
                     }
                 });
                 this.event.dispatchEvent(evt);
@@ -179,6 +174,12 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
             ensureFunctionProbe(console, 'info').removeEventListener(FuncCallEventType, this.onConsoleLogListener);
             ensureFunctionProbe(console, 'warn').removeEventListener(FuncCallEventType, this.onConsoleLogListener);
             ensureFunctionProbe(console, 'error').removeEventListener(FuncCallEventType, this.onConsoleLogListener);
+            this.event.dispatchEvent(new CodeContextEvent('close'));
+            for (let [k1, v1] of Object.entries(this.localScope.autoClosable)) {
+                if (v1.close != undefined) {
+                    v1.close();
+                }
+            }
         }
         async jsExec(code) {
             let r = new Function('lib', 'codeContext', `return (async ()=>{${code}})();`)(exports.jsExecLib, this);
@@ -191,16 +192,17 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
             return '';
         }
         processSource(source) {
+            let replacePlan = new pxseedLoader_1.JsSourceReplacePlan(source);
             let result = acorn.parse(source, { allowAwaitOutsideFunction: true, ecmaVersion: 'latest', allowReturnOutsideFunction: true });
+            replacePlan.parsedAst = result;
             let foundDecl = [];
-            let replacePlan = [];
             (0, acorn_walk_1.ancestor)(result, {
                 VariableDeclaration(node, state, ancetors) {
                     if (ancetors.find(v => v.type === 'FunctionExpression'))
                         return;
                     if (ancetors.find(v => v.type === 'BlockStatement') !== undefined && node.kind === 'let')
                         return;
-                    replacePlan.push({ start: node.start, end: node.start + 3, newString: ' ' });
+                    replacePlan.plan.push({ start: node.start, end: node.start + 3, newString: ' ' });
                     node.declarations.forEach(v => {
                         if (v.id.type === 'Identifier') {
                             foundDecl.push(v.id.name);
@@ -214,22 +216,33 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                     });
                 },
                 FunctionDeclaration(node, state, ancetors) {
-                    if (node.expression || ancetors.find(v => v.type === 'FunctionExpression')) {
+                    if (node.expression ||
+                        ancetors.find(v => v.type === 'FunctionExpression') != undefined) {
                         return;
                     }
                     if (node.id == null)
                         return;
                     foundDecl.push(node.id.name);
                     let funcType1 = source.substring(node.start, node.id.start);
-                    replacePlan.push({ start: node.start, end: node.id.end, newString: node.id.name + '=' + funcType1 });
+                    replacePlan.plan.push({ start: node.start, end: node.id.end, newString: node.id.name + '=' + funcType1 });
+                },
+                ClassDeclaration(node, state, ancetors) {
+                    if (ancetors.find(v => v.type === 'FunctionExpression') != undefined) {
+                        return;
+                    }
+                    if (node.id == null)
+                        return;
+                    foundDecl.push(node.id.name);
+                    let clsType1 = source.substring(node.start, node.id.start);
+                    replacePlan.plan.push({ start: node.start, end: node.id.end, newString: node.id.name + '=' + clsType1 });
                 },
                 ImportExpression(node, state, ancetors) {
-                    replacePlan.push({ start: node.start, end: node.start + 6, newString: '_ENV.__priv_import' });
+                    replacePlan.plan.push({ start: node.start, end: node.start + 6, newString: '_ENV.__priv_import' });
                 },
                 ImportDeclaration(node, state, ancestor) {
                     if (node.specifiers.length === 1 && node.specifiers[0].type === 'ImportNamespaceSpecifier') {
                         let spec = node.specifiers[0];
-                        replacePlan.push({ start: node.start, end: node.end, newString: `${spec.local.name}=await _ENV.__priv_import('${node.source.value}');` });
+                        replacePlan.plan.push({ start: node.start, end: node.end, newString: `${spec.local.name}=await _ENV.__priv_import('${node.source.value}');` });
                         foundDecl.push(spec.local.name);
                     }
                     else if (node.specifiers.length > 0 && node.specifiers[0].type === 'ImportSpecifier') {
@@ -239,45 +252,48 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                             importStat.push(`${spec.local.name}=(await _ENV.__priv_import('${node.source.value}')).${spec.imported.name};`);
                             foundDecl.push(spec.local.name);
                         }
-                        replacePlan.push({ start: node.start, end: node.end, newString: importStat.join('') });
+                        replacePlan.plan.push({ start: node.start, end: node.end, newString: importStat.join('') });
                     }
                     else if (node.specifiers.length === 1 && node.specifiers[0].type === 'ImportDefaultSpecifier') {
                         let spec = node.specifiers[0];
-                        replacePlan.push({ start: node.start, end: node.end, newString: `${spec.local.name}=(await _ENV.__priv_import('${node.source.value}')).default;` });
+                        replacePlan.plan.push({ start: node.start, end: node.end, newString: `${spec.local.name}=(await _ENV.__priv_import('${node.source.value}')).default;` });
                         foundDecl.push(spec.local.name);
                     }
                     else {
-                        replacePlan.push({ start: node.start, end: node.end, newString: `` });
+                        replacePlan.plan.push({ start: node.start, end: node.end, newString: `` });
                     }
                 }
             });
-            let lastStat = result.body[result.body.length - 1];
-            if (lastStat.type.indexOf('Expression') >= 0) {
-                replacePlan.push({
-                    start: lastStat.start,
-                    end: lastStat.start,
-                    newString: ' return '
-                });
+            let lastStat = result.body.at(-1);
+            (0, pxseedLoader_1.addAsyncHook)(replacePlan);
+            if (lastStat != undefined) {
+                if (lastStat.type.includes('Expression')) {
+                    replacePlan.plan.push({
+                        start: lastStat.start,
+                        end: lastStat.start,
+                        newString: ' return '
+                    });
+                }
             }
-            let modified = [];
-            let start = 0;
-            replacePlan.sort((a, b) => a.start - b.start);
-            replacePlan.forEach(plan => {
-                modified.push(source.substring(start, plan.start));
-                modified.push(plan.newString);
-                start = plan.end;
-            });
-            modified.push(source.substring(start));
+            let modifiedSource = replacePlan.apply();
             return {
-                modifiedSource: modified.join(''),
-                declaringVariableNames: foundDecl
+                declaringVariableNames: foundDecl,
+                modifiedSource
             };
         }
         async runCode(source, resultVariable) {
             resultVariable = resultVariable ?? '_';
-            if (this.localScope.__priv_processSource != null) {
-                source = this.localScope.__priv_processSource(source);
-            }
+            let that = this;
+            let processContext = { _ENV: this.localScope, source };
+            await jsutils1.Task.fork(function* () {
+                for (let processor of that.localScope.__priv_processSource) {
+                    let isAsync = processor(processContext);
+                    if (isAsync != undefined && 'then' in isAsync) {
+                        yield isAsync;
+                    }
+                }
+            }).run();
+            source = processContext.source;
             let proc1 = this.processSource(source);
             try {
                 let result = await this.runCodeInScope(proc1.modifiedSource);
@@ -294,8 +310,13 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
             let withBlockBegin = 'with(_ENV){';
             let code = new Function('_ENV', withBlockBegin +
                 'return (async ()=>{' + source + '\n})();}');
-            let r = await code(this.localScopeProxy);
-            return r;
+            let that = this;
+            //TODO: Custom await scheduler and stack tracer, to avoid Task context missing after "await"
+            let r = jsutils1.Task.fork(function* () {
+                exports.TaskLocalEnv.set(that.localScope);
+                return (yield code(that.localScopeProxy));
+            }).run();
+            return await r;
         }
         async codeComplete(code, caret) {
             let completeContext = {
@@ -404,13 +425,13 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
         }
         async enableRemoteEvent(type) {
             await this.remotePrepared.get();
-            await this.codeContext.jsExec(`codeContext.localScope['${this.remoteQueueName}'].addPullEventType('${type}')`);
+            await this.codeContext.jsExec(`codeContext.localScope.autoClosable['${this.remoteQueueName}'].addPullEventType('${type}')`);
         }
         async pullInterval() {
-            await this.codeContext.jsExec(`codeContext.localScope['${this.remoteQueueName}']=lib.CreateEventQueue(codeContext.localScope${this.remote.accessPath.map(t1 => `['${t1}']`).join('')})`);
+            await this.codeContext.jsExec(`codeContext.localScope.autoClosable['${this.remoteQueueName}']=lib.CreateEventQueue(codeContext.localScope${this.remote.accessPath.map(t1 => `['${t1}']`).join('')})`);
             this.remotePrepared.setResult('');
             while (!closed) {
-                let msg = await this.codeContext.jsExec(`return await codeContext.localScope['${this.remoteQueueName}'].next()`);
+                let msg = await this.codeContext.jsExec(`return await codeContext.localScope.autoClosable['${this.remoteQueueName}'].next()`);
                 let ev = (0, Inspector_1.fromSerializableObject)(JSON.parse(msg), {});
                 this.dispatchEvent(new CodeContextEvent(ev.type, { data: ev.data }));
             }
@@ -421,7 +442,8 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
         }
         close() {
             this.closed = true;
-            this.codeContext.jsExec(`codeContext.localScope['${this.remoteQueueName}'].close()`);
+            this.codeContext.jsExec(`codeContext.localScope.autoClosable['${this.remoteQueueName}'].close();
+            delete codeContext.localScope.autoClosable['${this.remoteQueueName}']`);
         }
     }
     exports.RemoteEventTarget = RemoteEventTarget;
@@ -463,14 +485,14 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
             }
         }
         async createRemotePipe() {
-            let remotePipe = new RemotePipe([`__pipe_${jsutils1.GenerateRandomString()}`]);
+            let remotePipe = new RemotePipe(['autoClosable', `__pipe_${jsutils1.GenerateRandomString()}`]);
             remotePipe.context = this.codeContext;
-            let result = await this.codeContext.runCode(`_ENV.${remotePipe.accessPath[0]}=await _ENV.servePipe('${remotePipe.accessPath[0]}')`);
+            let result = await this.codeContext.runCode(`_ENV.${remotePipe.accessPath.join('.')}=await _ENV.servePipe('${remotePipe.accessPath[1]}')`);
             if (result.err != null) {
                 throw new Error(result.err.message + '\n' + (result.err.stack ?? ''));
             }
             ;
-            remotePipe.local = (await this.codeContext.connectPipe(remotePipe.accessPath[0]));
+            remotePipe.local = (await this.codeContext.connectPipe(remotePipe.accessPath[1]));
             return remotePipe;
         }
         async importModule(mod, asName) {
@@ -480,6 +502,7 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
             }
             let shell = this;
             let r = {
+                asName,
                 cached: {},
                 getFunc(name) {
                     if (!(name in this.cached)) {
@@ -487,15 +510,25 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                     }
                     return this.cached[name];
                 },
+                getRemoteReference(name) {
+                    return new Inspector_1.RemoteReference([asName, name]);
+                },
+                async getRemmoteEventTarget(name) {
+                    if (!(name in this.cached)) {
+                        let et = new RemoteEventTarget();
+                        et.codeContext = shell.codeContext;
+                        await et.useRemoteReference(this.getRemoteReference(name));
+                        et.start();
+                        this.cached[name] = et;
+                    }
+                    return this.cached[name];
+                },
                 toModuleProxy() {
                     let that = this;
                     return new Proxy(this.cached, {
                         get(target, p) {
-                            if (!(p in target)) {
+                            if (typeof p === 'string') {
                                 return that.getFunc(p);
-                            }
-                            else {
-                                return that.cached[p];
                             }
                         }
                     });

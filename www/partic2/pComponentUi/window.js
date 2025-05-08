@@ -1,19 +1,29 @@
-define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "./domui", "./transform", "partic2/pxseedMedia1/index1"], function (require, exports, React, domui_1, base_1, domui_2, transform_1, index1_1) {
+define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./transform", "partic2/pxseedMedia1/index1"], function (require, exports, React, domui_1, base_1, webutils_1, transform_1, index1_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.WindowComponent = void 0;
+    exports.WindowComponent = exports.css = void 0;
     exports.appendFloatWindow = appendFloatWindow;
     exports.removeFloatWindow = removeFloatWindow;
     exports.alert = alert;
     exports.confirm = confirm;
     exports.prompt = prompt;
+    exports.css = {
+        windowContainer: (0, base_1.GenerateRandomString)(),
+        defaultWindowClass: (0, base_1.GenerateRandomString)()
+    };
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.windowContainer, ['max-height:100vh', 'max-width:100vw']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultWindowClass, ['background-color:white', 'flex-grow:1']);
     class WindowComponent extends React.Component {
+        static getDerivedStateFromError(error) {
+            return { errorOccured: error };
+        }
         constructor(props, ctx) {
             super(props, ctx);
-            this.layerTransformer = new transform_1.TransformHelper();
             this.rref = {
-                container: new domui_1.ReactRefEx()
+                container: new domui_1.ReactRefEx(),
+                contentDiv: new domui_1.ReactRefEx()
             };
+            this.fixContentSize = false;
             this.__wndMove = new transform_1.PointTrace({
                 onMove: (curr, start) => {
                     this.setState({ layout: { ...this.state.layout, left: curr.x - start.x, top: curr.y - start.y } });
@@ -44,7 +54,7 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "./d
                     evt.preventDefault();
                 }
             };
-            this.setState({ activeTime: -1, folded: false, layout: { left: 0, top: 0 } });
+            this.setState({ activeTime: -1, folded: false, layout: { left: 0, top: 0 }, errorOccured: null });
         }
         async makeCenter() {
             //wait for layout complete?     
@@ -79,20 +89,19 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "./d
             let left = (wndWidth - width) >> 1;
             let top = (wndHeight - height) >> 1;
             await new Promise((resolve) => {
-                this.setState({ layout: { left: left, top: top, width: width, height: height } }, () => resolve(null));
+                this.setState({ layout: { left: left, top: top } }, () => resolve(null));
             });
-            //check if scroll bar still appear?
         }
         renderIcon(url, onClick) {
             if (url == null) {
                 return null;
             }
             if (url.indexOf(':') >= 0) {
-                return React.createElement("div", { className: domui_2.css.simpleCard, onClick: onClick },
+                return React.createElement("div", { className: domui_1.css.simpleCard, onClick: onClick },
                     React.createElement("img", { src: url, width: '16', height: '16' }));
             }
             else {
-                return React.createElement("div", { className: domui_2.css.simpleCard, onClick: onClick, style: { userSelect: 'none' } }, url);
+                return React.createElement("div", { className: domui_1.css.simpleCard, onClick: onClick, style: { userSelect: 'none' } }, url);
             }
         }
         active() {
@@ -115,23 +124,34 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "./d
             this.setState({ folded: v });
         }
         renderTitle() {
-            return React.createElement("div", { className: domui_2.css.flexRow, style: { borderBottom: 'solid black 1px', alignItems: 'center', backgroundColor: '#f88' } },
+            return React.createElement("div", { className: domui_1.css.flexRow, style: { borderBottom: 'solid black 1px', alignItems: 'center', backgroundColor: '#f88' } },
                 React.createElement("div", { style: { flexGrow: '1', cursor: 'move', userSelect: 'none' }, onMouseDown: this.__onTitleMouseDownHandler, onTouchStart: this.__onTitleTouchDownHandler }, (this.props.title ?? '').replace(/ /g, String.fromCharCode(160))),
                 "\u00A0",
+                this.renderIcon(this.props.maximize, () => this.onMaximizeClick()),
                 this.state.folded ?
                     this.renderIcon(this.props.expandIcon, () => this.onExpandClick()) :
                     this.renderIcon(this.props.foldIcon, () => this.onFoldClick()),
                 this.renderIcon(this.props.closeIcon, () => this.onCloseClick()));
         }
-        onFoldClick() {
+        async onFoldClick() {
             this.setState({ folded: true });
         }
-        onExpandClick() {
+        async onExpandClick() {
             this.setState({ folded: false });
         }
-        onCloseClick() {
+        async onCloseClick() {
             this.hide();
             this.props.onClose?.();
+        }
+        async onMaximizeClick() {
+            if ((this.state.layout.width ?? 0) >= window.innerWidth - 1 && (this.state.layout.height ?? 0) >= window.innerHeight - 1) {
+                this.setState({ layout: { left: 0, top: 0, width: undefined, height: undefined } });
+                await new Promise(resolve => requestAnimationFrame(resolve));
+                this.makeCenter();
+            }
+            else {
+                this.setState({ layout: { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight } });
+            }
         }
         doRelayout() {
             if (this.props.position === 'keep center') {
@@ -141,9 +161,10 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "./d
         renderWindowMain() {
             let windowDivStyle = {
                 border: 'solid black 1px',
+                boxSizing: 'border-box',
                 position: 'absolute',
                 left: this.state.layout.left + 'px',
-                top: this.state.layout.top + 'px',
+                top: this.state.layout.top + 'px'
             };
             if (this.props.position === 'static') {
                 windowDivStyle.position = 'static';
@@ -158,7 +179,7 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "./d
             if (this.state.folded) {
                 contentDivStyle.display = 'none';
             }
-            return React.createElement("div", { className: domui_2.css.flexColumn, style: windowDivStyle, ref: this.rref.container, onMouseDown: () => {
+            return React.createElement("div", { className: [domui_1.css.flexColumn, exports.css.windowContainer].join(' '), style: windowDivStyle, ref: this.rref.container, onMouseDown: () => {
                     if (this.state.activeTime >= 0)
                         this.setState({ activeTime: (0, base_1.GetCurrentTime)().getTime() });
                 }, onTouchStart: () => {
@@ -167,7 +188,9 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "./d
                 } },
                 this.renderTitle(),
                 [
-                    React.createElement("div", { style: { overflow: 'auto', ...contentDivStyle } }, this.props.children),
+                    React.createElement("div", { style: { overflow: 'auto', ...contentDivStyle }, className: this.props.windowClassName ?? exports.css.defaultWindowClass, ref: this.rref.contentDiv }, this.state.errorOccured == null ? this.props.children : React.createElement("pre", { style: { backgroundColor: 'white', color: 'black' } },
+                        this.state.errorOccured.message,
+                        this.state.errorOccured.stack)),
                     this.state.folded ? null : React.createElement("img", { src: (0, index1_1.getIconUrl)('arrow-down-right.svg'), style: {
                             position: 'absolute', cursor: 'nwse-resize',
                             right: '0px', bottom: '0px',
@@ -189,6 +212,7 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "./d
         closeIcon: (0, index1_1.getIconUrl)('x.svg'),
         foldIcon: (0, index1_1.getIconUrl)('minus.svg'),
         expandIcon: (0, index1_1.getIconUrl)('plus.svg'),
+        maximize: (0, index1_1.getIconUrl)('maximize-2.svg'),
         title: 'untitled',
         position: 'initial center'
     };
@@ -196,6 +220,9 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "./d
     function ensureFloatWindowContainer() {
         if (floatWindowContainer == null) {
             floatWindowContainer = document.createElement('div');
+            floatWindowContainer.style.position = 'absolute';
+            floatWindowContainer.style.left = '0px';
+            floatWindowContainer.style.top = '0px';
             document.body.appendChild(floatWindowContainer);
         }
         return floatWindowContainer;

@@ -3,7 +3,7 @@
 define(["require", "exports", "./base", "./webutils"], function (require, exports, base_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.ServiceWorkerId = exports.serviceWorkerServeRoot = void 0;
+    exports.SimpleGETCache = exports.usingSimpleGETCacheFetchHandler = exports.ServiceWorkerId = exports.serviceWorkerServeRoot = void 0;
     exports.getUrlForKvStore = getUrlForKvStore;
     exports.RequestDownloadSW = RequestDownloadSW;
     exports.ensureServiceWorkerInstalled = ensureServiceWorkerInstalled;
@@ -11,6 +11,8 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
     exports.unregisterServiceWorkerStartupModule = unregisterServiceWorkerStartupModule;
     exports.reloadServiceWorkerAndCache = reloadServiceWorkerAndCache;
     exports.getServiceWorkerStartupModule = getServiceWorkerStartupModule;
+    exports.asyncInit = asyncInit;
+    const __name__ = base_1.requirejs.getLocalRequireModule(require);
     /*workerentry.js MUST put into the same origin to access storage api on web ,
     Due to same-origin-policy. That mean, dataurl is unavailable.
     Worker can be override, So do NOT abort this module init(throw error).*/
@@ -29,15 +31,20 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
     class ServiceWorkerThread {
         constructor(workerId) {
             this.workerId = '';
-            this.waitReady = new base_1.future();
             this.processingScript = {};
             this.workerId = workerId ?? (0, base_1.GenerateRandomString)();
         }
         ;
         async start() {
-            let servreg = await navigator.serviceWorker.register(workerEntryUrl);
-            await (0, base_1.WaitUntil)(() => servreg.active != null, 100);
-            let servworker = servreg.active;
+            let serviceWorker;
+            if (navigator.serviceWorker.controller != undefined) {
+                serviceWorker = navigator.serviceWorker.controller;
+            }
+            else {
+                let servreg = await navigator.serviceWorker.register(workerEntryUrl);
+                await (0, base_1.WaitUntil)(() => servreg.active != null, 100, 10000);
+                serviceWorker = servreg.active;
+            }
             this.port = {
                 addEventListener(type, cb) {
                     navigator.serviceWorker.addEventListener(type, cb);
@@ -46,7 +53,7 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
                     navigator.serviceWorker.removeEventListener(type, cb);
                 },
                 postMessage(data, opt) {
-                    servworker.postMessage(data, opt);
+                    serviceWorker.postMessage(data, opt);
                 }
             };
             this.port.addEventListener('message', (msg) => {
@@ -62,26 +69,20 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
                         case 'onScriptReject':
                             this.onScriptReject(msg.data.reason, scriptId);
                             break;
-                        case 'ready':
-                            this.waitReady.setResult(0);
-                            break;
                     }
                 }
             });
             let workerReady = false;
-            for (let t1 = 0; t1 < 1000 && !workerReady; t1++) {
+            for (let t1 = 0; t1 < 50 && !workerReady; t1++) {
                 await Promise.race([
                     this.runScript(`resolve('ok')`, true).then(() => workerReady = true),
                     (0, base_1.sleep)(200, 'pending')
                 ]);
             }
+            if (!workerReady) {
+                throw new Error('Timeout waiting for service worker ready.');
+            }
             await this.runScript(`this.__workerId='${this.workerId}'`);
-            await this.runScript(`try{
-            require(['${webutils_1.__name__}'],function(thismod){
-                resolve(0);
-            },function(err){
-                reject(err);
-            })}catch(e){reject(e)}`, true);
         }
         onHostRunScript(script) {
             (new Function('workerThread', script))(this);
@@ -177,5 +178,144 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
         swconfig = await (0, webutils_1.GetPersistentConfig)(serviceworkerName);
         return new Set(swconfig.startupModules ?? []);
     }
+    let config = {};
+    const cacheName = (0, webutils_1.getWWWRoot)() + '/' + __name__;
+    class SimpleGETCacheFetchHandler {
+        constructor() {
+            this.policyMap = new Map();
+            this.wwwrootPathLength = 0;
+            this.handler = (ev) => {
+                if (ev.request.method != 'GET') {
+                    return null;
+                }
+                let relpath = new URL(ev.request.url).pathname.substring(this.wwwrootPathLength + 1).split('/');
+                let policy = 'not handle';
+                for (let t1 = 0; t1 <= relpath.length; t1++) {
+                    let curpolicy = this.policyMap.get(relpath.slice(0, t1).join('/'));
+                    if (curpolicy != undefined) {
+                        policy = curpolicy;
+                    }
+                }
+                switch (policy) {
+                    case 'not handle':
+                        return null;
+                    case 'fetch only':
+                        return this.cacheFirstHandler(ev.request);
+                    case 'fetch first':
+                        return this.fetchFirstHandler(ev.request);
+                    case 'cache first':
+                        return this.cacheFirstHandler(ev.request);
+                    default:
+                        return null;
+                }
+            };
+        }
+        async initWithConfig() {
+            config = await (0, webutils_1.GetPersistentConfig)(__name__);
+            this.policyMap.clear();
+            if (exports.SimpleGETCache != undefined) {
+                for (let t1 of config.simpleGETCache) {
+                    this.policyMap.set(t1.path, t1.policy);
+                }
+            }
+            this.wwwrootPathLength = new URL((0, webutils_1.getWWWRoot)()).pathname.length;
+            this.cache = await caches.open(cacheName);
+        }
+        async fetchOnlyHandler(request) {
+            return await fetch(request);
+        }
+        async fetchFirstHandler(request) {
+            try {
+                let resp = await fetch(request.url);
+                let respClone = resp.clone();
+                await this.cache.put(request.url, resp);
+                return respClone;
+            }
+            catch (err) {
+                (0, base_1.throwIfAbortError)(err);
+                let matchResult = await this.cache.match(request.url);
+                if (matchResult == undefined) {
+                    return new Response(null, { status: 404 });
+                }
+                else {
+                    return matchResult;
+                }
+            }
+        }
+        async cacheFirstHandler(request) {
+            let matchResult = await this.cache.match(request.url);
+            if (matchResult == undefined) {
+                let resp = await fetch(request.url);
+                let respClone = resp.clone();
+                await this.cache.put(request.url, resp);
+                return respClone;
+            }
+            else {
+                return matchResult;
+            }
+        }
+    }
+    //internal use
+    exports.usingSimpleGETCacheFetchHandler = null;
+    async function asyncInit() {
+        if ('__pxseedInit' in globalThis && __pxseedInit.env == 'service worker') {
+            config = await (0, webutils_1.GetPersistentConfig)(__name__);
+            let { onfetchHandlers } = await new Promise((resolve_1, reject_1) => { require(['./serviceworker'], resolve_1, reject_1); });
+            exports.usingSimpleGETCacheFetchHandler = new SimpleGETCacheFetchHandler();
+            await exports.usingSimpleGETCacheFetchHandler.initWithConfig();
+            onfetchHandlers.push(exports.usingSimpleGETCacheFetchHandler.handler);
+        }
+    }
+    //Simple "GET Request Cache Manager" for Service Worker 
+    exports.SimpleGETCache = {
+        enable: async function () {
+            await registerServiceWorkerStartupModule(__name__);
+        },
+        disable: async function () {
+            await unregisterServiceWorkerStartupModule(__name__);
+        },
+        ensurePersitentConfigLoaded: async function () {
+            config = await (0, webutils_1.GetPersistentConfig)(__name__);
+        },
+        //The service worker config must reload manually after modified(ie:setCachePolicy)
+        async reloadConfig() {
+            if ('__pxseedInit' in globalThis && __pxseedInit.env == 'service worker') {
+                if (exports.usingSimpleGETCacheFetchHandler != null) {
+                    await this.ensurePersitentConfigLoaded();
+                    await exports.usingSimpleGETCacheFetchHandler.initWithConfig();
+                }
+            }
+            else {
+                let sw = await ensureServiceWorkerInstalled();
+                sw.runScript(`require(['${__name__}'],function(thismod){
+                thismod.SimpleGETCache.reloadConfig().then(resolve)
+            })`);
+            }
+        },
+        //path is relative the wwwroot
+        setCachePolicy: async function (path, policy) {
+            this.ensurePersitentConfigLoaded();
+            if (config.simpleGETCache == undefined) {
+                config.simpleGETCache = [];
+            }
+            path = path.split('/').join('/');
+            let found = config.simpleGETCache.find(t1 => t1.path == path);
+            if (found == undefined) {
+                found = { path, policy };
+                config.simpleGETCache.push(found);
+            }
+            else {
+                found.policy = policy;
+            }
+            (0, webutils_1.SavePersistentConfig)(__name__);
+        },
+        getAllCachePolicy: async function () {
+            await this.ensurePersitentConfigLoaded();
+            return config.simpleGETCache ?? [];
+        },
+        clearCache: async function () {
+            await caches.delete(cacheName);
+        }
+    };
 });
 //# sourceMappingURL=webutilssw.js.map

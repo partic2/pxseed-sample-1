@@ -11,7 +11,7 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
     (function () {
         const WorkerThreadMessageMark = '__messageMark_WorkerThread';
         self.globalThis = self;
-        addEventListener('message', function (msg) {
+        __pxseedInit.onmessage = function (msg) {
             if (typeof msg.data === 'object' && msg.data[WorkerThreadMessageMark]) {
                 let type = msg.data.type;
                 let scriptId = msg.data.scriptId;
@@ -25,7 +25,7 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
                         break;
                 }
             }
-        });
+        };
         if ('postMessage' in globalThis) {
             globalThis.postMessage({ [WorkerThreadMessageMark]: true, type: 'ready' });
         }

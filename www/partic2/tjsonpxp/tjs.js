@@ -107,8 +107,25 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
         async function stat(path) {
             let [type, size, mtime] = await jseio.stat(path);
             let r = {
+                dev: 0,
+                mode: 0o777,
+                nlink: 0,
+                uid: 0,
+                gid: 0,
+                rdev: 0,
+                ino: 0,
+                blksize: 0,
+                blocks: 0,
                 size: Number(size),
+                atim: new Date(Number(mtime)),
                 mtim: new Date(Number(mtime)),
+                ctim: new Date(Number(mtime)),
+                birthtim: new Date(Number(mtime)),
+                isBlockDevice: false,
+                isCharacterDevice: false,
+                isFIFO: false,
+                isSocket: false,
+                isSymbolicLink: false,
                 isDirectory: type === 'dir',
                 isFile: type === 'file'
             };
@@ -304,7 +321,13 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
             return dataDir;
         }
         let tjsi = {
-            realpath, unlink, rename, mkstemp, stat, open, rmdir, copyfile, mkdir, readdir, readFile, rm, spawn, homedir, platform
+            realpath, unlink, rename, mkstemp, stat, open, rmdir, copyfile, mkdir, readdir, readFile, rm, spawn, homedir, platform,
+            realPath: realpath,
+            remove: rm,
+            homeDir: dataDir,
+            makeDir: mkdir,
+            readDir: readdir,
+            system: { platform: platform }
         };
         invoker[tjsImpl] = tjsi;
         return tjsi;

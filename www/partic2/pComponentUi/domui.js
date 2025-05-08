@@ -103,7 +103,33 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             await this.update();
         }
     }
-    exports.DomRootComponent = new CDomRootComponent();
+    class DomRootComponentProxy extends base_1.Ref2 {
+        async appendToNode(parent) {
+            return this.get().appendToNode(parent);
+        }
+        async update() {
+            return this.get().update();
+        }
+        addHiddenElement(e) {
+            return this.get().addHiddenElement(e);
+        }
+        removeHiddenElement(e) {
+            return this.get().removeHiddenElement(e);
+        }
+        async addHiddenComponent(comp) {
+            return this.get().addHiddenComponent(comp);
+        }
+        getChildren() {
+            return this.get().getChildren();
+        }
+        async addChild(comp) {
+            return this.get().addChild(comp);
+        }
+        async removeChild(comp) {
+            return this.get().removeChild(comp);
+        }
+    }
+    exports.DomRootComponent = new DomRootComponentProxy(new CDomRootComponent());
     class ReactEventTarget extends React.Component {
         constructor() {
             super(...arguments);
@@ -283,6 +309,9 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         else if (container instanceof DomComponentGroup) {
             React.render(vnode, container.getDomElement());
         }
+        else if (container instanceof base_1.Ref2) {
+            ReactRender(vnode, container.get());
+        }
         else if (container == 'create') {
             let div1 = document.createElement('div');
             React.render(vnode, div1);
@@ -297,15 +326,15 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             } }
         };
         if (!document.body.contains(comp.getDomElement())) {
-            exports.DomRootComponent.addHiddenComponent(comp);
+            exports.DomRootComponent.get().addHiddenComponent(comp);
         }
         await comp.getDomElement().requestFullscreen();
-        exports.DomRootComponent.hiddenDiv.style.display = 'block';
+        exports.DomRootComponent.get().hiddenDiv.style.display = 'block';
         var fsCb = function (ev) {
             if (document.fullscreenElement !== comp.getDomElement()) {
                 comp.getDomElement().removeEventListener('fullscreenchange', fsCb);
                 ctl.onExit.setResult(true);
-                exports.DomRootComponent.hiddenDiv.style.display = 'none';
+                exports.DomRootComponent.get().hiddenDiv.style.display = 'none';
             }
         };
         comp.getDomElement().addEventListener('fullscreenchange', fsCb);

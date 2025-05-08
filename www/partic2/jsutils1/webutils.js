@@ -1,7 +1,7 @@
 define(["require", "exports", "./base"], function (require, exports, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.lifecycle = exports.path = exports.defaultHttpClient = exports.HttpClient = exports.DynamicPageCSSManager = exports.CDynamicPageCSSManager = exports.CKeyValueDb = exports.config = exports.__name__ = void 0;
+    exports.globalInputState = exports.GlobalInputStateTracer = exports.lifecycle = exports.path = exports.defaultHttpClient = exports.HttpClient = exports.DynamicPageCSSManager = exports.CDynamicPageCSSManager = exports.CKeyValueDb = exports.config = exports.__name__ = void 0;
     exports.DomStringListToArray = DomStringListToArray;
     exports.ConvertFormDataToObject = ConvertFormDataToObject;
     exports.GetUrlQueryVariable = GetUrlQueryVariable;
@@ -14,6 +14,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     exports.GetStyleRuleOfSelector = GetStyleRuleOfSelector;
     exports.kvStore = kvStore;
     exports.setKvStoreBackend = setKvStoreBackend;
+    exports.useKvStorePrefix = useKvStorePrefix;
     exports.GetPersistentConfig = GetPersistentConfig;
     exports.SavePersistentConfig = SavePersistentConfig;
     exports.CreateWorkerThread = CreateWorkerThread;
@@ -28,7 +29,10 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     exports.usePageIcon = usePageIcon;
     exports.__name__ = 'partic2/jsutils1/webutils';
     exports.config = {
-        defaultStorePrefix: exports.__name__
+        defaultStorePrefix: exports.__name__,
+        //No garantee to contain all kvStorePrefix binding, But at least binding for current wwwroot.
+        //See useKvStorePrefix for detail.
+        kvStorePrefix: null
     };
     function DomStringListToArray(strLs) {
         var arr = new Array();
@@ -63,7 +67,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
                 if (name == null) {
                     name = this.db.name;
                 }
-                await this.db.close();
+                this.db.close();
             }
             return new Promise(function (resolve, reject) {
                 var req = globalThis.indexedDB.deleteDatabase(name);
@@ -344,10 +348,24 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     };
     async function kvStore(dbname) {
         await kvdbinitmutex.lock();
-        if (dbname == undefined) {
-            dbname = exports.config.defaultStorePrefix + '/kv-1';
-        }
         try {
+            if (dbname == undefined) {
+                dbname = exports.config.defaultStorePrefix + '/kv-1';
+            }
+            if (exports.config.kvStorePrefix == null) {
+                let impl = await kvStoreBackend(exports.config.defaultStorePrefix + '/kv-1');
+                let cfg = await impl.getItem(exports.__name__ + '/config');
+                if (cfg == undefined || cfg.kvStorePrefix == undefined) {
+                    exports.config.kvStorePrefix = {};
+                }
+                else {
+                    exports.config.kvStorePrefix = cfg.kvStorePrefix;
+                }
+            }
+            let prefix = exports.config.kvStorePrefix[getWWWRoot()];
+            if (prefix != undefined) {
+                dbname = prefix + dbname;
+            }
             if (!(dbname in kvdbmap)) {
                 let impl = await kvStoreBackend(dbname);
                 kvdbmap[dbname] = new CKeyValueDb();
@@ -361,6 +379,29 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     }
     function setKvStoreBackend(backend) {
         kvStoreBackend = backend;
+    }
+    //By default, kvStore pass 'dbname' parameter directly to kvStoreBackend.
+    //But sometime, User may want a isolated kvStore namespace.
+    //This function bind a kvStore 'prefix' to wwwroot persistently.
+    //When this module is loaded with matched wwwroot, the correspond prefix will be added to 'dbname' before passing to kvStoreBackend.
+    //Default value:wwwroot=getWWWRoot();prefix=wwwroot+'/';
+    async function useKvStorePrefix(wwwroot, prefix) {
+        await kvdbinitmutex.lock();
+        try {
+            wwwroot = wwwroot ?? getWWWRoot();
+            prefix = prefix ?? (wwwroot + '/');
+            let impl = await kvStoreBackend(exports.config.defaultStorePrefix + '/kv-1');
+            let cfg = await impl.getItem(exports.__name__ + '/config');
+            if (cfg == undefined)
+                cfg = {};
+            if (cfg.kvStorePrefix == undefined)
+                cfg.kvStorePrefix = {};
+            cfg.kvStorePrefix[wwwroot] = prefix;
+            await impl.setItem(exports.__name__ + '/config', cfg);
+        }
+        finally {
+            await kvdbinitmutex.unlock();
+        }
     }
     var cachedPersistentConfig = {};
     async function GetPersistentConfig(modname) {
@@ -590,5 +631,50 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             exports.lifecycle.dispatchEvent(new Event('exit'));
         });
     }
+    class GlobalInputStateTracer {
+        constructor() {
+            this.pressingKey = new Set();
+            this.mouseState = { x: 0, y: 0, left: false, right: false, center: false };
+            this.touchsPosition = new Array();
+            this.keyDownHandler = (ev) => {
+                this.pressingKey.add(ev.key);
+            };
+            this.keyUpHandler = (ev) => {
+                this.pressingKey.delete(ev.key);
+            };
+            this.mouseHandler = (ev) => {
+                this.mouseState.x = ev.clientX;
+                this.mouseState.y = ev.clientY;
+                this.mouseState.left = (ev.buttons & 1) != 0;
+                this.mouseState.right = (ev.buttons & 2) != 0;
+                this.mouseState.center = (ev.buttons & 3) != 0;
+            };
+            this.touchHandler = (ev) => {
+                ev.touches.item(0);
+                this.touchsPosition.splice(0, this.touchsPosition.length);
+                for (let t1 = 0; t1 < ev.touches.length; t1++) {
+                    let t2 = ev.touches.item(t1);
+                    this.touchsPosition.push({ x: t2.clientX, y: t2.clientY, id: t2.identifier });
+                }
+            };
+            this.enabled = false;
+        }
+        enable() {
+            if (!this.enabled) {
+                this.enabled = true;
+                window.addEventListener('keydown', this.keyDownHandler);
+                window.addEventListener('keyup', this.keyUpHandler);
+                window.addEventListener('mousemove', this.mouseHandler);
+                window.addEventListener('mouseup', this.mouseHandler);
+                window.addEventListener('mousedown', this.mouseHandler);
+                window.addEventListener('touchstart', this.touchHandler);
+                window.addEventListener('touchmove', this.touchHandler);
+                window.addEventListener('touchend', this.touchHandler);
+                window.addEventListener('touchcancel', this.touchHandler);
+            }
+        }
+    }
+    exports.GlobalInputStateTracer = GlobalInputStateTracer;
+    exports.globalInputState = new GlobalInputStateTracer();
 });
 //# sourceMappingURL=webutils.js.map

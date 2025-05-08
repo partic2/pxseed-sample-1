@@ -73,6 +73,11 @@ define(["require", "exports", "./pxprpc_config"], function (require, exports, px
             let __v2 = await __v1.call();
             return __v2;
         }
+        async dumpBundle(b) {
+            let __v1 = await this.ensureFunc('dumpBundle', 'o->b');
+            let __v2 = await __v1.call(b);
+            return __v2;
+        }
         async close() {
             let __v1 = await this.ensureFunc('close', '->');
             let __v2 = await __v1.call();

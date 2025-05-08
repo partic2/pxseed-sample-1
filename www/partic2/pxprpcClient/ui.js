@@ -22,11 +22,19 @@ define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domu
                 name: tname
             });
         }
+        decodeURISafe(s) {
+            try {
+                return decodeURIComponent(s);
+            }
+            catch (e) {
+                return '';
+            }
+        }
         parseRpcChain(url) {
             let url1 = new URL(url);
             (0, base_1.assert)(url1.protocol === 'iooverpxprpc:');
             let chain1 = url1.pathname.split('/');
-            return chain1.map(t1 => decodeURIComponent(t1));
+            return chain1.map(t1 => this.decodeURISafe(t1));
         }
         getAddClientInfo() {
             return {

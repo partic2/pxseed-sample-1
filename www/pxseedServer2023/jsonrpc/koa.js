@@ -49,12 +49,12 @@ define(["require", "exports", "partic2/nodehelper/nodeio", "./prot"], function (
                                 let t2 = new prot_1.JsonRpcRequest().fromRaw(t1);
                                 jreq.push(t2);
                             }
-                            let jresp = await Promise.all(jreq.map(t1 => handleJsonRpcRequestWithHttpInfo(this.handlers, t1, { headers: ctx.header, suorceIp: ctx.ip, koa: ctx })));
+                            let jresp = await Promise.all(jreq.map(t1 => handleJsonRpcRequestWithHttpInfo(this.handlers, t1, { headers: ctx.header, sourceIp: ctx.ip, koa: ctx })));
                             ctx.response.body = JSON.stringify(jresp.map(v => v.toRaw()));
                         }
                         else {
                             let jreq = new prot_1.JsonRpcRequest().fromRaw(parsedBody);
-                            let jresp = await handleJsonRpcRequestWithHttpInfo(this.handlers, jreq, { headers: ctx.header, suorceIp: ctx.ip, koa: ctx });
+                            let jresp = await handleJsonRpcRequestWithHttpInfo(this.handlers, jreq, { headers: ctx.header, sourceIp: ctx.ip, koa: ctx });
                             ctx.response.body = JSON.stringify(jresp.toRaw());
                         }
                         await next();
