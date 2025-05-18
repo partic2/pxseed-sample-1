@@ -2,7 +2,7 @@
 define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils"], function (require, exports, base_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.HttpParser = exports.TjsWriterDataSink = exports.TjsReaderDataSource = void 0;
+    exports.TjsWriterDataSink = exports.TjsReaderDataSource = void 0;
     exports.enableRemoteModuleLoader = enableRemoteModuleLoader;
     exports.installTxikiJSFetchModuleProvider = installTxikiJSFetchModuleProvider;
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
@@ -32,38 +32,6 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
     }
     exports.TjsWriterDataSink = TjsWriterDataSink;
-    //WIP HTTP Parser
-    const headerExp = /^([^: \t]+):[ \t]*((?:.*[^ \t])|)/;
-    const requestExp = /^([A-Z-]+) ([^ ]+) HTTP\/[^ \t]+$/;
-    const responseExp = /^HTTP\/[^ \t]+ (\d{3}) ?(.*)$/;
-    class HttpParser {
-        constructor(reader) {
-            this.reader = reader;
-            this.decoder = new TextDecoder();
-            this.method = '';
-            this.version = '1.0';
-            this.path = '/';
-            this.headers = new Array();
-        }
-        async parseHeader() {
-            let reqHdr = this.decoder.decode(await this.reader.readUntil(HttpParser.lineSpliter));
-            let matchResult = reqHdr.match(requestExp);
-            (0, base_1.assert)(matchResult != null);
-            this.method = matchResult[1];
-            this.path = matchResult[2];
-            this.version = matchResult[3];
-            for (let t1 = 0; t1 < 64 * 1024; t1++) {
-                let line = this.decoder.decode(await this.reader.readUntil(HttpParser.lineSpliter));
-                if (line == '\r\n')
-                    break;
-                let matched = line.match(headerExp);
-                (0, base_1.assert)(matched != null);
-                this.headers.push([matchResult[1], matchResult[2]]);
-            }
-        }
-    }
-    exports.HttpParser = HttpParser;
-    HttpParser.lineSpliter = '\n'.charCodeAt(0);
     let remoteModuleLoaderState = {
         rootUrl: null,
         networkError: null,

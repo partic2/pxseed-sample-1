@@ -40,7 +40,7 @@ define(["require", "exports", "partic2/jsutils1/webutils", "partic2/pComponentUi
             webutils_1.DynamicPageCSSManager.PutCss('body', ['margin:0px']);
             let rpc = (0, webutils_1.GetUrlQueryVariable)('__rpc');
             await registry_1.persistent.load();
-            (0, domui_1.ReactRender)(MainView, domui_1.DomRootComponent);
+            (0, domui_1.ReactRender)(React.createElement(MainView, null), domui_1.DomRootComponent);
         }
     })();
 });
