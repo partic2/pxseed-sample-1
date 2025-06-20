@@ -60,7 +60,7 @@ define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "part
         }
         renderConnected() {
             return React.createElement("div", { className: domui_1.css.flexColumn },
-                React.createElement("h2", null, "Server cnofig"),
+                React.createElement("h2", null, "Server config"),
                 React.createElement("div", { className: domui_1.css.flexColumn },
                     React.createElement("div", { className: domui_1.css.flexColumn, style: { overflowY: 'auto', maxHeight: '300px', display: 'flex' } },
                         React.createElement(texteditor_1.TextEditor, { ref: this.rref.configView, divClass: [domui_1.css.simpleCard] }),

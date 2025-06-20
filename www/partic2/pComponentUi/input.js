@@ -115,7 +115,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pxseedMedia1/ind
         }
         _renderInput(name, type) {
             let jsx2 = [];
-            if (this.props.type.type === 'object' && type.type !== 'button') {
+            if (this.props.type.type === 'object' && type.type !== 'button' && type.type != 'boolean') {
                 jsx2.push(React.createElement("div", null, name));
             }
             switch (type.type) {
@@ -123,7 +123,10 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pxseedMedia1/ind
                     jsx2.push(React.createElement("input", { type: "number", style: { flexGrow: 1 }, ref: this._inputCollector.getRefForInput(name) }));
                     break;
                 case 'boolean':
-                    jsx2.push(React.createElement(ValueCheckBox, { ref: this._inputCollector.getRefForInput(name) }));
+                    jsx2.push(React.createElement("div", { className: domui_1.css.flexRow },
+                        name,
+                        ":",
+                        React.createElement(ValueCheckBox, { style: { flexGrow: '1' }, ref: this._inputCollector.getRefForInput(name) })));
                     break;
                 case 'string':
                     jsx2.push(React.createElement(texteditor_1.PlainTextEditorInput, { ref: this._inputCollector.getRefForInput(name), divStyle: { flexGrow: 1 }, divClass: [domui_1.css.simpleCard] }));

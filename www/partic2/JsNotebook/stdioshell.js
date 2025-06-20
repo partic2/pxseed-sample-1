@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/pComponentUi/texteditor", "preact", "./fileviewer", "partic2/pComponentUi/workspace", "partic2/tjsonpxp/tjs", "partic2/jsutils1/base", "partic2/pComponentUi/domui"], function (require, exports, texteditor_1, React, fileviewer_1, workspace_1, tjs_1, base_1, domui_1) {
+define(["require", "exports", "partic2/pComponentUi/texteditor", "preact", "./fileviewer", "partic2/pComponentUi/workspace", "partic2/tjshelper/tjsonjserpc", "partic2/jsutils1/base", "partic2/pComponentUi/domui"], function (require, exports, texteditor_1, React, fileviewer_1, workspace_1, tjsonjserpc_1, base_1, domui_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.StdioShellProfile1 = exports.StdioShell = void 0;
@@ -19,7 +19,7 @@ define(["require", "exports", "partic2/pComponentUi/texteditor", "preact", "./fi
         }
         async startProcess(cmdline) {
             try {
-                let tjs = await (0, tjs_1.tjsFrom)(this.props.ws.jseio);
+                let tjs = await (0, tjsonjserpc_1.tjsFrom)(this.props.ws.jseio);
                 if (cmdline == undefined) {
                     cmdline = 'sh';
                     if (tjs.system.platform == 'windows') {

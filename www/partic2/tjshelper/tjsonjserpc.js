@@ -1,3 +1,4 @@
+//Implement tjs base on pxprpc
 define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper__JseIo", "partic2/jsutils1/base"], function (require, exports, extend_1, JseHelper__JseIo_1, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -320,6 +321,101 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
         function homedir() {
             return dataDir;
         }
+        class JseConnection {
+            read(buf) {
+                return this.rawR.read(buf);
+            }
+            write(buf) {
+                return this.rawW.write(buf);
+            }
+            setKeepAlive(enable, delay) {
+                throw new Error("Method not implemented.");
+            }
+            setNoDelay(enable) {
+                throw new Error("Method not implemented.");
+            }
+            shutdown() {
+                this.close();
+            }
+            close() {
+                if (this.rawR.getHandler.done) {
+                    this.rawR.getHandler.result.free();
+                }
+                if (this.rawW.getHandler.done) {
+                    this.rawW.getHandler.result.free();
+                }
+                this.rpcHandle.free();
+            }
+            constructor(rpcHandle) {
+                this.rpcHandle = rpcHandle;
+                this.rawR = new JseInputReader();
+                this.rawW = new JseOutputWriter();
+                this.localAddress = { family: 0, ip: '', port: 0 };
+                this.remoteAddress = { family: 0, ip: '', port: 0 };
+                //Diabled until concurrent read/write issue is solved.
+                this.readable = undefined;
+                this.writable = undefined;
+            }
+        }
+        async function JseConnectionFromJseRpcSocket(soc) {
+            let [in2, out2] = await jseio.tcpStreams(soc);
+            let r = new JseConnection(soc);
+            r.rawR.getHandler.setResult(in2);
+            r.rawW.getHandler.setResult(out2);
+            return r;
+        }
+        /**
+        * Creates a connection to the target host + port over the selected transport.
+        *
+        * @param transport Type of transport for the connection.
+        * @param host Hostname for the connection. Basic lookup using {@link lookup} will be performed.
+        * @param port Destination port (where applicable).
+        * @param options Extra connection options.
+        */
+        async function connect(transport, host, port, options) {
+            if (transport == 'tcp') {
+                let soc = await jseio.tcpConnect(host, Number(port ?? 0));
+                let r = await JseConnectionFromJseRpcSocket(soc);
+                return r;
+            }
+            else {
+                throw new Error('Not implemented');
+            }
+        }
+        class JseIoListener {
+            constructor(ssoc) {
+                this.ssoc = ssoc;
+                this.localAddress = { family: 0, ip: '', port: 0 };
+            }
+            ;
+            async accept() {
+                let soc = await jseio.tcpAccept(this.ssoc);
+                let r = JseConnectionFromJseRpcSocket(soc);
+                return r;
+            }
+            close() {
+                this.ssoc.free();
+            }
+            [Symbol.asyncIterator]() {
+                throw new Error("Method not implemented.");
+            }
+        }
+        /**
+        * Listens for incoming connections on the selected transport.
+        *
+        * @param transport Transport type.
+        * @param host Hostname for listening on.
+        * @param port Listening port (where applicable).
+        * @param options Extra listen options.
+        */
+        async function listen(transport, host, port, options) {
+            if (transport == 'tcp') {
+                return new JseIoListener(await jseio.tcpListen(host, Number(port ?? 0)));
+            }
+            else {
+                throw new Error('Not implemented');
+            }
+        }
         let tjsi = {
             realpath, unlink, rename, mkstemp, stat, open, rmdir, copyfile, mkdir, readdir, readFile, rm, spawn, homedir, platform,
             realPath: realpath,
@@ -327,7 +423,9 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
             homeDir: dataDir,
             makeDir: mkdir,
             readDir: readdir,
-            system: { platform: platform }
+            system: { platform: platform },
+            listen, connect,
+            __impl__: 'partic2/tjshelper/tjsonjserpc'
         };
         invoker[tjsImpl] = tjsi;
         return tjsi;
@@ -343,4 +441,4 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
         (0, base_1.copy)(await tjsFrom(jseio), tjsObject, 1);
     }
 });
-//# sourceMappingURL=tjs.js.map
+//# sourceMappingURL=tjsonjserpc.js.map

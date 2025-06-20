@@ -4,6 +4,73 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/CodeRunner/JsEnv
     exports.SimpleFileServer = exports.HttpServer = exports.WebSocketServerConnection = void 0;
     const decode = TextDecoder.prototype.decode.bind(new TextDecoder());
     const encode = TextEncoder.prototype.encode.bind(new TextEncoder());
+    const mimeDb = {
+        "js": "application/javascript",
+        "json": "application/json",
+        "bin": "application/octet-stream",
+        "exe": "application/octet-stream",
+        "dll": "application/octet-stream",
+        "deb": "application/octet-stream",
+        "dmg": "application/octet-stream",
+        "iso": "application/octet-stream",
+        "img": "application/octet-stream",
+        "msi": "application/octet-stream",
+        "msp": "application/octet-stream",
+        "msm": "application/octet-stream",
+        "pdf": "application/pdf",
+        "m3u8": "application/vnd.apple.mpegurl",
+        "wasm": "application/wasm",
+        "7z": "application/x-7z-compressed",
+        "der": "application/x-x509-ca-cert",
+        "pem": "application/x-x509-ca-cert",
+        "crt": "application/x-x509-ca-cert",
+        "xpi": "application/x-xpinstall",
+        "xhtml": "application/xhtml+xml",
+        "zip": "application/zip",
+        "mid": "audio/midi",
+        "midi": "audio/midi",
+        "kar": "audio/midi",
+        "mp3": "audio/mpeg",
+        "ogg": "audio/ogg",
+        "m4a": "audio/x-m4a",
+        "ra": "audio/x-realaudio",
+        "woff": "font/woff",
+        "woff2": "font/woff2",
+        "avif": "image/avif",
+        "gif": "image/gif",
+        "jpeg": "image/jpeg",
+        "jpg": "image/jpeg",
+        "png": "image/png",
+        "svg": "image/svg+xml",
+        "svgz": "image/svg+xml",
+        "tif": "image/tiff",
+        "tiff": "image/tiff",
+        "webp": "image/webp",
+        "ico": "image/x-icon",
+        "jng": "image/x-jng",
+        "bmp": "image/x-ms-bmp",
+        "css": "text/css",
+        "html": "text/html",
+        "htm": "text/html",
+        "shtml": "text/html",
+        "mml": "text/mathml",
+        "txt": "text/plain",
+        "xml": "text/xml",
+        "3gpp": "video/3gpp",
+        "3gp": "video/3gpp",
+        "mp4": "video/mp4",
+        "mpeg": "video/mpeg",
+        "mpg": "video/mpeg",
+        "mov": "video/quicktime",
+        "webm": "video/webm",
+        "flv": "video/x-flv",
+        "m4v": "video/x-m4v",
+        "mng": "video/x-mng",
+        "asx": "video/x-ms-asf",
+        "asf": "video/x-ms-asf",
+        "wmv": "video/x-ms-wmv",
+        "avi": "video/x-msvideo"
+    };
     //Don't use Response directly, Response limit status range into 200-599
     class ProtocolSwitchResponse extends Response {
         get status() {
@@ -391,8 +458,15 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/CodeRunner/JsEnv
                     let statResult = await this.fs.stat(filepath);
                     let headers = new Headers();
                     headers.set('content-length', String(statResult.size));
-                    if (filepath.endsWith('.js')) {
-                        headers.set('content-type', 'application/javascript');
+                    let fileNameAt = filepath.lastIndexOf('/');
+                    let fileName = filepath.substring(fileNameAt + 1);
+                    let extStartAt = fileName.lastIndexOf('.');
+                    let ext = '';
+                    if (extStartAt >= 0) {
+                        ext = fileName.substring(extStartAt + 1);
+                    }
+                    if (ext in mimeDb) {
+                        headers.set('content-type', mimeDb[ext]);
                     }
                     let t1 = new Response((0, JsEnviron_1.getFileSystemReadableStream)(this.fs, filepath), { headers });
                     return t1;

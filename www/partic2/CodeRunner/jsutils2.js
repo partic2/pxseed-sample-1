@@ -153,16 +153,21 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
         }
     }
     exports.ExtendStreamReader = ExtendStreamReader;
-    class Singleton {
+    class Singleton extends base_1.future {
         constructor(init) {
+            super();
             this.init = init;
             this.i = null;
         }
         async get() {
-            if (this.i === null) {
-                this.i = await this.init();
+            if (!this.done) {
+                this.init().then((result) => {
+                    this.setResult(result);
+                }, (err) => {
+                    this.setException(err);
+                });
             }
-            return this.i;
+            return super.get();
         }
     }
     exports.Singleton = Singleton;

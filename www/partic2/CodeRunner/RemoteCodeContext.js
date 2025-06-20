@@ -1,8 +1,9 @@
-define(["require", "exports", "pxprpc/extend", "./CodeContext", "partic2/jsutils1/base", "./Inspector", "partic2/pxprpcClient/registry"], function (require, exports, extend_1, CodeContext_1, base_1, Inspector_1, registry_1) {
+define(["require", "exports", "pxprpc/extend", "./CodeContext", "partic2/jsutils1/base", "partic2/pxprpcClient/registry"], function (require, exports, extend_1, CodeContext_1, base_1, registry_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.RemoteRunCodeContext = exports.__name__ = void 0;
     exports.getRemoteContext = getRemoteContext;
+    exports.__priv_setupRemoteCodeContextEnv = __priv_setupRemoteCodeContextEnv;
     exports.__name__ = 'partic2/CodeRunner/RemoteCodeContext';
     let pxprpcNamespace = exports.__name__;
     async function jsExecFn(source, arg) {
@@ -61,15 +62,38 @@ define(["require", "exports", "pxprpc/extend", "./CodeContext", "partic2/jsutils
             }
         }
     }
+    //Only used by remote code context to initialize environment.
+    async function __priv_setupRemoteCodeContextEnv(codeContext, id) {
+        let eventPipeName = '__event_' + id;
+        let serverSide = await codeContext.servePipe(eventPipeName);
+        if (codeContext.event.onAnyEvent == undefined) {
+            codeContext.event.onAnyEvent = (event) => {
+                let cce = event;
+                serverSide.send([new TextEncoder().encode(JSON.stringify([cce.type, cce.data]))]);
+            };
+        }
+    }
     class RemoteRunCodeContext {
         constructor(client1) {
             this.client1 = client1;
-            this.event = new CodeContext_1.RemoteEventTarget();
+            this.event = new CodeContext_1.CodeContextEventTarget();
             this.closed = false;
             this.initMutex = new base_1.mutex();
+            this.__contextId = (0, base_1.GenerateRandomString)();
             this._remoteContext = null;
             this.initDone = new base_1.future();
             this.doInit();
+        }
+        async pollEpipe() {
+            try {
+                while (!this.closed) {
+                    let [type, data] = JSON.parse(new TextDecoder().decode(await this.epipe.receive()));
+                    this.event.dispatchEvent(new CodeContext_1.CodeContextEvent(type, { data }));
+                }
+            }
+            catch (err) {
+                (0, base_1.throwIfAbortError)(err);
+            }
         }
         async doInit() {
             await this.initMutex.lock();
@@ -86,9 +110,9 @@ define(["require", "exports", "pxprpc/extend", "./CodeContext", "partic2/jsutils
                     this.client1[rpcfunctionsProps] = this.rpcFunctions;
                 }
                 this._remoteContext = await this.rpcFunctions.jsExecObj(`return new lib.LocalRunCodeContext();`, null);
-                this.event.useRemoteReference(new Inspector_1.RemoteReference(['__priv_codeContext', 'event']));
-                this.event.codeContext = this;
-                this.event.start();
+                await this.rpcFunctions.jsExecStr(`await (await lib.importModule('${exports.__name__}')).__priv_setupRemoteCodeContextEnv(arg,'${this.__contextId}');return '';`, this._remoteContext);
+                this.epipe = (await this.connectPipe('__event_' + this.__contextId));
+                this.pollEpipe();
                 this.initDone.setResult(true);
                 new FinalizationRegistry(() => this.close()).register(this, undefined);
             }
@@ -130,7 +154,8 @@ define(["require", "exports", "pxprpc/extend", "./CodeContext", "partic2/jsutils
         }
         close() {
             this._remoteContext?.free();
-            this.event.close();
+            this.closed = true;
+            this.epipe?.close();
         }
         ;
     }

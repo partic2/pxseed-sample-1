@@ -132,7 +132,7 @@ define(["require", "exports", "path", "fs/promises", "fs", "pxseedBuildScript/bu
             ['source', 'partic2', 'pxprpcBinding'],
             ['source', 'partic2', 'pxprpcClient'],
             ['source', 'partic2', 'pxseedMedia1'],
-            ['source', 'partic2', 'tjsonpxp']
+            ['source', 'partic2', 'tjshelper']
         ];
         let corePackFiles = [
             ['source', '.gitignore'],
@@ -348,7 +348,7 @@ define(["require", "exports", "path", "fs/promises", "fs", "pxseedBuildScript/bu
         }
     }
     async function uninstallPackage(pkgname) {
-        (0, fs_extra_1.remove)((0, path_1.join)(sourceDir, ...pkgname.split('/')));
+        await (0, fs_extra_1.remove)((0, path_1.join)(sourceDir, ...pkgname.split('/')));
         let pkgdb = await (0, webutils_1.kvStore)(pkgdbName);
         await pkgdb.delete('pkg-' + pkgname);
     }

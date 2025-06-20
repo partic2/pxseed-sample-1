@@ -13,10 +13,28 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     exports.addClient = addClient;
     exports.removeClient = removeClient;
     exports.addBuiltinClient = addBuiltinClient;
+    exports.importRemoteModule = importRemoteModule;
     exports.__name__ = base_1.requirejs.getLocalRequireModule(require);
     exports.rpcWorkerInitModule = [];
-    extend_1.defaultFuncMap[exports.__name__ + '.loadModule'] = new extend_1.RpcExtendServerCallable(async (name) => base_1.requirejs.promiseRequire(name)).typedecl('s->o');
-    extend_1.defaultFuncMap[exports.__name__ + '.unloadModule'] = new extend_1.RpcExtendServerCallable(async (name) => base_1.requirejs.undef(name)).typedecl('s->o');
+    extend_1.defaultFuncMap[exports.__name__ + '.loadModule'] = new extend_1.RpcExtendServerCallable(async (name) => {
+        return {
+            type: 'module',
+            value: await base_1.requirejs.promiseRequire(name)
+        };
+    }).typedecl('s->o');
+    extend_1.defaultFuncMap[exports.__name__ + '.unloadModule'] = new extend_1.RpcExtendServerCallable(async (name) => base_1.requirejs.undef(name)).typedecl('s->');
+    extend_1.defaultFuncMap[exports.__name__ + '.callJsonFunction'] = new extend_1.RpcExtendServerCallable(async (module, functionName, paramsJson) => {
+        try {
+            let param = JSON.parse(paramsJson);
+            return JSON.stringify([(await module.value[functionName](...param)) ?? null]);
+        }
+        catch (err) {
+            return JSON.stringify([null, {
+                    message: err.message,
+                    stack: err.stack
+                }]);
+        }
+    }).typedecl('oss->s');
     extend_1.defaultFuncMap[exports.__name__ + '.getDefined'] = new extend_1.RpcExtendServerCallable(async () => base_1.requirejs.getDefined()).typedecl('s->o');
     extend_1.defaultFuncMap[exports.__name__ + '.getConnectionFromUrl'] = new extend_1.RpcExtendServerCallable(async (url) => {
         return await getConnectionFromUrl(url);
@@ -99,7 +117,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
         async jsServerLoadModule(name) {
             let fn = await getAttachedRemoteRigstryFunction(this.client);
-            return fn.loadModule(name);
+            return await fn.loadModule(name);
         }
         async ensureConnected() {
             try {
@@ -176,12 +194,32 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
         return [oneSide(a2b, b2a), oneSide(b2a, a2b)];
     }
+    class RemoteCallFunctionError extends Error {
+        constructor(message) {
+            super('REMOTE:' + message);
+        }
+        toString() {
+            return this.message + '\n' + (this.remoteStack ?? '');
+        }
+    }
     class RemoteRegistryFunctionImpl {
         constructor() {
             this.funcs = [];
         }
         async loadModule(name) {
             return this.funcs[0].call(name);
+        }
+        async callJsonFunction(module, functionName, params) {
+            let [result, error] = JSON.parse(await this.funcs[7].call(module, functionName, JSON.stringify(params)));
+            if (error != null) {
+                let remoteError = new RemoteCallFunctionError(error.message);
+                remoteError.remoteStack = error.stack;
+                throw remoteError;
+            }
+            return result;
+        }
+        async unloadModule(name) {
+            return this.funcs[8].call(name);
         }
         async getConnectionFromUrl(url) {
             return this.funcs[1].call(url);
@@ -210,8 +248,10 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                     (await this.client1.getFunc('pxprpc_pp.io_send'))?.typedecl('ob->'),
                     (await this.client1.getFunc('pxprpc_pp.io_receive'))?.typedecl('o->b'),
                     (await this.client1.getFunc('builtin.jsExec'))?.typedecl('so->o'),
-                    (await this.client1.getFunc('builtin.bufferData'))?.typedecl('o->b'),
-                    (await this.client1.getFunc('builtin.anyToString'))?.typedecl('o->s')
+                    (await this.client1.getFunc('builtin.bufferData'))?.typedecl('o->b'), //[5]
+                    (await this.client1.getFunc('builtin.anyToString'))?.typedecl('o->s'),
+                    (await this.client1.getFunc(exports.__name__ + '.callJsonFunction'))?.typedecl('oss->s'),
+                    (await this.client1.getFunc(exports.__name__ + '.unloadModule'))?.typedecl('s->')
                 ];
             }
         }
@@ -386,6 +426,25 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             ;
         }
         backend_1.WebMessage.postMessageOptions.targetOrigin = '*';
+    }
+    //Before typescript support syntax like <typeof import(T)>, we can only tell module type explicitly.
+    //Only support plain JSON parameter and return value.
+    async function importRemoteModule(rpc, moduleName) {
+        let module = null;
+        let funcs = null;
+        funcs = await getAttachedRemoteRigstryFunction(rpc);
+        module = await funcs.loadModule(moduleName);
+        let proxyModule = new Proxy({}, {
+            get(target, p) {
+                //Avoid triggle by Promise.resolve
+                if (p === 'then')
+                    return undefined;
+                return async (...params) => {
+                    return await funcs.callJsonFunction(module, p, params);
+                };
+            }
+        });
+        return proxyModule;
     }
 });
 //# sourceMappingURL=registry.js.map

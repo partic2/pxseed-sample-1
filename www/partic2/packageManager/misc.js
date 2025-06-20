@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/CodeRunner/RemoteCodeContext", "partic2/CodeRunner/CodeContext", "partic2/pxprpcClient/registry", "partic2/jsutils1/webutils"], function (require, exports, base_1, RemoteCodeContext_1, CodeContext_1, registry_1, webutils_1) {
+define(["require", "exports", "partic2/jsutils1/base", "partic2/pxprpcClient/registry", "partic2/jsutils1/webutils", "../CodeRunner/jsutils2"], function (require, exports, base_1, registry_1, webutils_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__name__ = void 0;
@@ -7,17 +7,11 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/CodeRunner/Remot
     exports.processDirectoryContainFile = processDirectoryContainFile;
     let servShell = null;
     exports.__name__ = 'partic2/packageManager/misc';
-    async function getServerShell() {
-        //may reload server so not worker.
-        let client1 = await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName);
-        (0, base_1.assert)(client1 != null);
-        if (servShell == null) {
-            let shell = new CodeContext_1.CodeContextShell(new RemoteCodeContext_1.RemoteRunCodeContext(await client1.ensureConnected()));
-            let misc = (await shell.importModule('partic2/packageManager/misc', 'misc1')).toModuleProxy();
-            servShell = { shell, misc };
-        }
-        return servShell;
-    }
+    let remoteModule = {
+        misc: new jsutils2_1.Singleton(async () => {
+            return await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName)).ensureConnected(), 'partic2/packageManager/misc');
+        })
+    };
     async function cleanWWW(dir) {
         //Client side missing.
         let { dirname, join } = await new Promise((resolve_1, reject_1) => { require(['path'], resolve_1, reject_1); });
@@ -77,7 +71,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/CodeRunner/Remot
             }
         }
         else {
-            let { misc } = await getServerShell();
+            let misc = await remoteModule.misc.get();
             config1 = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
             if (config1.lastCodeUpateTime == undefined) {
                 config1.lastCodeUpateTime = 0;
@@ -116,7 +110,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/CodeRunner/Remot
             return { sourceRoot: sourceDir, outputRoot: join(dirname(sourceDir), 'www') };
         }
         else {
-            let { misc } = await getServerShell();
+            let misc = await remoteModule.misc.get();
             return await misc.processDirectoryContainFile(file);
         }
     }

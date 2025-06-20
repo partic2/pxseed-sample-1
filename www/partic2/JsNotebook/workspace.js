@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/pComponentUi/domui", "preact", "./filebrowser", "partic2/pComponentUi/workspace", "partic2/pxprpcClient/registry", "./notebook", "./fileviewer", "partic2/CodeRunner/JsEnviron", "partic2/pxprpcClient/ui", "partic2/jsutils1/base", "partic2/tjsonpxp/tjs", "partic2/pxprpcBinding/JseHelper__JseIo", "./stdioshell", "partic2/pComponentUi/window", "partic2/pComponentUi/transform", "partic2/CodeRunner/RemoteCodeContext", "partic2/CodeRunner/CodeContext", "partic2/pComponentUi/window", "./misclib", "partic2/jsutils1/webutils"], function (require, exports, domui_1, React, filebrowser_1, workspace_1, registry_1, notebook_1, fileviewer_1, JsEnviron_1, ui_1, base_1, tjs_1, JseHelper__JseIo_1, stdioshell_1, window_1, transform_1, RemoteCodeContext_1, CodeContext_1, window_2, misclib_1, webutils_1) {
+define(["require", "exports", "partic2/pComponentUi/domui", "preact", "./filebrowser", "partic2/pComponentUi/workspace", "partic2/pxprpcClient/registry", "./notebook", "./fileviewer", "partic2/CodeRunner/JsEnviron", "partic2/pxprpcClient/ui", "partic2/jsutils1/base", "partic2/tjshelper/tjsonjserpc", "partic2/pxprpcBinding/JseHelper__JseIo", "./stdioshell", "partic2/pComponentUi/window", "partic2/pComponentUi/transform", "partic2/CodeRunner/RemoteCodeContext", "partic2/CodeRunner/CodeContext", "partic2/pComponentUi/window", "./misclib", "partic2/jsutils1/webutils"], function (require, exports, domui_1, React, filebrowser_1, workspace_1, registry_1, notebook_1, fileviewer_1, JsEnviron_1, ui_1, base_1, tjsonjserpc_1, JseHelper__JseIo_1, stdioshell_1, window_1, transform_1, RemoteCodeContext_1, CodeContext_1, window_2, misclib_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.defaultOpenWorkspaceWindowFor = exports.Workspace = void 0;
@@ -129,7 +129,7 @@ define(["require", "exports", "partic2/pComponentUi/domui", "preact", "./filebro
                         let fs1 = new JsEnviron_1.TjsSfs();
                         this.jseio = new JseHelper__JseIo_1.Invoker();
                         await this.jseio.useClient(this.props.rpc.client);
-                        fs1.from(await (0, tjs_1.tjsFrom)(this.jseio));
+                        fs1.from(await (0, tjsonjserpc_1.tjsFrom)(this.jseio));
                         fs1.pxprpc = this.props.rpc;
                         await fs1.ensureInited();
                         this.fs = fs1;

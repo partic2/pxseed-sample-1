@@ -1,7 +1,8 @@
+//import this module to Initialize pxseed environment on txiki.js platform.
 define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/CodeRunner/Inspector", "partic2/pxprpcClient/registry"], function (require, exports, base_1, base_2, webutils_1, Inspector_1, registry_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.FsBasedKvDbV1 = void 0;
+    exports.PxprpcRtbIo = exports.FsBasedKvDbV1 = void 0;
     exports.setupImpl = setupImpl;
     var __name__ = base_1.requirejs.getLocalRequireModule(require);
     //txiki.js has bugly eventTarget, patch it before upstream fix it.
@@ -249,6 +250,56 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
             registry_1.rpcWorkerInitModule.push(__name__);
         }
     }
-    setupImpl();
+    class PxprpcRtbIo {
+        static async connect(pipeServer) {
+            let conn = __pxprpc4tjs__.pipeConnect(pipeServer);
+            if (conn == BigInt(0)) {
+                return null;
+            }
+            else {
+                return new PxprpcRtbIo(conn);
+            }
+        }
+        constructor(pipeAddr) {
+            this.pipeAddr = pipeAddr;
+        }
+        ;
+        receive() {
+            return new Promise((resolve, reject) => {
+                __pxprpc4tjs__.ioReceive(this.pipeAddr, (buf) => {
+                    if (typeof buf === 'string') {
+                        reject(new Error(buf));
+                    }
+                    else {
+                        resolve(new Uint8Array(buf));
+                    }
+                });
+            });
+        }
+        async send(data) {
+            let res;
+            if (data.length == 1 && data[0].byteOffset == 0 && data[0].length == data[0].buffer.byteLength) {
+                res = __pxprpc4tjs__.ioSend(this.pipeAddr, data[0].buffer);
+            }
+            else {
+                res = __pxprpc4tjs__.ioSend(this.pipeAddr, (0, base_1.ArrayBufferConcat)(data));
+            }
+            if (res != undefined) {
+                throw new Error(res);
+            }
+        }
+        close() {
+            __pxprpc4tjs__.ioClose(this.pipeAddr);
+        }
+    }
+    exports.PxprpcRtbIo = PxprpcRtbIo;
+    if (globalThis.tjs == undefined) {
+        console.warn('This module is only used to initialize pxseed environment on txiki.js,' +
+            ' and has no effect on other platform.' +
+            'Also avoid to import this module on other platform.');
+    }
+    else {
+        setupImpl();
+    }
 });
 //# sourceMappingURL=tjsenv.js.map

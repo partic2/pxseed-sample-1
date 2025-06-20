@@ -1,8 +1,7 @@
-define(["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/CodeRunner/RemoteCodeContext", "partic2/pxprpcClient/registry", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/input", "partic2/pComponentUi/window", "partic2/CodeRunner/jsutils2", "partic2/CodeRunner/CodeContext", "partic2/JsNotebook/workspace", "partic2/pComponentUi/texteditor"], function (require, exports, React, domui_1, RemoteCodeContext_1, registry_1, base_1, webutils_1, input_1, window_1, jsutils2_1, CodeContext_1, workspace_1, texteditor_1) {
+define(["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/pxprpcClient/registry", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/input", "partic2/pComponentUi/window", "partic2/CodeRunner/jsutils2", "partic2/JsNotebook/workspace", "partic2/pComponentUi/texteditor"], function (require, exports, React, domui_1, registry_1, base_1, webutils_1, input_1, window_1, jsutils2_1, workspace_1, texteditor_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.renderPackagePanel = exports.__name__ = void 0;
-    exports.close = close;
     var registryModuleName = 'partic2/packageManager/registry';
     exports.__name__ = base_1.requirejs.getLocalRequireModule(require);
     let i18n = {
@@ -28,22 +27,11 @@ define(["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/C
         i18n.uninstall = '卸载';
         i18n.error = '错误';
     }
-    let codeCellShell = new jsutils2_1.Singleton(async () => {
-        await registry_1.persistent.load();
-        let rpc = (0, registry_1.getRegistered)(registry_1.ServerHostWorker1RpcName);
-        (0, base_1.assert)(rpc != null);
-        let codeContext = new RemoteCodeContext_1.RemoteRunCodeContext(await rpc.ensureConnected());
-        CodeContext_1.registry.set(registryModuleName, codeContext);
-        return new CodeContext_1.CodeContextShell(codeContext);
-    });
-    async function getServerCodeShell() {
-        let ccs = await codeCellShell.get();
-        let mod = await ccs.importModule(registryModuleName, 'registry');
-        return {
-            shell: codeCellShell,
-            registry: mod.toModuleProxy()
-        };
-    }
+    let remoteModule = {
+        registry: new jsutils2_1.Singleton(async () => {
+            return await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName)).ensureConnected(), 'partic2/packageManager/registry');
+        })
+    };
     const SimpleButton = (props) => React.createElement("a", { href: "javascript:;", onClick: () => props.onClick(), className: domui_1.css.simpleCard }, props.children);
     class PackagePanel extends React.Component {
         constructor(props, context) {
@@ -68,9 +56,9 @@ define(["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/C
             }
             let source = (await this.rref.installPackageName.waitValid()).getPlainText();
             dlg.close();
-            let { registry } = await getServerCodeShell();
             this.setState({ errorMessage: 'Installing...' });
             try {
+                const registry = await remoteModule.registry.get();
                 await registry.installPackage(source);
                 this.setState({ errorMessage: 'done' });
                 this.refreshList();
@@ -80,14 +68,14 @@ define(["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/C
             }
         }
         async exportPackagesInstallation() {
-            let { registry } = await getServerCodeShell();
+            const registry = await remoteModule.registry.get();
             let result = await registry.exportPackagesInstallation();
             (0, webutils_1.RequestDownload)(new TextEncoder().encode(JSON.stringify(result)), 'export.txt');
         }
         async importPackagesInstallation() {
             let selected = await (0, webutils_1.selectFile)();
             if (selected != null && selected.length > 0) {
-                let { registry } = await getServerCodeShell();
+                let registry = await remoteModule.registry.get();
                 registry.importPackagesInstallation(JSON.parse(new TextDecoder().decode((await (0, base_1.GetBlobArrayBufferContent)(selected.item(0))))));
             }
         }
@@ -109,14 +97,13 @@ define(["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/C
         }
         async refreshList() {
             try {
-                let { registry } = await getServerCodeShell();
+                let registry = await remoteModule.registry.get();
                 this.setState({
                     packageList: await registry.listPackagesArray(this.filterString),
                     errorMessage: ''
                 });
             }
             catch (err) {
-                codeCellShell.i = null;
                 this.setState({
                     packageList: [{
                             "loaders": [
@@ -152,7 +139,7 @@ define(["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/C
                                 }
                             }
                         }],
-                    errorMessage: err.message
+                    errorMessage: err.toString()
                 });
             }
         }
@@ -173,7 +160,7 @@ define(["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/C
             };
         }
         async createPackageBtn(pkgInfoIn, subbtn) {
-            let { registry } = await getServerCodeShell();
+            let registry = await remoteModule.registry.get();
             if (subbtn === 'create') {
                 let opt = {};
                 let webuiEntry = pkgInfoIn.webuiEntry;
@@ -224,7 +211,7 @@ define(["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/C
         }
         async uninstallPackage(pkgName) {
             if (await (0, window_1.confirm)(`Uninstall package ${pkgName}?`) == 'ok') {
-                let { registry } = await getServerCodeShell();
+                let registry = await remoteModule.registry.get();
                 this.setState({ errorMessage: 'uninstalling...' });
                 try {
                     await registry.uninstallPackage(pkgName);
@@ -238,7 +225,7 @@ define(["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/C
         }
         async openNotebook() {
             try {
-                await (0, workspace_1.openWorkspaceWindowFor)((await codeCellShell.get()).codeContext, 'packageManager/registry');
+                await (0, workspace_1.openWorkspaceWindowFor)((await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName)), 'packageManager/registry');
             }
             catch (err) {
                 await (0, window_1.alert)(err.errorMessage, i18n.error);
@@ -303,14 +290,6 @@ define(["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/C
                             ]
                         } }))
             ];
-        }
-    }
-    //Module cleaner
-    async function close() {
-        if (codeCellShell != null) {
-            if (codeCellShell instanceof CodeContext_1.CodeContextShell) {
-                codeCellShell.codeContext.close();
-            }
         }
     }
     let renderPackagePanel = async () => {
