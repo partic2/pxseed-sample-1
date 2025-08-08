@@ -73,6 +73,9 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         async appendToNode(parent) {
             this.mounted = true;
         }
+        changeRoot(rootDiv) {
+            this.domElem = rootDiv;
+        }
         async update() {
             if (!this.mounted) {
                 await this.appendToNode(document.body);
@@ -166,10 +169,10 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleCard, ['display:inline-block', 'border:solid black 2px', 'margin:2px', 'padding:2px', 'background-color:white']);
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleTable, ['border-collapse:collapse']);
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleTableCell, ['border:solid black 2px']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.overlayLayer, ['z-index:1000', 'position:absolute', 'left:0px', 'top:0px']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.activeLayer, ['z-index:800', 'position:absolute', 'left:0px', 'top:0px']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.inactiveLayer, ['z-index:600', 'position:absolute', 'left:0px', 'top:0px']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.hideLayer, ['z-index:600', 'position:absolute', 'display:none', 'left:0px', 'top:0px']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.overlayLayer, ['z-index:1000', 'position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.activeLayer, ['z-index:800', 'position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.inactiveLayer, ['z-index:600', 'position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.hideLayer, ['z-index:600', 'position:absolute', 'display:none', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
     exports.event = {
         layout: 'partic2-layout'
     };

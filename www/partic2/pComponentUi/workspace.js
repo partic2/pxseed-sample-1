@@ -1,22 +1,60 @@
-define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "./window"], function (require, exports, React, domui_1, base_1, window_1) {
+define(["require", "exports", "preact", "./domui", "./window", "partic2/jsutils1/base", "./window"], function (require, exports, React, domui_1, window_1, base_1, window_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.TabView = exports.TabInfoBase = exports.openNewWindow = void 0;
+    exports.TabView = exports.TabInfoBase = exports.openNewWindow = exports.NewWindowHandleLists = void 0;
+    exports.setBaseWindowView = setBaseWindowView;
     exports.setOpenNewWindowImpl = setOpenNewWindowImpl;
+    class CNewWindowHandleLists extends EventTarget {
+        constructor() {
+            super(...arguments);
+            this.value = new Array();
+        }
+    }
+    exports.NewWindowHandleLists = new CNewWindowHandleLists();
     let openNewWindow = async function (contentVNode, options) {
+        options = options ?? {};
         let closeFuture = new base_1.future();
-        let windowVNode = React.createElement(window_1.WindowComponent, { onClose: () => closeFuture.setResult(true), title: options?.title }, contentVNode);
-        (0, window_1.appendFloatWindow)(windowVNode, true);
-        return {
+        let windowRef = new domui_1.ReactRefEx();
+        let windowVNode = React.createElement(window_2.WindowComponent, { ref: windowRef, onClose: () => {
+                closeFuture.setResult(true);
+                (0, window_2.removeFloatWindow)(windowVNode);
+                let at = exports.NewWindowHandleLists.value.indexOf(handle);
+                if (at >= 0)
+                    exports.NewWindowHandleLists.value.splice(at, 1);
+                exports.NewWindowHandleLists.dispatchEvent(new Event('change'));
+            }, onComponentDidUpdate: () => {
+                exports.NewWindowHandleLists.dispatchEvent(new Event('change'));
+            }, title: options.title }, contentVNode);
+        (0, window_2.appendFloatWindow)(windowVNode, true);
+        let handle = {
+            ...options,
             onClose: async function () {
                 await closeFuture.get();
-                this.close();
-                return;
             },
-            close: function () { (0, window_1.removeFloatWindow)(windowVNode); }
+            close: function () { (0, window_2.removeFloatWindow)(windowVNode); },
+            async active() {
+                (await this.windowRef.waitValid()).active();
+            },
+            async hide() {
+                (await this.windowRef.waitValid()).hide();
+            },
+            async isHidden() {
+                return (await this.windowRef.waitValid()).isHidden();
+            },
+            windowVNode, windowRef
         };
+        exports.NewWindowHandleLists.value.push(handle);
+        exports.NewWindowHandleLists.dispatchEvent(new Event('change'));
+        return handle;
     };
     exports.openNewWindow = openNewWindow;
+    let baseWindowComponnet = null;
+    function setBaseWindowView(vnode) {
+        if (baseWindowComponnet != null) {
+            (0, window_2.removeFloatWindow)(baseWindowComponnet);
+        }
+        (0, window_2.appendFloatWindow)(React.createElement(window_2.WindowComponent, { disablePassiveActive: true, noTitleBar: true, position: 'fill', windowDivClassName: window_1.css.borderlessWindowDiv }, vnode));
+    }
     function setOpenNewWindowImpl(impl) {
         exports.openNewWindow = impl;
     }

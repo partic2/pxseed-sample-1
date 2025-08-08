@@ -22,18 +22,26 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "
     class ReadStream4NodeIo {
         constructor(nodeInput) {
             this.nodeInput = nodeInput;
-            this.chunkQueue = new base_1.ArrayWrap2([]);
+            this.chunkQueue = new base_1.ArrayWrap2();
+            this.err = null;
             this.remainbuf = null;
             this.endOfStream = false;
             this.remainoff = 0;
             nodeInput.on('data', (chunk) => {
-                this.chunkQueue.queueBlockPush(chunk);
+                this.chunkQueue.queueSignalPush(chunk);
             });
             nodeInput.on('end', () => {
-                this.chunkQueue.queueBlockPush(null);
+                this.chunkQueue.queueSignalPush(null);
+            });
+            nodeInput.on('error', (err) => {
+                this.chunkQueue.queueSignalPush(null);
+                this.err = err;
             });
         }
         async read(buf, offset) {
+            if (this.err != null) {
+                throw this.err;
+            }
             offset = offset ?? 0;
             if (this.endOfStream)
                 return null;
@@ -41,6 +49,9 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "
                 this.remainbuf = await this.chunkQueue.queueBlockShift();
                 if (this.remainbuf === null) {
                     this.endOfStream = true;
+                    if (this.err != null) {
+                        throw this.err;
+                    }
                     return null;
                 }
                 this.remainoff = this.remainbuf.byteOffset;

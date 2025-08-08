@@ -10,7 +10,11 @@ define(["require", "exports", "./pxprpc_config"], function (require, exports, px
         }
         async useClient(client) {
             this.rpc__client = client;
-            this.rpc__RemoteFuncs = {};
+            this.rpc__RemoteFuncs = client.__attached__JseHelper__JseIo;
+            if (this.rpc__RemoteFuncs == undefined) {
+                this.rpc__RemoteFuncs = {};
+                client.__attached__JseHelper__JseIo = this.rpc__RemoteFuncs;
+            }
         }
         async ensureFunc(name, typedecl) {
             let __v1 = this.rpc__RemoteFuncs[name];

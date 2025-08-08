@@ -19,7 +19,7 @@ define(["require", "exports", "partic2/pComponentUi/texteditor", "preact", "./fi
         }
         async startProcess(cmdline) {
             try {
-                let tjs = await (0, tjsonjserpc_1.tjsFrom)(this.props.ws.jseio);
+                let tjs = await (0, tjsonjserpc_1.tjsFrom)(await this.props.ws.props.rpc.ensureConnected());
                 if (cmdline == undefined) {
                     cmdline = 'sh';
                     if (tjs.system.platform == 'windows') {

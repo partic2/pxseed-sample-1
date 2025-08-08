@@ -103,33 +103,12 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         }
     }
     exports.RpcExtendClientCallable = RpcExtendClientCallable;
-    let UidGenerator = {
-        idnum: [0],
-        generate: function () {
-            let i = 0;
-            for (i = 0; i < this.idnum.length; i++) {
-                if (this.idnum[i] < 0x7fffffff) {
-                    this.idnum[i]++;
-                    break;
-                }
-                else {
-                    this.idnum[i] = 0;
-                }
-            }
-            if (i == this.idnum.length) {
-                this.idnum.push(1);
-            }
-            return this.idnum.map(v => v.toString(16)).join('-');
-        }
-    };
     class RpcExtendClient1 {
         constructor(conn) {
             this.conn = conn;
             this.__usedSid = {};
             this.__sidStart = 1;
             this.__sidEnd = 0xffff;
-            //To identify different instance, and make it hashable.
-            this.id = UidGenerator.generate();
             this.__nextSid = this.__sidStart;
         }
         async init() {

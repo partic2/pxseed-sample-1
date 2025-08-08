@@ -1,8 +1,9 @@
-define("pxseedBuildScript/build", ["require", "exports", "fs/promises", "fs", "path", "./buildlib"], function (require, exports, fs, fs_1, path_1, buildlib_1) {
+define("pxseedBuildScript/build", ["require", "exports", "fs/promises", "fs", "path", "./loaders", "./buildlib"], function (require, exports, fs, fs_1, path_1, loaders_1, buildlib_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     ;
     (async () => {
+        await loaders_1.inited;
         let buildScriptAt = process.argv.indexOf('pxseedBuildScript/build');
         let command = process.argv[buildScriptAt + 1] ?? 'build';
         if (command == 'build') {

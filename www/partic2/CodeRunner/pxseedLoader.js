@@ -107,17 +107,18 @@ define(["require", "exports", "acorn", "acorn-walk", "partic2/jsutils1/base", ".
     }
     async function addAsyncHookPxseedLoader(dir, config, status) {
         const { sourceDir, outputDir } = await new Promise((resolve_1, reject_1) => { require(['pxseedBuildScript/loaders'], resolve_1, reject_1); });
-        const { glob } = await new Promise((resolve_2, reject_2) => { require(['tinyglobby'], resolve_2, reject_2); });
-        const { join: pathJoin, dirname } = await new Promise((resolve_3, reject_3) => { require(['path'], resolve_3, reject_3); });
-        const fs = await new Promise((resolve_4, reject_4) => { require(['fs/promises'], resolve_4, reject_4); });
+        const { getNodeCompatApi } = await new Promise((resolve_2, reject_2) => { require(['pxseedBuildScript/util'], resolve_2, reject_2); });
+        const { fs, path } = await getNodeCompatApi();
         let packageOutput = outputDir + '/' + dir.substring(sourceDir.length + 1);
         if (config.include == undefined) {
             config.include = ['**/*.js'];
         }
-        for (let file1 of await glob(config.include, { cwd: packageOutput })) {
-            let fpath = pathJoin(packageOutput, file1);
+        const { simpleGlob } = await new Promise((resolve_3, reject_3) => { require(['pxseedBuildScript/util'], resolve_3, reject_3); });
+        for (let file1 of await simpleGlob(config.include, { cwd: packageOutput })) {
+            let fpath = path.join(packageOutput, file1);
             let finfo = await fs.stat(fpath);
             if (finfo.mtime.getTime() > status.lastSuccessBuildTime) {
+                console.info('addAsyncHook:', file1);
                 let source = new TextDecoder().decode(await fs.readFile(fpath));
                 let replacePlan = new JsSourceReplacePlan(source);
                 replacePlan.parsedAst = acorn.parse(source, { allowAwaitOutsideFunction: true, ecmaVersion: 'latest', allowReturnOutsideFunction: true });

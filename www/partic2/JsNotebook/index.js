@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/webutils", "partic2/pComponentUi/domui", "partic2/pxprpcClient/registry", "preact", "./workspace", "partic2/pComponentUi/window", "./misclib", "partic2/CodeRunner/CodeContext", "partic2/CodeRunner/RemoteCodeContext", "partic2/pComponentUi/workspace"], function (require, exports, webutils_1, domui_1, registry_1, React, workspace_1, window_1, misclib_1, CodeContext_1, RemoteCodeContext_1, workspace_2) {
+define(["require", "exports", "partic2/jsutils1/webutils", "partic2/pxprpcClient/registry", "preact", "./workspace", "partic2/pComponentUi/window", "./misclib", "partic2/CodeRunner/CodeContext", "partic2/CodeRunner/RemoteCodeContext", "partic2/pComponentUi/workspace"], function (require, exports, webutils_1, registry_1, React, workspace_1, window_1, misclib_1, CodeContext_1, RemoteCodeContext_1, workspace_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__name__ = void 0;
@@ -40,7 +40,7 @@ define(["require", "exports", "partic2/jsutils1/webutils", "partic2/pComponentUi
             webutils_1.DynamicPageCSSManager.PutCss('body', ['margin:0px']);
             let rpc = (0, webutils_1.GetUrlQueryVariable)('__rpc');
             await registry_1.persistent.load();
-            (0, domui_1.ReactRender)(React.createElement(MainView, null), domui_1.DomRootComponent);
+            (0, workspace_2.setBaseWindowView)(React.createElement(MainView, null));
         }
     })();
 });

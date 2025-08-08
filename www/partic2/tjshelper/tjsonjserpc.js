@@ -5,10 +5,17 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
     exports.tjsFrom = tjsFrom;
     exports.setup = setup;
     let tjsImpl = Symbol('tjs implemention');
-    async function tjsFrom(invoker) {
-        var jseio = invoker;
-        if (tjsImpl in invoker) {
-            return invoker[tjsImpl];
+    async function tjsFrom(remote) {
+        var jseio;
+        if (remote instanceof JseHelper__JseIo_1.Invoker) {
+            jseio = remote;
+        }
+        else {
+            jseio = new JseHelper__JseIo_1.Invoker();
+            await jseio.useClient(remote);
+        }
+        if (tjsImpl in jseio) {
+            return jseio[tjsImpl];
         }
         let platform = await jseio.platform();
         async function realpath(path) {
@@ -106,31 +113,43 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
         * @param path Path to the file.
         */
         async function stat(path) {
-            let [type, size, mtime] = await jseio.stat(path);
-            let r = {
-                dev: 0,
-                mode: 0o777,
-                nlink: 0,
-                uid: 0,
-                gid: 0,
-                rdev: 0,
-                ino: 0,
-                blksize: 0,
-                blocks: 0,
-                size: Number(size),
-                atim: new Date(Number(mtime)),
-                mtim: new Date(Number(mtime)),
-                ctim: new Date(Number(mtime)),
-                birthtim: new Date(Number(mtime)),
-                isBlockDevice: false,
-                isCharacterDevice: false,
-                isFIFO: false,
-                isSocket: false,
-                isSymbolicLink: false,
-                isDirectory: type === 'dir',
-                isFile: type === 'file'
-            };
-            return r;
+            try {
+                let [type, size, mtime] = await jseio.stat(path);
+                let r = {
+                    dev: 0,
+                    mode: 0o777,
+                    nlink: 0,
+                    uid: 0,
+                    gid: 0,
+                    rdev: 0,
+                    ino: 0,
+                    blksize: 0,
+                    blocks: 0,
+                    size: Number(size),
+                    atim: new Date(Number(mtime)),
+                    mtim: new Date(Number(mtime)),
+                    ctim: new Date(Number(mtime)),
+                    birthtim: new Date(Number(mtime)),
+                    isBlockDevice: false,
+                    isCharacterDevice: false,
+                    isFIFO: false,
+                    isSocket: false,
+                    isSymbolicLink: false,
+                    isDirectory: type === 'dir',
+                    isFile: type === 'file'
+                };
+                return r;
+            }
+            catch (err) {
+                if (err.message.includes('File not exists')) {
+                    let err2 = new Error(err.message);
+                    err2.code = 'ENOENT';
+                    throw err2;
+                }
+                else {
+                    throw err;
+                }
+            }
         }
         /**
         * Opens the file at the given path. Opening flags:
@@ -168,7 +187,7 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
         * @param options Options for making the directory.
         */
         async function mkdir(path, options) {
-            jseio.mkdir(path);
+            await jseio.mkdir(path);
         }
         /**
         * Copies the source file into the target.
@@ -427,7 +446,7 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
             listen, connect,
             __impl__: 'partic2/tjshelper/tjsonjserpc'
         };
-        invoker[tjsImpl] = tjsi;
+        jseio[tjsImpl] = tjsi;
         return tjsi;
     }
     async function setup(tjsObject) {

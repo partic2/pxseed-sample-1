@@ -1,7 +1,7 @@
 define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./domui"], function (require, exports, base_1, webutils_1, domui_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.cssAnimation = exports.DragController = exports.DraggableAndScalable = exports.TransformHelper = exports.PointTrace = void 0;
+    exports.cssAnimation = exports.ReactDragController = exports.DraggableAndScalable = exports.TransformHelper = exports.PointTrace = void 0;
     class PointTrace {
         constructor(opt) {
             this.opt = opt;
@@ -218,30 +218,39 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
     }
     exports.DraggableAndScalable = DraggableAndScalable;
-    class DragController {
+    class ReactDragController extends EventTarget {
         constructor() {
+            super(...arguments);
             this.dragged = {};
             this.positionInitialized = false;
+            this._ref = null;
             this.moved = false;
             this._moveTrace = new PointTrace({
                 onMove: (curr, start) => {
-                    this.dragged.newPos?.({ left: curr.x - start.x, top: curr.y - start.y });
-                    this.moved = true;
+                    this.dragged.newPos?.({ left: curr.x - start.x + this.moveStartPos.left, top: curr.y - start.y + this.moveStartPos.top });
+                    if (Math.abs(curr.x - start.x) + Math.abs(curr.y - start.y) > 5) {
+                        this.moved = true;
+                    }
                 }
             });
+            this.moveStartPos = { left: 0, top: 0 };
             this.trigger = {
                 onMouseDown: (ev) => {
-                    let { left, top } = this.dragged.curPos?.() ?? { left: 0, top: 0 };
-                    this._moveTrace.start({ x: ev.clientX - left, y: ev.clientY - top }, true);
+                    this.moveStartPos = this.dragged.curPos?.() ?? { left: 0, top: 0 };
+                    this._moveTrace.start({ x: ev.clientX, y: ev.clientY }, true);
                 },
                 onTouchStart: (ev) => {
-                    let { left, top } = this.dragged.curPos?.() ?? { left: 0, top: 0 };
-                    this._moveTrace.start({ x: ev.touches[0].clientX - left, y: ev.touches[0].clientY - top }, true);
+                    this.moveStartPos = this.dragged.curPos?.() ?? { left: 0, top: 0 };
+                    this._moveTrace.start({ x: ev.touches[0].clientX, y: ev.touches[0].clientY }, true);
                 }
             };
         }
         draggedRef(initPos) {
+            if (this._ref != null) {
+                return this._ref;
+            }
             let ref = new domui_1.ReactRefEx();
+            this._ref = ref;
             this.dragged.curPos = () => {
                 let elem = ref.current;
                 if (elem == null)
@@ -271,7 +280,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             return moved;
         }
     }
-    exports.DragController = DragController;
+    exports.ReactDragController = ReactDragController;
     exports.cssAnimation = {
         registerSimpleKeyframes: function (name, skf) {
             webutils_1.DynamicPageCSSManager.PutCss('@keyframes ' + name, [skf.map(v => v.percent + '% { ' + v.rule.join(';') + '} ').join('')]);

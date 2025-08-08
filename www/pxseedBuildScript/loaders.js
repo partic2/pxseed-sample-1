@@ -1,11 +1,17 @@
-define(["require", "exports", "fs/promises", "fs", "path", "tinyglobby", "./util"], function (require, exports, fs, fs_1, path_1, tinyglobby_1, util_1) {
+define(["require", "exports", "./util"], function (require, exports, util_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.pxseedBuiltinLoader = exports.outputDir = exports.sourceDir = void 0;
-    exports.sourceDir = (0, path_1.join)((0, path_1.dirname)((0, path_1.dirname)(__dirname)), 'source');
-    exports.outputDir = (0, path_1.join)((0, path_1.dirname)((0, path_1.dirname)(__dirname)), 'www');
+    exports.pxseedBuiltinLoader = exports.inited = exports.outputDir = exports.sourceDir = void 0;
+    exports.sourceDir = '';
+    exports.outputDir = '';
+    exports.inited = (async () => {
+        const { path, wwwroot } = await (0, util_1.getNodeCompatApi)();
+        exports.sourceDir = path.join(wwwroot, '..', 'source');
+        exports.outputDir = wwwroot;
+    })();
     exports.pxseedBuiltinLoader = {
         copyFiles: async function (dir, config) {
+            const { fs, path } = await (0, util_1.getNodeCompatApi)();
             let tplVar = {
                 sourceRoot: exports.sourceDir, outputRoot: exports.outputDir,
                 packageSource: dir, packageOutput: exports.outputDir + '/' + dir.substring(exports.sourceDir.length + 1)
@@ -21,9 +27,9 @@ define(["require", "exports", "fs/promises", "fs", "path", "tinyglobby", "./util
             for (let t1 of config.include) {
                 include.push(applyTemplate(t1, tplVar));
             }
-            for (let subpath of await (0, tinyglobby_1.glob)(include, { cwd: dir })) {
-                let dest = (0, path_1.join)(outDir, subpath);
-                let src = (0, path_1.join)(dir, subpath);
+            for (let subpath of await (0, util_1.simpleGlob)(include, { cwd: dir })) {
+                let dest = path.join(outDir, subpath);
+                let src = path.join(dir, subpath);
                 let needCopy = false;
                 try {
                     let dfile = await fs.stat(dest);
@@ -37,7 +43,7 @@ define(["require", "exports", "fs/promises", "fs", "path", "tinyglobby", "./util
                 }
                 if (needCopy) {
                     try {
-                        await fs.mkdir((0, path_1.dirname)(dest), { recursive: true });
+                        await fs.mkdir(path.join(dest, '..'), { recursive: true });
                     }
                     catch (e) { }
                     ;
@@ -46,13 +52,27 @@ define(["require", "exports", "fs/promises", "fs", "path", "tinyglobby", "./util
             }
         },
         typescript: async function (dir, config, status) {
+            const { fs, path } = await (0, util_1.getNodeCompatApi)();
+            let ts;
+            if (globalThis?.process?.versions?.node == undefined) {
+                //use non node typescript
+                if (!config.transpileOnly) {
+                    console.info('force use transpileOnly on non-node platform');
+                    config.transpileOnly = true;
+                }
+                const { getTypescriptModuleTjs } = await new Promise((resolve_1, reject_1) => { require(['partic2/packageManager/nodecompat'], resolve_1, reject_1); });
+                ts = await getTypescriptModuleTjs();
+                ts = ts.default ?? ts;
+            }
+            else {
+                ts = await new Promise((resolve_2, reject_2) => { require(['typescript'], resolve_2, reject_2); });
+                ts = ts.default ?? ts;
+            }
             if (config.transpileOnly === true) {
-                let ts = (await new Promise((resolve_1, reject_1) => { require(['typescript'], resolve_1, reject_1); }));
-                ts = (ts.default ?? ts);
                 let include = config.include ?? ["./**/*.ts", "./**/*.tsx"];
-                let files = await (0, tinyglobby_1.glob)(include, { cwd: dir });
+                let files = await (0, util_1.simpleGlob)(include, { cwd: dir });
                 for (let t1 of files) {
-                    let filePath = (0, path_1.join)(dir, t1);
+                    let filePath = path.join(dir, t1);
                     let fileInfo = await fs.stat(filePath);
                     let mtime = fileInfo.mtime.getTime();
                     let moduleName = dir.substring(exports.sourceDir.length + 1).replace(/\\/g, '/') + '/' + t1.replace(/.tsx?$/, '');
@@ -66,25 +86,25 @@ define(["require", "exports", "fs/promises", "fs", "path", "tinyglobby", "./util
                         else if (t1.endsWith('.tsx')) {
                             transpiled = ts.transpile(new TextDecoder().decode(await fs.readFile(filePath)), { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.AMD, esModuleInterop: false, jsx: ts.JsxEmit.React }, filePath, [], moduleName);
                         }
-                        let outputPath = (0, path_1.join)(exports.outputDir, dir.substring(exports.sourceDir.length + 1).replace(/\\/g, '/'), t1.replace(/.tsx?$/, '.js'));
-                        await fs.mkdir((0, path_1.dirname)(outputPath), { recursive: true });
+                        let outputPath = path.join(exports.outputDir, dir.substring(exports.sourceDir.length + 1).replace(/\\/g, '/'), t1.replace(/.tsx?$/, '.js'));
+                        await fs.mkdir(path.join(outputPath, '..'), { recursive: true });
                         await fs.writeFile(outputPath, new TextEncoder().encode(transpiled));
                     }
                 }
             }
             else {
-                let tscPath = (0, path_1.join)(exports.outputDir, 'node_modules', 'typescript', 'bin', 'tsc');
-                let sourceRootPath = dir.substring(exports.sourceDir.length + 1).split(path_1.sep).map(v => '..').join('/');
+                let tscPath = path.join(exports.outputDir, '..', 'npmdeps', 'node_modules', 'typescript', 'bin', 'tsc');
+                let sourceRootPath = dir.substring(exports.sourceDir.length + 1).split(/[\\/]/).map(v => '..').join('/');
                 let include = config.include ?? ["./**/*.ts", "./**/*.tsx"];
                 try {
-                    await fs.access((0, path_1.join)(dir, 'tsconfig.json'));
+                    await fs.access(path.join(dir, 'tsconfig.json'));
                 }
                 catch (err) {
                     if (err.code == 'ENOENT') {
                         let tsconfig = {
                             "compilerOptions": {
                                 "paths": {
-                                    "*": [`${sourceRootPath}/*`, `${sourceRootPath}/../www/node_modules/*`]
+                                    "*": [`${sourceRootPath}/*`, `${sourceRootPath}/../npmdeps/node_modules/*`]
                                 },
                             },
                             "extends": `${sourceRootPath}/tsconfig.base.json`,
@@ -93,16 +113,16 @@ define(["require", "exports", "fs/promises", "fs", "path", "tinyglobby", "./util
                         if (config.exclude != undefined) {
                             tsconfig.exclude = config.exclude;
                         }
-                        await fs.writeFile((0, path_1.join)(dir, 'tsconfig.json'), new TextEncoder().encode(JSON.stringify(tsconfig)));
+                        await fs.writeFile(path.join(dir, 'tsconfig.json'), new TextEncoder().encode(JSON.stringify(tsconfig)));
                     }
                     else {
                         throw err;
                     }
                 }
-                let files = await (0, tinyglobby_1.glob)(include, { cwd: dir });
+                let files = await (0, util_1.simpleGlob)(include, { cwd: dir });
                 let latestMtime = 0;
                 for (let t1 of files) {
-                    let fileInfo = await fs.stat((0, path_1.join)(dir, t1));
+                    let fileInfo = await fs.stat(path.join(dir, t1));
                     let mtime = fileInfo.mtime.getTime();
                     if (mtime > latestMtime)
                         latestMtime = mtime;
@@ -117,29 +137,34 @@ define(["require", "exports", "fs/promises", "fs", "path", "tinyglobby", "./util
             }
         },
         rollup: async function (dir, config) {
-            let rollup = (await new Promise((resolve_2, reject_2) => { require(['rollup'], resolve_2, reject_2); })).rollup;
-            let nodeResolve = (await new Promise((resolve_3, reject_3) => { require(['@rollup/plugin-node-resolve'], resolve_3, reject_3); })).default;
-            let commonjs = (await new Promise((resolve_4, reject_4) => { require(['@rollup/plugin-commonjs'], resolve_4, reject_4); })).default;
-            let json = (await new Promise((resolve_5, reject_5) => { require(['@rollup/plugin-json'], resolve_5, reject_5); })).default;
-            let terser = (await new Promise((resolve_6, reject_6) => { require(['@rollup/plugin-terser'], resolve_6, reject_6); })).default;
-            let replacer = (await new Promise((resolve_7, reject_7) => { require(['@rollup/plugin-replace'], resolve_7, reject_7); })).default;
+            const { fs, path } = await (0, util_1.getNodeCompatApi)();
+            if (globalThis?.process?.versions?.node == undefined) {
+                //TODO: use cdn https://cdnjs.cloudflare.com/ and wrap amd custom?
+                console.info('rollup are not supported yet on non-node platform');
+            }
             for (let i1 = 0; i1 < config.entryModules.length && i1 < 0xffff; i1++) {
                 let mod = config.entryModules[i1];
                 let existed = false;
                 try {
-                    await fs.access((0, path_1.join)(exports.outputDir, mod + '.js'), fs_1.constants.R_OK);
+                    await fs.access(path.join(exports.outputDir, mod + '.js'));
                     existed = true;
                 }
                 catch (e) {
                     existed = false;
                 }
                 if (!existed) {
+                    let rollup = (await new Promise((resolve_3, reject_3) => { require(['rollup'], resolve_3, reject_3); })).rollup;
+                    let nodeResolve = (await new Promise((resolve_4, reject_4) => { require(['@rollup/plugin-node-resolve'], resolve_4, reject_4); })).default;
+                    let commonjs = (await new Promise((resolve_5, reject_5) => { require(['@rollup/plugin-commonjs'], resolve_5, reject_5); })).default;
+                    let json = (await new Promise((resolve_6, reject_6) => { require(['@rollup/plugin-json'], resolve_6, reject_6); })).default;
+                    let terser = (await new Promise((resolve_7, reject_7) => { require(['@rollup/plugin-terser'], resolve_7, reject_7); })).default;
+                    let replacer = (await new Promise((resolve_8, reject_8) => { require(['@rollup/plugin-replace'], resolve_8, reject_8); })).default;
                     console.info(`create bundle for ${mod}`);
                     let plugins = [
-                        nodeResolve({ modulePaths: [(0, path_1.join)(exports.outputDir, 'node_modules')], browser: true }),
+                        nodeResolve({ modulePaths: [path.join(exports.outputDir, '..', 'npmdeps', 'node_modules')], browser: true, preferBuiltins: false }),
                         commonjs(),
                         json(),
-                        //Slow the rollup, But "React" need this.
+                        //Slow the rollup, But some library need this.
                         replacer({
                             'process.env.NODE_ENV': JSON.stringify('production')
                         })
@@ -151,24 +176,20 @@ define(["require", "exports", "fs/promises", "fs", "path", "tinyglobby", "./util
                         input: [mod],
                         plugins,
                         external: (source, importer, isResolved) => {
-                            if (globalThis.requirejs.__nodeenv.require.resolve.paths(source) == null) {
+                            // TODO:How to handle builtin node module?
+                            /*
+                            if((globalThis as any).requirejs.__nodeenv.require.resolve.paths(source)==null){
                                 return true;
                             }
-                            else if (source.endsWith('/')) {
-                                //Some import like 'process/', Don't make external.
-                                return true;
-                            }
-                            if (source != mod && !/^[\/\.]/.test(source) && !/^[a-zA-Z]:\\/.test(source)) {
-                                if (!config.entryModules.includes(source)) {
-                                    config.entryModules.push(source);
-                                }
+                            */
+                            if (source != mod && config.entryModules.includes(source)) {
                                 return true;
                             }
                             return false;
                         }
                     });
                     await task.write({
-                        file: (0, path_1.join)(exports.outputDir, mod + '.js'),
+                        file: path.join(exports.outputDir, mod + '.js'),
                         format: 'amd'
                     });
                 }

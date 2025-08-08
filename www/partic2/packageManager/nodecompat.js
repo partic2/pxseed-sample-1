@@ -2,6 +2,8 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.pathCompat = exports.NodeFsAdapter = void 0;
+    exports.buildNodeCompatApiTjs = buildNodeCompatApiTjs;
+    exports.getTypescriptModuleTjs = getTypescriptModuleTjs;
     //node compatible fs, To used in isomorphic-git
     class NodeFsCompatDirent {
         constructor(fileType, name, path) {
@@ -45,9 +47,19 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         get birthtimeMs() { return this.birthtime.getTime(); }
         ;
     }
+    function makeENOENT() {
+        let err = new Error('File not found.');
+        err.code = 'ENOENT';
+        return err;
+    }
     class NodeFsAdapter {
         constructor(wrapped) {
             this.wrapped = wrapped;
+            this.access = (async (path, mode) => {
+                if (await this.wrapped.filetype(path) === 'none') {
+                    throw makeENOENT();
+                }
+            });
             this.readFile = (async (path, options) => {
                 let data = await this.wrapped.readAll(path);
                 if (data == null) {
@@ -85,7 +97,6 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                 }
             });
             this.mkdir = (async (path2, opt) => {
-                let result = await this.wrapped.listdir(path2);
                 this.wrapped.mkdir(path2);
             });
             this.rmdir = (async (path) => {
@@ -96,10 +107,19 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                     throw new Error('rmdir failed, directory not empty.');
                 }
             });
+            this.rm = (async (path, options) => {
+                if (options.recursive || await this.wrapped.filetype(path) == 'file') {
+                    await this.wrapped.delete2(path);
+                }
+                else {
+                    await this.rmdir(path);
+                }
+            });
             this.stat = (async (path) => {
                 let sr = await this.wrapped.stat(path);
                 let nst = new NodeFsCompatStats(await this.wrapped.filetype(path), path, path);
                 Object.assign(nst, sr);
+                return nst;
             });
             this.lstat = (async (path) => {
                 return await this.stat(path);
@@ -111,6 +131,13 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                 throw new Error('Not implemented');
             });
             this.chmod = (async (path, mode) => {
+            });
+            this.copyFile = (async (src, dest, mode) => {
+                let data = await this.wrapped.readAll(src);
+                if (data == null) {
+                    throw makeENOENT();
+                }
+                await this.wrapped.writeAll(dest, data);
             });
         }
     }
@@ -195,8 +222,8 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             return path.charAt(0) === '/';
         }
         // posix version
-        function join() {
-            var paths = Array.prototype.slice.call(arguments, 0);
+        function join(...pathParts) {
+            var paths = Array.prototype.slice.call(pathParts, 0);
             return normalize(paths.filter(function (p, index) {
                 if (typeof p !== 'string') {
                     throw new TypeError('Arguments to path.join must be strings');
@@ -279,5 +306,76 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             resolve: resolve
         };
     })();
+    async function buildNodeCompatApiTjs() {
+        const { buildTjs, XplatjDefaultRpcName } = await new Promise((resolve_1, reject_1) => { require(['partic2/tjshelper/tjsbuilder'], resolve_1, reject_1); });
+        const tjs = await buildTjs();
+        const { TjsSfs } = await new Promise((resolve_2, reject_2) => { require(['partic2/CodeRunner/JsEnviron'], resolve_2, reject_2); });
+        const fs = new TjsSfs();
+        fs.from(tjs);
+        await fs.ensureInited();
+        const { NodeFsAdapter } = await new Promise((resolve_3, reject_3) => { require(['partic2/packageManager/nodecompat'], resolve_3, reject_3); });
+        const nfs = new NodeFsAdapter(fs);
+        const { ServerHostWorker1RpcName, getPersistentRegistered, getAttachedRemoteRigstryFunction } = await new Promise((resolve_4, reject_4) => { require(['partic2/pxprpcClient/registry'], resolve_4, reject_4); });
+        let wwwroot = '';
+        const serverWorker1 = await getPersistentRegistered(ServerHostWorker1RpcName);
+        if (serverWorker1 != undefined) {
+            const remoteJsRpc = await getAttachedRemoteRigstryFunction(await serverWorker1.ensureConnected());
+            const webutilsMod = await remoteJsRpc.loadModule('partic2/jsutils1/webutils');
+            wwwroot = await remoteJsRpc.callJsonFunction(webutilsMod, 'getWWWRoot', []);
+            wwwroot = wwwroot.replace(/\\/g, '/');
+            if (wwwroot.startsWith('/')) {
+                wwwroot = '/' + wwwroot;
+            }
+            webutilsMod.free();
+        }
+        else {
+            if (await getPersistentRegistered(XplatjDefaultRpcName) != undefined) {
+                let { pathname } = new URL((0, webutils_1.getWWWRoot)());
+                if (pathname.startsWith('/localFile')) {
+                    wwwroot = pathname.replace(/^\/localFile/, '');
+                }
+            }
+        }
+        return { fs: { promises: nfs }, 'fs/promises': nfs, wwwroot: wwwroot, path: exports.pathCompat };
+    }
+    let cachedTypescriptModule = null;
+    async function getTypescriptModuleTjs() {
+        if (cachedTypescriptModule != null) {
+            return cachedTypescriptModule;
+        }
+        let importTyescriptSucc = false;
+        try {
+            let ts = await base_1.requirejs.promiseRequire('typescript');
+            importTyescriptSucc = true;
+            cachedTypescriptModule = ts.default ?? ts;
+            return cachedTypescriptModule;
+        }
+        catch (err) {
+            await Promise.all(Object.keys(await base_1.requirejs.getFailed()).map((t1) => base_1.requirejs.undef(t1)));
+        }
+        try {
+            let ts = await base_1.requirejs.promiseRequire('partic2/packageManager/typescript4tjs');
+            importTyescriptSucc = true;
+            cachedTypescriptModule = ts.default ?? ts;
+            return cachedTypescriptModule;
+        }
+        catch (err) {
+            await Promise.all(Object.keys(await base_1.requirejs.getFailed()).map((t1) => base_1.requirejs.undef(t1)));
+        }
+        {
+            let downloadTs = await fetch('https://cdnjs.cloudflare.com/ajax/libs/typescript/5.8.3/typescript.min.js');
+            (0, base_1.assert)(downloadTs.ok);
+            let tstxt = await downloadTs.text();
+            tstxt = "define(['exports','module'],function(exports,module){" + tstxt + "})";
+            const { fs, wwwroot, path } = await buildNodeCompatApiTjs();
+            await fs.promises.writeFile(path.join(wwwroot, 'partic2', 'packageManager', 'typescript4tjs.js'), new TextEncoder().encode(tstxt));
+        }
+        {
+            let ts = await base_1.requirejs.promiseRequire('partic2/packageManager/typescript4tjs');
+            importTyescriptSucc = true;
+            cachedTypescriptModule = ts.default ?? ts;
+            return cachedTypescriptModule;
+        }
+    }
 });
 //# sourceMappingURL=nodecompat.js.map

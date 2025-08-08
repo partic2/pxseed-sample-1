@@ -1,18 +1,23 @@
 define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./transform", "partic2/pxseedMedia1/index1"], function (require, exports, React, domui_1, base_1, webutils_1, transform_1, index1_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.WindowComponent = exports.css = void 0;
+    exports.rootWindowContainer = exports.WindowComponent = exports.css = void 0;
+    exports.ensureRootWindowContainer = ensureRootWindowContainer;
     exports.appendFloatWindow = appendFloatWindow;
     exports.removeFloatWindow = removeFloatWindow;
     exports.alert = alert;
     exports.confirm = confirm;
     exports.prompt = prompt;
     exports.css = {
-        windowContainer: (0, base_1.GenerateRandomString)(),
-        defaultWindowClass: (0, base_1.GenerateRandomString)()
+        defaultWindowDiv: (0, base_1.GenerateRandomString)(),
+        borderlessWindowDiv: (0, base_1.GenerateRandomString)(),
+        defaultContentDiv: (0, base_1.GenerateRandomString)(),
+        defaultTitleStyle: (0, base_1.GenerateRandomString)(),
     };
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.windowContainer, ['max-height:100vh', 'max-width:100vw']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultWindowClass, ['background-color:white', 'flex-grow:1']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultWindowDiv, ['max-height:100vh', 'max-width:100vw', 'border:solid black 1px']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.borderlessWindowDiv, ['max-height:100vh', 'max-width:100vw']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultContentDiv, ['flex-grow:1', 'background-color:white', 'overflow:auto']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultTitleStyle, ['background-color:black', 'color:white']);
     class WindowComponent extends React.Component {
         static getDerivedStateFromError(error) {
             return { errorOccured: error };
@@ -23,7 +28,6 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
                 container: new domui_1.ReactRefEx(),
                 contentDiv: new domui_1.ReactRefEx()
             };
-            this.fixContentSize = false;
             this.__wndMove = new transform_1.PointTrace({
                 onMove: (curr, start) => {
                     this.setState({ layout: { ...this.state.layout, left: curr.x - start.x, top: curr.y - start.y } });
@@ -54,6 +58,8 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
                     evt.preventDefault();
                 }
             };
+            this.__initialLayout = false;
+            this.beforeMaximizeSize = null;
             this.setState({ activeTime: -1, folded: false, layout: { left: 0, top: 0 }, errorOccured: null });
         }
         async makeCenter() {
@@ -80,8 +86,8 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
             })();
             let width = this.rref.container.current?.scrollWidth ?? 0;
             let height = this.rref.container.current?.scrollHeight ?? 0;
-            let wndWidth = window.innerWidth;
-            let wndHeight = window.innerHeight;
+            let wndWidth = (exports.rootWindowContainer?.offsetWidth) ?? 0;
+            let wndHeight = (exports.rootWindowContainer?.offsetHeight) ?? 0;
             if (width > wndWidth - 5)
                 width = wndWidth - 5;
             if (height > wndHeight - 5)
@@ -105,17 +111,22 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
             }
         }
         active() {
-            if (this.state.activeTime < 0 && ['initial center', 'keep center'].indexOf(this.props.position) >= 0) {
-                this.setState({ activeTime: (0, base_1.GetCurrentTime)().getTime() }, () => {
-                    this.makeCenter();
-                });
-            }
-            else {
-                this.setState({ activeTime: (0, base_1.GetCurrentTime)().getTime() });
-            }
+            this.setState({ activeTime: (0, base_1.GetCurrentTime)().getTime() }, () => {
+                if (!this.__initialLayout) {
+                    if (['initial center', 'keep center'].indexOf(this.props.position) >= 0) {
+                        this.makeCenter();
+                    }
+                    this.__initialLayout = true;
+                }
+            });
+            globalWindowsList.current?.forceUpdate();
         }
         hide() {
             this.setState({ activeTime: -1 });
+            globalWindowsList.current?.forceUpdate();
+        }
+        isHidden() {
+            return this.state.activeTime < 0 && !this.props.keepTop;
         }
         isFolded() {
             return this.state.folded;
@@ -124,7 +135,7 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
             this.setState({ folded: v });
         }
         renderTitle() {
-            return React.createElement("div", { className: domui_1.css.flexRow, style: { borderBottom: 'solid black 1px', alignItems: 'center', backgroundColor: '#f88' } },
+            return React.createElement("div", { className: [domui_1.css.flexRow, exports.css.defaultTitleStyle].join(' '), style: { alignItems: 'center' } },
                 React.createElement("div", { style: { flexGrow: '1', cursor: 'move', userSelect: 'none' }, onMouseDown: this.__onTitleMouseDownHandler, onTouchStart: this.__onTitleTouchDownHandler }, (this.props.title ?? '').replace(/ /g, String.fromCharCode(160))),
                 "\u00A0",
                 this.renderIcon(this.props.maximize, () => this.onMaximizeClick()),
@@ -144,13 +155,16 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
             this.props.onClose?.();
         }
         async onMaximizeClick() {
-            if ((this.state.layout.width ?? 0) >= window.innerWidth - 1 && (this.state.layout.height ?? 0) >= window.innerHeight - 1) {
-                this.setState({ layout: { left: 0, top: 0, width: undefined, height: undefined } });
-                await new Promise(resolve => requestAnimationFrame(resolve));
-                this.makeCenter();
+            if (this.beforeMaximizeSize != null) {
+                this.setState({ layout: { ...this.beforeMaximizeSize } });
+                this.beforeMaximizeSize = null;
             }
             else {
-                this.setState({ layout: { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight } });
+                this.beforeMaximizeSize = { ...this.state.layout };
+                let containerDiv = await this.rref.container.waitValid();
+                this.setState({ layout: { left: 0, top: 0,
+                        width: containerDiv.offsetParent.offsetWidth,
+                        height: containerDiv.offsetParent.offsetHeight } });
             }
         }
         doRelayout() {
@@ -160,47 +174,57 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
         }
         renderWindowMain() {
             let windowDivStyle = {
-                border: 'solid black 1px',
                 boxSizing: 'border-box',
                 position: 'absolute',
                 left: this.state.layout.left + 'px',
-                top: this.state.layout.top + 'px'
+                top: this.state.layout.top + 'px',
+                pointerEvents: 'auto'
             };
-            if (this.props.position === 'static') {
-                windowDivStyle.position = 'static';
-            }
             if (this.state.layout.width != undefined && !this.state.folded) {
                 windowDivStyle.width = this.state.layout.width + 'px';
             }
             if (this.state.layout.height != undefined && !this.state.folded) {
                 windowDivStyle.height = this.state.layout.height + 'px';
             }
+            if (this.props.position == 'fill') {
+                windowDivStyle.width = '100%';
+                windowDivStyle.height = '100%';
+            }
+            if (this.props.windowDivInlineStyle != undefined) {
+                Object.assign(windowDivStyle, this.props.windowDivInlineStyle);
+            }
             let contentDivStyle = {};
             if (this.state.folded) {
                 contentDivStyle.display = 'none';
             }
-            return React.createElement("div", { className: [domui_1.css.flexColumn, exports.css.windowContainer].join(' '), style: windowDivStyle, ref: this.rref.container, onMouseDown: () => {
-                    if (this.state.activeTime >= 0)
+            if (this.props.contentDivInlineStyle != undefined) {
+                Object.assign(contentDivStyle, this.props.contentDivInlineStyle);
+            }
+            return React.createElement("div", { className: [domui_1.css.flexColumn, this.props.windowDivClassName ?? exports.css.defaultWindowDiv].join(' '), style: windowDivStyle, ref: this.rref.container, onMouseDown: () => {
+                    if (this.state.activeTime >= 0 && !this.props.disablePassiveActive)
                         this.setState({ activeTime: (0, base_1.GetCurrentTime)().getTime() });
                 }, onTouchStart: () => {
-                    if (this.state.activeTime >= 0)
+                    if (this.state.activeTime >= 0 && !this.props.disablePassiveActive)
                         this.setState({ activeTime: (0, base_1.GetCurrentTime)().getTime() });
                 } },
-                this.renderTitle(),
+                this.props.noTitleBar ? null : this.renderTitle(),
                 [
-                    React.createElement("div", { style: { overflow: 'auto', ...contentDivStyle }, className: this.props.windowClassName ?? exports.css.defaultWindowClass, ref: this.rref.contentDiv }, this.state.errorOccured == null ? this.props.children : React.createElement("pre", { style: { backgroundColor: 'white', color: 'black' } },
+                    React.createElement("div", { style: { ...contentDivStyle }, className: [this.props.contentDivClassName ?? exports.css.defaultContentDiv].join(' '), ref: this.rref.contentDiv }, this.state.errorOccured == null ? this.props.children : React.createElement("pre", { style: { backgroundColor: 'white', color: 'black' } },
                         this.state.errorOccured.message,
                         this.state.errorOccured.stack)),
-                    this.state.folded ? null : React.createElement("img", { src: (0, index1_1.getIconUrl)('arrow-down-right.svg'), style: {
+                    (this.state.folded || this.props.noResizeHandle || this.props.position == 'fill') ? null : React.createElement("img", { src: (0, index1_1.getIconUrl)('arrow-down-right.svg'), style: {
                             position: 'absolute', cursor: 'nwse-resize',
                             right: '0px', bottom: '0px',
                             backgroundColor: 'white'
                         }, onMouseDown: this.__onResizeIconMouseDownHandler, onTouchStart: this.__onResizeIconTouchDownHandler, width: "12", height: "12" })
                 ]);
         }
+        componentDidUpdate(previousProps, previousState, snapshot) {
+            this.props.onComponentDidUpdate?.();
+        }
         render(props, state, context) {
-            if (this.props.position === 'static') {
-                return React.createElement("div", null, this.renderWindowMain());
+            if (this.props.keepTop) {
+                return React.createElement("div", { className: domui_1.css.overlayLayer }, this.renderWindowMain());
             }
             else {
                 return React.createElement(domui_1.FloatLayerComponent, { activeTime: this.state.activeTime, onLayout: () => this.doRelayout() }, this.renderWindowMain());
@@ -216,18 +240,37 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
         title: 'untitled',
         position: 'initial center'
     };
-    let floatWindowContainer = null;
-    function ensureFloatWindowContainer() {
-        if (floatWindowContainer == null) {
-            floatWindowContainer = document.createElement('div');
-            floatWindowContainer.style.position = 'absolute';
-            floatWindowContainer.style.left = '0px';
-            floatWindowContainer.style.top = '0px';
-            document.body.appendChild(floatWindowContainer);
+    exports.rootWindowContainer = null;
+    function ensureRootWindowContainer() {
+        if (exports.rootWindowContainer == null) {
+            let div = new domui_1.DomDivComponent();
+            exports.rootWindowContainer = div.getDomElement();
+            exports.rootWindowContainer.style.position = 'absolute';
+            exports.rootWindowContainer.style.left = '0px';
+            exports.rootWindowContainer.style.top = '0px';
+            exports.rootWindowContainer.style.width = '100vw';
+            exports.rootWindowContainer.style.height = '100vh';
+            domui_1.DomRootComponent.addChild(div);
+            (0, domui_1.ReactRender)(React.createElement(WindowsList, { ref: globalWindowsList }), exports.rootWindowContainer);
         }
-        return floatWindowContainer;
+        return exports.rootWindowContainer;
     }
     let floatWindowVNodes = [];
+    class WindowsList extends React.Component {
+        constructor() {
+            super(...arguments);
+            this.windowActiveTimeCompare = (t1, t2) => {
+                let t3 = t1.current?.state?.activeTime ?? 0;
+                let t4 = t2.current?.state?.activeTime ?? 0;
+                return t3 - t4;
+            };
+        }
+        render(props, state, context) {
+            floatWindowVNodes.sort((t1, t2) => this.windowActiveTimeCompare(t1.ref, t2.ref));
+            return floatWindowVNodes;
+        }
+    }
+    let globalWindowsList = new domui_1.ReactRefEx();
     function appendFloatWindow(window, active) {
         active = active ?? true;
         let ref2 = new domui_1.ReactRefEx().forward([window.ref].filter(v => v != undefined));
@@ -235,16 +278,17 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
         if (window.key == undefined) {
             window.key = (0, base_1.GenerateRandomString)();
         }
-        ensureFloatWindowContainer();
+        ensureRootWindowContainer();
+        globalWindowsList.current?.forceUpdate();
         floatWindowVNodes.push(window);
-        (0, domui_1.ReactRender)(floatWindowVNodes, floatWindowContainer);
         if (active) {
-            ref2.waitValid().then((v) => v.active());
+            ref2.waitValid().then((v) => v.active?.());
         }
     }
     function removeFloatWindow(window) {
         new base_1.ArrayWrap2(floatWindowVNodes).removeFirst(v => v === window);
-        (0, domui_1.ReactRender)(floatWindowVNodes, floatWindowContainer);
+        ensureRootWindowContainer();
+        globalWindowsList.current?.forceUpdate();
     }
     let i18n = {
         caution: 'caution',
@@ -259,7 +303,7 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
     async function alert(message, title) {
         let result = new base_1.future();
         let floatWindow1 = React.createElement(WindowComponent, { key: (0, base_1.GenerateRandomString)(), title: title ?? i18n.caution, onClose: () => result.setResult(null) },
-            React.createElement("div", { style: { backgroundColor: '#FFF', minWidth: Math.min(window.innerWidth - 10, 300) } },
+            React.createElement("div", { style: { backgroundColor: '#FFF', minWidth: Math.min((exports.rootWindowContainer?.offsetWidth) ?? 0 - 10, 300) } },
                 message,
                 React.createElement("div", { className: domui_1.css.flexRow },
                     React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult(null), value: i18n.ok }))));
@@ -270,7 +314,7 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
     async function confirm(message, title) {
         let result = new base_1.future();
         let floatWindow1 = React.createElement(WindowComponent, { key: (0, base_1.GenerateRandomString)(), title: title ?? i18n.caution, onClose: () => result.setResult('cancel') },
-            React.createElement("div", { style: { backgroundColor: '#FFF', minWidth: Math.min(window.innerWidth - 10, 300) } },
+            React.createElement("div", { style: { backgroundColor: '#FFF', minWidth: Math.min((exports.rootWindowContainer?.offsetWidth) ?? 0 - 10, 300) } },
                 message,
                 React.createElement("div", { className: domui_1.css.flexRow },
                     React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult('ok'), value: i18n.ok }),

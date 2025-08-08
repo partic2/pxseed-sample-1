@@ -4,6 +4,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pxprpcClient/reg
     exports.__name__ = void 0;
     exports.cleanWWW = cleanWWW;
     exports.ensureCodeUpdated = ensureCodeUpdated;
+    exports.getServerWWWRoot = getServerWWWRoot;
     exports.processDirectoryContainFile = processDirectoryContainFile;
     let servShell = null;
     exports.__name__ = 'partic2/packageManager/misc';
@@ -87,6 +88,15 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pxprpcClient/reg
             }
         }
     }
+    async function getServerWWWRoot() {
+        if (globalThis.process?.versions?.node != undefined) {
+            return (0, webutils_1.getWWWRoot)();
+        }
+        else {
+            let misc = await remoteModule.misc.get();
+            return await misc.getServerWWWRoot();
+        }
+    }
     async function processDirectoryContainFile(file) {
         if (globalThis.process?.versions?.node != undefined) {
             let { dirname, join } = await new Promise((resolve_7, reject_7) => { require(['path'], resolve_7, reject_7); });
@@ -104,10 +114,12 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pxprpcClient/reg
                 catch (e) {
                 }
             }
+            let pkgName = null;
             if (pkgPath != null) {
                 await processDirectory(pkgPath);
+                pkgName = pkgPath.substring(sourceDir.length + 1).replace(/\\/g, '/');
             }
-            return { sourceRoot: sourceDir, outputRoot: join(dirname(sourceDir), 'www') };
+            return { sourceRoot: sourceDir, outputRoot: join(dirname(sourceDir), 'www'), pkgName };
         }
         else {
             let misc = await remoteModule.misc.get();

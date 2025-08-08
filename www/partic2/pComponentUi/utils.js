@@ -3,28 +3,36 @@ define(["require", "exports"], function (require, exports) {
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.text2html = text2html;
     exports.docNode2text = docNode2text;
-    exports.docNodePositionFromTextOffset = docNodePositionFromTextOffset;
     exports.GetCookieNamed = GetCookieNamed;
     exports.PutCookie = PutCookie;
     function text2html(src) {
-        let text2 = src.replace(/[<>&"\u0020]/g, function (c) {
-            return { '<': '&lt;', '>': '&gt;', '&': '&amp', '"': '&quot;', '\u0020': '\u00a0' }[c] ?? '';
-        }).replace(/\n/g, '<br/>');
-        return text2;
+        let lines = src.split('\n').map(t1 => t1.replace(/[<>&"\u0020]/g, function (c) {
+            return { '<': '&lt;', '>': '&gt;', '&': '&amp', '"': '&quot;', '\u0020': '&nbsp;' }[c] ?? '';
+        }));
+        return lines.map(t1 => '<div>' + ((t1 === '') ? '<br/>' : t1) + '</div>').join('');
     }
     function docNode2text(node) {
         let walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
         let textParts = [];
         while (walker.nextNode()) {
-            if (walker.currentNode instanceof HTMLDivElement || walker.currentNode instanceof HTMLBRElement || walker.currentNode instanceof HTMLParagraphElement) {
-                if (walker.currentNode instanceof HTMLBRElement && walker.currentNode.parentNode.childNodes.length == 1) {
-                    // only one br in div, ignored.
-                }
+            if (walker.currentNode instanceof HTMLDivElement || walker.currentNode instanceof HTMLParagraphElement) {
                 if (walker.currentNode.previousSibling == null) {
-                    // The first block element, ignored.
+                    textParts.push({ node: walker.currentNode, text: '' });
+                }
+                else if (walker.currentNode.previousSibling instanceof HTMLBRElement) {
+                    textParts.push({ node: walker.currentNode, text: '' });
                 }
                 else {
+                    textParts.push({ node: 'phony', text: '\n' });
+                    textParts.push({ node: walker.currentNode, text: '' });
+                }
+            }
+            else if (walker.currentNode instanceof HTMLBRElement) {
+                if (walker.currentNode.previousSibling != null) {
                     textParts.push({ node: walker.currentNode, text: '\n' });
+                }
+                else {
+                    textParts.push({ node: walker.currentNode, text: '' });
                 }
             }
             else if (walker.currentNode instanceof Text) {
@@ -34,44 +42,64 @@ define(["require", "exports"], function (require, exports) {
                     if (prev instanceof HTMLDivElement || prev instanceof HTMLParagraphElement) {
                         textData += '\n';
                     }
-                    else if (prev instanceof Text) {
-                        textData += ' ';
-                    }
                 }
-                //When paste, a redundancy space will be append after text.
-                let next = walker.currentNode.nextSibling;
-                if (textData == ' ' && (next == null || next instanceof HTMLDivElement || next instanceof HTMLParagraphElement)) {
+                if (textData == ' ') {
                     textData = '';
                 }
                 else {
+                    //trim charCode(32) and THEN replace charCode(160)
                     textData += walker.currentNode.data.replace(/\n|(^ +)|( +$)/g, '').replace(/\u00a0/g, ' ');
                 }
-                //trim charCode(32) and THEN replace charCode(160)
                 textParts.push({ node: walker.currentNode,
                     text: textData });
             }
         }
-        return { textParts, concat: function () { return this.textParts.map(v => v.text).join(''); } };
-    }
-    function docNodePositionFromTextOffset(node, textOffset) {
-        let { textParts } = docNode2text(node);
-        let offset = 0;
-        for (let t1 = 0; t1 < textParts.length; t1++) {
-            let nextOffset = offset + textParts[t1].text.length;
-            if (nextOffset >= textOffset) {
-                //need verify
-                if (textParts[t1].node instanceof Text) {
-                    return { node: textParts[t1].node, offset: textOffset - offset };
+        return { textParts, node,
+            concat: function () { return this.textParts.map(v => v.text).join(''); },
+            nodeFromTextOffset(textOffset) {
+                let offset = 0;
+                for (let t1 = 0; t1 < this.textParts.length; t1++) {
+                    let nextOffset = offset + this.textParts[t1].text.length;
+                    let curNode = this.textParts[t1].node;
+                    if (nextOffset >= textOffset && curNode !== 'phony') {
+                        if (curNode instanceof Text) {
+                            return { node: curNode, offset: textOffset - offset };
+                        }
+                        else {
+                            return { node: curNode, offset: 0 };
+                        }
+                    }
+                    else {
+                        offset = nextOffset;
+                    }
                 }
-                else {
-                    return { node: textParts[t1].node, offset: 0 };
+                return { node: null, offset: -1 };
+            },
+            textOffsetFromNode(node, offset) {
+                if (this.node == node && offset == 0) {
+                    return 0;
                 }
+                if (!(node instanceof Text) && offset != 0) {
+                    node = node.childNodes.item(offset);
+                    offset = 0;
+                }
+                let offset2 = 0;
+                for (let t1 = 0; t1 < this.textParts.length; t1++) {
+                    let part = textParts[t1];
+                    if (part.node != node) {
+                        offset2 += part.text.length;
+                    }
+                    else if (part.node instanceof Text) {
+                        offset2 += offset;
+                        break;
+                    }
+                    else {
+                        break;
+                    }
+                }
+                return offset2;
             }
-            else {
-                offset = nextOffset;
-            }
-        }
-        return { node: null, offset: -1 };
+        };
     }
     async function GetCookieNamed(name) {
         if (document.cookie.length > 0) {

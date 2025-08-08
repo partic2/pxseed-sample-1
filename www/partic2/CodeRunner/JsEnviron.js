@@ -2,6 +2,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.installedRequirejsResourceProvider = exports.DirAsRootFS = exports.NodeSimpleFileSystem = exports.defaultFileSystem = exports.LocalWindowSFS = exports.TjsSfs = void 0;
+    exports.getSimpleFileSystemFromPxprpc = getSimpleFileSystemFromPxprpc;
     exports.ensureDefaultFileSystem = ensureDefaultFileSystem;
     exports.getFileSystemReadableStream = getFileSystemReadableStream;
     exports.getFileSysteWritableStream = getFileSysteWritableStream;
@@ -136,7 +137,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
         async mkdir(path) {
             path = this.pathConvert(path);
-            await this.impl.makeDir(path);
+            await this.impl.makeDir(path, { recursive: true });
         }
         async rename(path, newPath) {
             path = this.pathConvert(path);
@@ -190,6 +191,20 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
     }
     exports.TjsSfs = TjsSfs;
+    async function getSimpleFileSystemFromPxprpc(pxprpc) {
+        //check if jseio is supported
+        let checkFunc = await pxprpc.getFunc('JseHelper.JseIo.open');
+        if (checkFunc != null) {
+            checkFunc.free();
+            let { tjsFrom } = await new Promise((resolve_2, reject_2) => { require(['partic2/tjshelper/tjsonjserpc'], resolve_2, reject_2); });
+            let { Invoker } = await new Promise((resolve_3, reject_3) => { require(['partic2/pxprpcBinding/JseHelper__JseIo'], resolve_3, reject_3); });
+            let inv = new Invoker();
+            await inv.useClient(pxprpc);
+            let fs = new TjsSfs();
+            fs.from(await tjsFrom(inv));
+            return fs;
+        }
+    }
     class LWSFSInternalError extends Error {
     }
     class LocalWindowSFS {
@@ -641,8 +656,8 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         async ensureInited() {
             await this.mtx.lock();
             try {
-                this.nodefs = await new Promise((resolve_2, reject_2) => { require(['fs/promises'], resolve_2, reject_2); });
-                this.nodepath = await new Promise((resolve_3, reject_3) => { require(['path'], resolve_3, reject_3); });
+                this.nodefs = await new Promise((resolve_4, reject_4) => { require(['fs/promises'], resolve_4, reject_4); });
+                this.nodepath = await new Promise((resolve_5, reject_5) => { require(['path'], resolve_5, reject_5); });
                 try {
                     await this.nodefs.stat('c:\\');
                     this.winbasepath = true;
@@ -712,6 +727,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             return webutils_2.path.dirname((0, webutils_1.getWWWRoot)().replace(/\\/, '/'));
         }
         async read(path, offset, buf) {
+            path = this.pathConvert(path);
             let fh = await this.nodefs.open(path, 'r+');
             try {
                 let r = await fh.read(buf, 0, buf.byteLength, offset);
@@ -722,6 +738,11 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             }
         }
         async write(path, offset, buf) {
+            path = this.pathConvert(path);
+            let parent = this.nodepath.dirname(path);
+            if (await this.filetype(parent) === 'none') {
+                this.mkdir(parent);
+            }
             let fh = await this.nodefs.open(path, 'r+');
             try {
                 let r = await fh.write(buf, 0, buf.byteLength, offset);
@@ -732,9 +753,11 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             }
         }
         async stat(path) {
+            path = this.pathConvert(path);
             return this.nodefs.stat(path);
         }
         async truncate(path, newSize) {
+            path = this.pathConvert(path);
             await this.nodefs.truncate(path, newSize);
         }
     }
@@ -910,7 +933,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                 _ENV[k1] = v1;
             }
         };
-        let { CustomFunctionParameterCompletionSymbol, importNameCompletion, makeFunctionCompletionWithFilePathArg0 } = (await new Promise((resolve_4, reject_4) => { require(['./Inspector'], resolve_4, reject_4); }));
+        let { CustomFunctionParameterCompletionSymbol, importNameCompletion, makeFunctionCompletionWithFilePathArg0 } = (await new Promise((resolve_6, reject_6) => { require(['./Inspector'], resolve_6, reject_6); }));
         _ENV.import2env[CustomFunctionParameterCompletionSymbol] = async (context) => {
             let param = context.code.substring(context.funcParamStart, context.caret);
             let importName2 = param.match(/\(\s*(['"])([^'"]+)$/);

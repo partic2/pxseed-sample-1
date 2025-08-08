@@ -257,6 +257,8 @@ define(["require", "exports", "partic2/jsutils1/base", "os", "path", "fs/promise
                                 this.nodeProcess.stdin.write(buf, (err) => {
                                     if (err != null) {
                                         reject(err);
+                                    }
+                                    else {
                                         resolve(buf.length);
                                     }
                                 });
@@ -322,9 +324,17 @@ define(["require", "exports", "partic2/jsutils1/base", "os", "path", "fs/promise
                 this.writable = undefined;
                 this.rawR = (0, nodeio_1.wrapReadable)(sock);
                 this.rawW = {
-                    write: async (buf) => {
-                        sock.write(buf);
-                        return buf.byteLength;
+                    write: (buf) => {
+                        return new Promise((resolve, reject) => {
+                            sock.write(buf, (err) => {
+                                if (err != null) {
+                                    reject(err);
+                                }
+                                else {
+                                    resolve(buf.byteLength);
+                                }
+                            });
+                        });
                     },
                 };
                 this.localAddress.ip = sock.localAddress;

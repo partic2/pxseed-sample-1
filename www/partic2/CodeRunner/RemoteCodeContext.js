@@ -28,15 +28,12 @@ define(["require", "exports", "pxprpc/extend", "./CodeContext", "partic2/jsutils
     */
     async function __temp1(arg, lib) {
     }
-    let attached = new Map();
+    let attachedFunc = Symbol('attachedFunc');
     function getRemoteContext(client1) {
-        if (attached.has(client1.id)) {
-            return attached.get(client1.id);
+        if (!(attachedFunc in client1)) {
+            client1[attachedFunc] = new RemoteRunCodeContext(client1);
         }
-        else {
-            attached.set(client1.id, new RemoteRunCodeContext(client1));
-            return attached.get(client1.id);
-        }
+        return client1[attachedFunc];
     }
     let rpcfunctionsProps = Symbol(exports.__name__ + '/' + '/rpcfunctions');
     class RemoteCodeContextFunctionImpl {

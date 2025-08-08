@@ -4,10 +4,14 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
     exports.CodeCellList = exports.DefaultCodeCellList = exports.CodeCell = exports.css = void 0;
     exports.setCodeCellListImpl = setCodeCellListImpl;
     exports.css = {
-        inputCell: domui_1.css.simpleCard,
+        inputCell: (0, base_1.GenerateRandomString)(),
         outputCell: (0, base_1.GenerateRandomString)(),
     };
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.outputCell, ['overflow:auto']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.inputCell, [
+        'display:inline-block', 'border:solid black 2px', 'margin:2px', 'padding:2px', 'background-color:white',
+        'font-family:monospace'
+    ]);
     function countBracket(s) {
         let bracketMatch = 0;
         bracketMatch += (s.match(/\{/g)?.length ?? 0) - (s.match(/\}/g)?.length ?? 0);
@@ -27,7 +31,6 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                     codeCompleteCandidate: await this.props.codeContext.codeComplete(this.getCellInput(), this.rref.codeInput.current.getTextCaretOffset())
                 });
             }, 300);
-            this.__tempDisableEnter2RunCode = false;
             this.setState({ codeCompleteCandidate: null, focusin: false });
         }
         async runCode() {
@@ -62,15 +65,13 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                 if (this.getRunCodeKey() == 'Enter') {
                     if (ev.ctrlKey) {
                         //prevent trigger input('\n').Is there better way?
-                        this.__tempDisableEnter2RunCode = true;
                         this.rref.codeInput.current?.insertText('\n');
-                        setTimeout(() => this.__tempDisableEnter2RunCode = false, 50);
                     }
                     else {
                         let fullText = (await this.rref.codeInput.waitValid()).getPlainText();
                         if (countBracket(fullText) == 0) {
                             await new Promise(resolve => requestAnimationFrame(resolve));
-                            this.rref.codeInput.current?.deleteText(1);
+                            this.rref.codeInput.current?.setPlainText(fullText);
                             this.runCode();
                             return;
                         }

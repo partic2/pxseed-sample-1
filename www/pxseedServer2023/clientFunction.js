@@ -147,7 +147,7 @@ define(["require", "exports", "partic2/jsutils1/base", "pxprpc/extend", "pxprpc/
     async function restartSubprocessSelf() {
         let { current, root } = (await getServerConfig());
         (0, base_1.assert)(current.subprocessIndex != undefined);
-        let client1 = new extend_1.RpcExtendClient1(new base_2.Client(await new backend_1.WebSocketIo().connect(`ws://127.0.0.1:${root.listenOn.port}${root.pxseedBase}${root.pxprpcPath}`)));
+        let client1 = new extend_1.RpcExtendClient1(new base_2.Client(await new backend_1.WebSocketIo().connect(`ws://127.0.0.1:${root.listenOn.port}${root.pxseedBase}${root.pxprpcPath}?key=${encodeURIComponent(root.pxprpcKey ?? '')}`)));
         await client1.init();
         let func = new PxseedServer2023Function();
         await func.init(client1);

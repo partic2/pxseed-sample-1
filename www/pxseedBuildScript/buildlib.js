@@ -1,4 +1,4 @@
-define(["require", "exports", "fs/promises", "path", "./loaders", "./util"], function (require, exports, fs, path_1, loaders_1, util_1) {
+define(["require", "exports", "./loaders", "./util"], function (require, exports, loaders_1, util_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.outputDir = exports.sourceDir = void 0;
@@ -18,6 +18,8 @@ define(["require", "exports", "fs/promises", "path", "./loaders", "./util"], fun
         return { ...PxseedStatusDefault, lastBuildError: [], currentBuildError: [], subpackages: [] };
     }
     async function processDirectory(dir) {
+        await loaders_1.inited;
+        const { fs, path } = await (0, util_1.getNodeCompatApi)();
         console.log(`enter ${dir}`);
         let children = await fs.readdir(dir, { withFileTypes: true });
         let hasPxseedConfig = false;
@@ -28,15 +30,15 @@ define(["require", "exports", "fs/promises", "path", "./loaders", "./util"], fun
         if (!hasPxseedConfig) {
             for (let child of children) {
                 if (child.isDirectory()) {
-                    await processDirectory((0, path_1.join)(dir, child.name));
+                    await processDirectory(path.join(dir, child.name));
                 }
             }
         }
         else {
-            let pxseedConfig = await (0, util_1.readJson)((0, path_1.join)(dir, 'pxseed.config.json'));
+            let pxseedConfig = await (0, util_1.readJson)(path.join(dir, 'pxseed.config.json'));
             let pstat;
             if (children.find(v => v.name == '.pxseed.status.json')) {
-                pstat = await (0, util_1.readJson)((0, path_1.join)(dir, '.pxseed.status.json'));
+                pstat = await (0, util_1.readJson)(path.join(dir, '.pxseed.status.json'));
                 pstat = { ...makeDefaultStatus(), ...pstat };
             }
             else {
@@ -50,7 +52,7 @@ define(["require", "exports", "fs/promises", "path", "./loaders", "./util"], fun
                         let packages = loaderConfig.packages;
                         if (packages != undefined) {
                             for (let p1 of packages) {
-                                await processDirectory((0, path_1.join)(loaders_1.sourceDir, p1));
+                                await processDirectory(path.join(loaders_1.sourceDir, p1));
                             }
                         }
                     }
@@ -79,7 +81,7 @@ define(["require", "exports", "fs/promises", "path", "./loaders", "./util"], fun
             }
             if (pstat.subpackages.length > 0) {
                 for (let t1 of pstat.subpackages) {
-                    await processDirectory((0, path_1.join)(dir, t1));
+                    await processDirectory(path.join(dir, t1));
                 }
                 //Don't save ".subpackages" to file.
                 pstat.subpackages = [];
@@ -94,28 +96,32 @@ define(["require", "exports", "fs/promises", "path", "./loaders", "./util"], fun
                 console.info(pstat.lastBuildError);
             }
             pstat.currentBuildError = [];
-            await (0, util_1.writeJson)((0, path_1.join)(dir, '.pxseed.status.json'), pstat);
+            await (0, util_1.writeJson)(path.join(dir, '.pxseed.status.json'), pstat);
         }
     }
     async function cleanBuildStatus(dir) {
+        await loaders_1.inited;
+        const { fs, path } = await (0, util_1.getNodeCompatApi)();
         let children = await fs.readdir(dir, { withFileTypes: true });
         for (let t1 of children) {
             if (t1.isDirectory()) {
-                await cleanBuildStatus((0, path_1.join)(dir, t1.name));
+                await cleanBuildStatus(path.join(dir, t1.name));
             }
             else if (t1.name == '.pxseed.status.json') {
-                await fs.rm((0, path_1.join)(dir, t1.name));
+                await fs.rm(path.join(dir, t1.name));
             }
         }
     }
     async function cleanJsFiles(dir) {
+        await loaders_1.inited;
+        const { fs, path } = await (0, util_1.getNodeCompatApi)();
         let children = await fs.readdir(dir, { withFileTypes: true });
         for (let t1 of children) {
             if (t1.isDirectory() && !t1.isSymbolicLink()) {
-                await cleanJsFiles((0, path_1.join)(dir, t1.name));
+                await cleanJsFiles(path.join(dir, t1.name));
             }
             else if (t1.name.endsWith('.js') || t1.name.endsWith('.js.map')) {
-                await fs.rm((0, path_1.join)(dir, t1.name));
+                await fs.rm(path.join(dir, t1.name));
             }
         }
         children = await fs.readdir(dir, { withFileTypes: true });

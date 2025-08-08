@@ -1,7 +1,7 @@
 define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "pxprpc/backend", "pxprpc/base", "pxprpc/extend"], function (require, exports, base_1, webutils_1, backend_1, base_2, extend_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.rpcId = exports.persistent = exports.ServiceWorker = exports.WebWorker1RpcName = exports.ServerHostWorker1RpcName = exports.ServerHostRpcName = exports.IoOverPxprpc = exports.ClientInfo = exports.RpcWorker = exports.rpcWorkerInitModule = exports.__name__ = void 0;
+    exports.rpcId = exports.persistent = exports.ServiceWorker = exports.WebWorker1RpcName = exports.ServerHostWorker1RpcName = exports.ServerHostRpcName = exports.IoOverPxprpc = exports.ClientInfo = exports.RpcWorker = exports.internalProps = exports.rpcWorkerInitModule = exports.__name__ = void 0;
     exports.getRpcFunctionOn = getRpcFunctionOn;
     exports.createIoPipe = createIoPipe;
     exports.getAttachedRemoteRigstryFunction = getAttachedRemoteRigstryFunction;
@@ -39,14 +39,14 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     extend_1.defaultFuncMap[exports.__name__ + '.getConnectionFromUrl'] = new extend_1.RpcExtendServerCallable(async (url) => {
         return await getConnectionFromUrl(url);
     }).typedecl('s->o');
-    let attachedRemoteFunction = Symbol('AttachedRemoteRigstryFunction');
+    exports.internalProps = Symbol(exports.__name__ + '.internalProps');
     async function getRpcFunctionOn(client, funcName, typ) {
         let attachedFunc = {};
-        if (attachedRemoteFunction in client) {
-            attachedFunc = client[attachedRemoteFunction];
+        if (exports.internalProps in client) {
+            attachedFunc = client[exports.internalProps];
         }
         else {
-            client[attachedRemoteFunction] = attachedFunc;
+            client[exports.internalProps] = attachedFunc;
         }
         if (!(funcName in attachedFunc)) {
             let fn = await client.getFunc(funcName);
@@ -257,13 +257,13 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
     }
     async function getAttachedRemoteRigstryFunction(client1) {
-        if (!(attachedRemoteFunction in client1)) {
+        if (!(exports.internalProps in client1)) {
             let t1 = new RemoteRegistryFunctionImpl();
             t1.client1 = client1;
             await t1.ensureInit();
-            client1[attachedRemoteFunction] = t1;
+            client1[exports.internalProps] = t1;
         }
-        return client1[attachedRemoteFunction];
+        return client1[exports.internalProps];
     }
     async function getConnectionFromUrl(url) {
         let url2 = new URL(url);
@@ -427,6 +427,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
         backend_1.WebMessage.postMessageOptions.targetOrigin = '*';
     }
+    let finalizerCallback = globalThis.FinalizationRegistry ? new FinalizationRegistry((cb) => { cb(); }) : null;
     //Before typescript support syntax like <typeof import(T)>, we can only tell module type explicitly.
     //Only support plain JSON parameter and return value.
     async function importRemoteModule(rpc, moduleName) {
@@ -439,11 +440,15 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                 //Avoid triggle by Promise.resolve
                 if (p === 'then')
                     return undefined;
+                if (p === exports.internalProps) {
+                    return { rpcModule: module };
+                }
                 return async (...params) => {
                     return await funcs.callJsonFunction(module, p, params);
                 };
             }
         });
+        finalizerCallback?.register(proxyModule, () => module.free().catch(() => { }));
         return proxyModule;
     }
 });

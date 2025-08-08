@@ -188,6 +188,9 @@ define(["require", "exports", "./workerInit", "partic2/jsutils1/base", "pxprpc/b
             await (0, workerInit_1.loadConfig)();
             return JSON.stringify(workerInit_1.config);
         }
+        else if (cmd == 'exit') {
+            exports.command.exit();
+        }
         else if (cmd.startsWith('saveConfig ')) {
             let startAt = cmd.indexOf(' ') + 1;
             await (0, workerInit_1.saveConfig)(JSON.parse(cmd.substring(startAt)));
@@ -287,7 +290,7 @@ define(["require", "exports", "./workerInit", "partic2/jsutils1/base", "pxprpc/b
             exports.command.subprocessRestart = async (index) => {
                 if (subprocs[index].exitCode == null) {
                     let subCfg = workerInit_1.rootConfig.deamonMode.subprocessConfig[index];
-                    let client1 = new extend_1.RpcExtendClient1(new base_2.Client(await new backend_1.WebSocketIo().connect(`ws://127.0.0.1:${subCfg.listenOn.port}${subCfg.pxseedBase ?? workerInit_1.config.pxseedBase}${subCfg.pxprpcPath ?? workerInit_1.config.pxprpcPath}?key=${subCfg.pxprpcKey ?? workerInit_1.config.pxprpcKey}`)));
+                    let client1 = new extend_1.RpcExtendClient1(new base_2.Client(await new backend_1.WebSocketIo().connect(`ws://127.0.0.1:${subCfg.listenOn.port}${subCfg.pxseedBase ?? workerInit_1.config.pxseedBase}${subCfg.pxprpcPath ?? workerInit_1.config.pxprpcPath}?key=${encodeURIComponent(subCfg.pxprpcKey ?? workerInit_1.config.pxprpcKey ?? '')}`)));
                     await client1.init();
                     let { PxseedServer2023Function } = await new Promise((resolve_1, reject_1) => { require(['./clientFunction'], resolve_1, reject_1); });
                     let func = new PxseedServer2023Function();

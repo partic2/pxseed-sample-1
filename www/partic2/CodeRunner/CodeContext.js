@@ -207,9 +207,9 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                 VariableDeclaration(node, state, ancetors) {
                     if (ancetors.find(v => v.type === 'FunctionExpression'))
                         return;
-                    if (ancetors.find(v => v.type === 'BlockStatement') !== undefined && node.kind === 'let')
+                    if (ancetors.find(v => v.type === 'BlockStatement') !== undefined && node.kind !== 'var')
                         return;
-                    replacePlan.plan.push({ start: node.start, end: node.start + 3, newString: ' ' });
+                    replacePlan.plan.push({ start: node.start, end: node.declarations[0].start, newString: ' ' });
                     node.declarations.forEach(v => {
                         if (v.id.type === 'Identifier') {
                             foundDecl.push(v.id.name);
