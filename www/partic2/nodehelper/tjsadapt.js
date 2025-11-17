@@ -8,6 +8,9 @@ define(["require", "exports", "partic2/jsutils1/base", "os", "path", "fs/promise
             return tjsImpl;
         }
         let platform = os_1.default.platform();
+        if (platform == 'win32') {
+            platform = 'windows';
+        }
         async function realpath(path) {
             return await promises_1.default.realpath(path);
         }
@@ -56,7 +59,8 @@ define(["require", "exports", "partic2/jsutils1/base", "os", "path", "fs/promise
             * @param offset Offset in the file to read from.
             */
             async read(buffer, offset) {
-                let result = await this.nodeFh.read(Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength), offset);
+                Buffer.alloc(buffer.length);
+                let result = await this.nodeFh.read(Buffer.from(buffer.buffer), buffer.byteOffset, buffer.byteLength, offset);
                 if (result.bytesRead == 0) {
                     return null;
                 }
@@ -72,7 +76,7 @@ define(["require", "exports", "partic2/jsutils1/base", "os", "path", "fs/promise
             * @param offset Offset in the file to write to.
             */
             async write(buffer, offset) {
-                let result = await this.nodeFh.write(Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength), offset);
+                let result = await this.nodeFh.write(Buffer.from(buffer.buffer), buffer.byteOffset, buffer.byteLength, offset);
                 return result.bytesWritten;
             }
             /**
@@ -156,6 +160,19 @@ define(["require", "exports", "partic2/jsutils1/base", "os", "path", "fs/promise
         */
         async function rmdir(path) {
             await promises_1.default.rmdir(path);
+        }
+        async function makeTempFile(template) {
+            //simple implement, not correctly
+            let prefix = "";
+            for (let i = template.length; i >= 0; i--) {
+                if (template.charAt(i) != 'X') {
+                    prefix = template.substring(0, i);
+                    break;
+                }
+            }
+            let tmppath = os_1.default.tmpdir() + promises_1.default.mkdtemp(prefix);
+            let fh = new FileHandle(await promises_1.default.open(tmppath), tmppath);
+            return fh;
         }
         /**
         * Create a directory at the given path.
@@ -297,10 +314,11 @@ define(["require", "exports", "partic2/jsutils1/base", "os", "path", "fs/promise
             return dataDir;
         }
         class NodeConnection {
-            read(buf) {
-                return this.rawR.read(buf);
+            async read(buf) {
+                let count = await this.rawR.read(buf);
+                return count;
             }
-            write(buf) {
+            async write(buf) {
                 return this.rawW.write(buf);
             }
             setKeepAlive(enable, delay) {
@@ -445,6 +463,8 @@ define(["require", "exports", "partic2/jsutils1/base", "os", "path", "fs/promise
             readDir: readdir,
             system: { platform: platform },
             listen, connect,
+            makeTempFile,
+            env: process.env,
             __impl__: 'partic2/nodehelper/tjsadapt'
         };
         tjsImpl = tjsi;

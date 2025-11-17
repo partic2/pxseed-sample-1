@@ -79,7 +79,7 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             }
         }
         render(props, state, context) {
-            return React.createElement("div", { contentEditable: true, ref: this.rref.div1, onInput: (ev) => this.onInputHandler(ev), style: { wordBreak: 'break-all', overflowWrap: 'word-break', ...this.props.divStyle }, className: (this.props.divClass ?? []).join(' '), onPaste: (ev) => { this.onPasteHandler(ev.clipboardData.getData('text/plain')); ev.preventDefault(); }, onBlur: (ev) => this.onBlurHandler(ev), onFocus: (ev) => this.onFocusHandler(ev), ...this.props.divAttr, onKeyDown: (ev) => this.onKeyDownHandler(ev) }, " ");
+            return React.createElement("div", { contentEditable: true, ref: this.rref.div1, onInput: (ev) => this.onInputHandler(ev), style: { wordBreak: 'break-all', overflowWrap: 'word-break', position: 'relative', ...this.props.divStyle }, className: (this.props.divClass ?? []).join(' '), onPaste: (ev) => { this.onPasteHandler(ev.clipboardData.getData('text/plain')); ev.preventDefault(); }, onBlur: (ev) => this.onBlurHandler(ev), onFocus: (ev) => this.onFocusHandler(ev), onKeyDown: (ev) => this.onKeyDownHandler(ev), ...this.props.divAttr }, " ");
         }
         insertText(text) {
             let { anchor, focus } = this.getTextCaretSelectedRange();
@@ -97,18 +97,29 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             this.setTextCaretOffset(Math.max(0, offset - count));
         }
         onBlurHandler(ev) {
-            //save selection for execCommand
-            let sel = window.getSelection();
-            if (sel != null) {
-                this.savedSelection = (0, base_1.partial)(sel, ['anchorNode', 'anchorOffset', 'focusNode', 'focusOffset']);
-            }
             this.props.divAttr?.onBlur?.bind(ev.currentTarget)?.(ev.currentTarget);
             this.props?.onBlur?.(this);
         }
         onFocusHandler(ev) {
-            this.savedSelection = undefined;
             this.props.divAttr?.onFocus?.bind(ev.currentTarget)?.(ev.currentTarget);
             this.props.onFocus?.(this);
+        }
+        saveSelection() {
+            let sel = window.getSelection();
+            if (sel != null) {
+                this.savedSelection = (0, base_1.partial)(sel, ['anchorNode', 'anchorOffset', 'focusNode', 'focusOffset']);
+            }
+            else {
+                this.savedSelection = undefined;
+            }
+        }
+        restoreSelection() {
+            let sel = window.getSelection();
+            if (sel != null && this.savedSelection != undefined) {
+                sel.setPosition(this.savedSelection.anchorNode, this.savedSelection.anchorOffset);
+                sel.collapse(this.savedSelection.focusNode, this.savedSelection.focusOffset);
+                this.savedSelection = undefined;
+            }
         }
         getHtml() {
             return this.rref.div1.current?.innerHTML;
@@ -143,6 +154,36 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             let focusPos = textParts.textOffsetFromNode(sel.focusNode, sel.focusOffset);
             let anchorPos = textParts.textOffsetFromNode(sel.anchorNode, sel.anchorOffset);
             return { anchor: anchorPos, focus: focusPos };
+        }
+        getCoordinateByTextOffset(textOffset) {
+            let textParts = (0, utils_1.docNode2text)(this.rref.div1.current);
+            let pos1 = textParts.nodeFromTextOffset(textOffset);
+            if (pos1.node != null) {
+                let parentNode = pos1.node.parentNode;
+                if (parentNode == null) {
+                    return null;
+                }
+                if (pos1.node instanceof Text) {
+                    let fulltext = pos1.node.data;
+                    this.saveSelection();
+                    let textPart1 = document.createTextNode(fulltext.substring(0, pos1.offset));
+                    parentNode.insertBefore(textPart1, pos1.node);
+                    let markSpan = document.createElement('span');
+                    parentNode.insertBefore(markSpan, pos1.node);
+                    pos1.node.data = fulltext.substring(pos1.offset);
+                    let result = { top: markSpan.offsetTop, bottom: markSpan.offsetTop + markSpan.offsetHeight, left: markSpan.offsetLeft };
+                    parentNode.removeChild(markSpan);
+                    parentNode.removeChild(textPart1);
+                    pos1.node.data = fulltext;
+                    this.restoreSelection();
+                    //this.setTextCaretOffset(caret);
+                    return result;
+                }
+                else if (pos1.node instanceof HTMLElement) {
+                    return { top: pos1.node.offsetTop, bottom: pos1.node.offsetTop + pos1.node.offsetHeight, left: pos1.node.offsetLeft };
+                }
+            }
+            return null;
         }
         setTextCaretOffset(offset) {
             let sel = window.getSelection();

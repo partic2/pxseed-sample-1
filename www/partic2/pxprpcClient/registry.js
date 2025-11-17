@@ -81,9 +81,9 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                     await this.wt.start();
                     backend_1.WebMessage.bind(this.wt.port);
                     await this.wt.runScript(`require(['partic2/pxprpcClient/rpcworker'],function(workerInit){
-                    workerInit.loadRpcWorkerInitModule(${JSON.stringify(exports.rpcWorkerInitModule)}).then(resolve,reject);
+                    workerInit.__internal__.loadRpcWorkerInitModule(${JSON.stringify(exports.rpcWorkerInitModule)}).then(resolve,reject);
                 },reject)`, true);
-                    this.conn = await new backend_1.WebMessage.Connection().connect(this.wt.workerId, 300);
+                    this.conn = await new backend_1.WebMessage.Connection().connect(this.wt.workerId, 500);
                 }
             }
             return this.conn;
@@ -109,7 +109,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         connected() {
             if (this.client === null)
                 return false;
-            return this.client.conn.isRunning();
+            return this.client.baseClient.isRunning();
         }
         async disconnect() {
             this.client?.close();
@@ -122,7 +122,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         async ensureConnected() {
             try {
                 await this.connecting.lock();
-                if (this.client !== null && this.client.conn.isRunning()) {
+                if (this.client !== null && this.client.baseClient.isRunning()) {
                     return this.client;
                 }
                 else {
@@ -243,27 +243,24 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         async ensureInit() {
             if (this.funcs.length == 0) {
                 this.funcs = [
-                    (await this.client1.getFunc(exports.__name__ + '.loadModule'))?.typedecl('s->o'),
-                    (await this.client1.getFunc(exports.__name__ + '.getConnectionFromUrl'))?.typedecl('s->o'),
-                    (await this.client1.getFunc('pxprpc_pp.io_send'))?.typedecl('ob->'),
-                    (await this.client1.getFunc('pxprpc_pp.io_receive'))?.typedecl('o->b'),
-                    (await this.client1.getFunc('builtin.jsExec'))?.typedecl('so->o'),
-                    (await this.client1.getFunc('builtin.bufferData'))?.typedecl('o->b'), //[5]
-                    (await this.client1.getFunc('builtin.anyToString'))?.typedecl('o->s'),
-                    (await this.client1.getFunc(exports.__name__ + '.callJsonFunction'))?.typedecl('oss->s'),
-                    (await this.client1.getFunc(exports.__name__ + '.unloadModule'))?.typedecl('s->')
+                    await getRpcFunctionOn(this.client1, exports.__name__ + '.loadModule', 's->o'),
+                    await getRpcFunctionOn(this.client1, exports.__name__ + '.getConnectionFromUrl', 's->o'),
+                    await getRpcFunctionOn(this.client1, 'pxprpc_pp.io_send', 'ob->'),
+                    await getRpcFunctionOn(this.client1, 'pxprpc_pp.io_receive', 'o->b'),
+                    await getRpcFunctionOn(this.client1, 'builtin.jsExec', 'so->o'),
+                    await getRpcFunctionOn(this.client1, 'builtin.bufferData', 'o->b'), //[5]
+                    await getRpcFunctionOn(this.client1, 'builtin.anyToString', 'o->s'),
+                    await getRpcFunctionOn(this.client1, exports.__name__ + '.callJsonFunction', 'oss->s'),
+                    await getRpcFunctionOn(this.client1, exports.__name__ + '.unloadModule', 's->')
                 ];
             }
         }
     }
     async function getAttachedRemoteRigstryFunction(client1) {
-        if (!(exports.internalProps in client1)) {
-            let t1 = new RemoteRegistryFunctionImpl();
-            t1.client1 = client1;
-            await t1.ensureInit();
-            client1[exports.internalProps] = t1;
-        }
-        return client1[exports.internalProps];
+        let t1 = new RemoteRegistryFunctionImpl();
+        t1.client1 = client1;
+        await t1.ensureInit();
+        return t1;
     }
     async function getConnectionFromUrl(url) {
         let url2 = new URL(url);

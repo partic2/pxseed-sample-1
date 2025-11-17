@@ -1,8 +1,8 @@
-define(["require", "exports", "./pxprpc_config", "pxprpc/base"], function (require, exports, pxprpc_config_1, base_1) {
+define(["require", "exports", "partic2/pxprpcClient/registry", "pxprpc/base", "./rpcregistry"], function (require, exports, registry_1, base_1, rpcregistry_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.Invoker = void 0;
-    exports.getDefault = getDefault;
+    exports.defaultInvoker = exports.Invoker = void 0;
+    exports.ensureDefaultInvoker = ensureDefaultInvoker;
     class Invoker {
         constructor() {
             this.RemoteName = 'pxprpc_libuv';
@@ -13,13 +13,7 @@ define(["require", "exports", "./pxprpc_config", "pxprpc/base"], function (requi
             this.rpc__RemoteFuncs = {};
         }
         async ensureFunc(name, typedecl) {
-            let __v1 = this.rpc__RemoteFuncs[name];
-            if (__v1 == undefined) {
-                __v1 = await this.rpc__client.getFunc(this.RemoteName + '.' + name);
-                this.rpc__RemoteFuncs[name] = __v1;
-                __v1.typedecl(typedecl);
-            }
-            return __v1;
+            return await (0, registry_1.getRpcFunctionOn)(this.rpc__client, this.RemoteName + '.' + name, typedecl);
         }
         async fs_open(path, flag) {
             let __v1 = await this.ensureFunc('fs_open', 'ss->o');
@@ -194,13 +188,12 @@ define(["require", "exports", "./pxprpc_config", "pxprpc/base"], function (requi
         }
     }
     exports.Invoker = Invoker;
-    let defaultInvoker = null;
-    async function getDefault() {
-        if (defaultInvoker === null) {
-            defaultInvoker = new Invoker();
-            await defaultInvoker.useClient(await (0, pxprpc_config_1.getDefaultClient)());
+    exports.defaultInvoker = null;
+    async function ensureDefaultInvoker() {
+        if (exports.defaultInvoker == null) {
+            exports.defaultInvoker = new Invoker();
+            exports.defaultInvoker.useClient(await (0, rpcregistry_1.getRpc4XplatjCServer)());
         }
-        return defaultInvoker;
     }
 });
 //# sourceMappingURL=pxprpc__libuv.js.map

@@ -1,4 +1,4 @@
-define(["require", "exports", "worker_threads", "./worker"], function (require, exports, worker_threads_1, worker_1) {
+define(["require", "exports", "worker_threads", "./worker", "./env"], function (require, exports, worker_threads_1, worker_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     (function () {
@@ -26,6 +26,19 @@ define(["require", "exports", "worker_threads", "./worker"], function (require, 
                 }
             }
         });
+        if ('close' in globalThis) {
+            let workerClose = globalThis.close.bind(globalThis);
+            globalThis.close = function () {
+                require(['partic2/jsutils1/webutils'], function (webutils) {
+                    webutils.lifecycle.dispatchEvent(new Event('exit'));
+                    globalThis.postMessage({ [WorkerThreadMessageMark]: true, type: 'closing' });
+                    workerClose();
+                }, function () {
+                    globalThis.postMessage({ [WorkerThreadMessageMark]: true, type: 'closing' });
+                    workerClose();
+                });
+            };
+        }
         globalThis.postMessage({ [WorkerThreadMessageMark]: true, type: 'ready' });
     })();
 });

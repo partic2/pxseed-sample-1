@@ -1,7 +1,7 @@
 define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutils1/webutils"], function (require, exports, React, base_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.FloatLayerComponent = exports.ReactRefEx = exports.RefChangeEvent = exports.event = exports.css = exports.ReactEventTarget = exports.DomRootComponent = exports.DomDivComponent = exports.DomComponentGroup = exports.DomComponent = void 0;
+    exports.FloatLayerComponent = exports.ReactRefEx = exports.RefChangeEvent = exports.floatLayerZIndexBase = exports.event = exports.css = exports.ReactEventTarget = exports.DomRootComponent = exports.DomDivComponent = exports.DomComponentGroup = exports.DomComponent = void 0;
     exports.ReactRender = ReactRender;
     exports.SetComponentFullScreen = SetComponentFullScreen;
     exports.RequestPrintWindow = RequestPrintWindow;
@@ -157,10 +157,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         simpleTable: (0, base_1.GenerateRandomString)(),
         simpleTableCell: (0, base_1.GenerateRandomString)(),
         selectable: (0, base_1.GenerateRandomString)(),
-        overlayLayer: (0, base_1.GenerateRandomString)(),
-        activeLayer: (0, base_1.GenerateRandomString)(),
-        inactiveLayer: (0, base_1.GenerateRandomString)(),
-        hideLayer: (0, base_1.GenerateRandomString)()
+        floatLayer: (0, base_1.GenerateRandomString)()
     };
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.flexRow, ['display:flex', 'flex-direction:row']);
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.flexColumn, ['display:flex', 'flex-direction:column']);
@@ -169,48 +166,37 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleCard, ['display:inline-block', 'border:solid black 2px', 'margin:2px', 'padding:2px', 'background-color:white']);
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleTable, ['border-collapse:collapse']);
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleTableCell, ['border:solid black 2px']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.overlayLayer, ['z-index:1000', 'position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.activeLayer, ['z-index:800', 'position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.inactiveLayer, ['z-index:600', 'position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.hideLayer, ['z-index:600', 'position:absolute', 'display:none', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.floatLayer, ['position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
     exports.event = {
         layout: 'partic2-layout'
     };
+    exports.floatLayerZIndexBase = 600;
     let FloatLayerManager = {
         layerComponents: new Map(),
-        checkRenderLayer: function (c, activeTime) {
+        checkRenderLayerStyle: function (c, activateTime) {
             let cur = this.layerComponents.get(c);
             if (cur == null) {
-                this.layerComponents.set(c, { activeTime, layerClass: '' });
+                this.layerComponents.set(c, { activateTime, layerZIndex: 0 });
                 this.resortAllLayer();
             }
-            else if (cur.activeTime != activeTime) {
-                this.layerComponents.set(c, { activeTime, layerClass: '' });
+            else if (cur.activateTime != activateTime) {
+                this.layerComponents.set(c, { activateTime, layerZIndex: 0 });
                 this.resortAllLayer();
             }
             cur = this.layerComponents.get(c);
-            return cur.layerClass;
+            let t1 = { zIndex: cur.layerZIndex };
+            if (activateTime < 0) {
+                t1.display = 'none';
+            }
+            return t1;
         },
         resortAllLayer() {
-            let activeLayer = [null, 0];
-            '';
-            for (let t1 of this.layerComponents.entries()) {
-                if (activeLayer[1] <= t1[1].activeTime) {
-                    activeLayer = [t1[0], t1[1].activeTime];
-                }
-            }
-            for (let t1 of this.layerComponents.entries()) {
-                if (t1[1].activeTime < 0) {
-                    t1[1].layerClass = exports.css.hideLayer;
-                    t1[0].forceUpdate();
-                }
-                else if (activeLayer[0] == t1[0] && t1[1].layerClass != exports.css.inactiveLayer) {
-                    t1[1].layerClass = exports.css.activeLayer;
-                    t1[0].forceUpdate();
-                }
-                else if (activeLayer[0] != t1[0] && t1[1].layerClass != exports.css.inactiveLayer) {
-                    t1[1].layerClass = exports.css.inactiveLayer;
-                    t1[0].forceUpdate();
+            let ent = Array.from(this.layerComponents.entries());
+            ent.sort((t1, t2) => t1[1].activateTime - t2[1].activateTime);
+            for (let [t1, t2] of ent.entries()) {
+                if (t2[1].layerZIndex != exports.floatLayerZIndexBase + t1) {
+                    t2[1].layerZIndex = exports.floatLayerZIndexBase + t1;
+                    t2[0].forceUpdate();
                 }
             }
         }
@@ -292,16 +278,13 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         constructor() {
             super(...arguments);
             this.containerDiv = null;
-            this.cbOnLayout = () => {
-                this.props.onLayout?.();
-            };
         }
         componentWillUnmount() {
             FloatLayerManager.layerComponents.delete(this);
         }
         render() {
-            return React.createElement("div", { ref: this.props.divRef, className: [FloatLayerManager.checkRenderLayer(this, this.props.activeTime),
-                    ...this.props.divClass ?? []].join(' ') }, this.props.children);
+            return React.createElement("div", { ref: this.props.divRef, className: [exports.css.floatLayer,
+                    ...this.props.divClass ?? []].join(' '), style: FloatLayerManager.checkRenderLayerStyle(this, this.props.activateTime) }, this.props.children);
         }
     }
     exports.FloatLayerComponent = FloatLayerComponent;

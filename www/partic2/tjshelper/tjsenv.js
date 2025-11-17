@@ -1,5 +1,5 @@
 //import this module to Initialize pxseed environment on txiki.js platform.
-define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/CodeRunner/Inspector", "partic2/pxprpcClient/registry"], function (require, exports, base_1, base_2, webutils_1, Inspector_1, registry_1) {
+define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/jsutils1/webutils", "partic2/CodeRunner/Inspector", "partic2/pxprpcClient/registry"], function (require, exports, base_1, base_2, webutils_1, webutils_2, Inspector_1, registry_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.PxprpcRtbIo = exports.FsBasedKvDbV1 = void 0;
@@ -113,6 +113,11 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
         constructor(workerId) {
             this.workerId = '';
             this.waitReady = new base_1.future();
+            this.exitListener = () => {
+                this.runScript(`require(['${webutils_2.__name__}'],function(webutils){
+            webutils.lifecycle.dispatchEvent(new Event('exit'));
+        })`);
+            };
             this.processingScript = {};
             this.workerId = workerId ?? (0, base_2.GenerateRandomString)();
         }
@@ -136,26 +141,19 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
                         case 'ready':
                             this.waitReady.setResult(0);
                             break;
+                        case 'closing':
+                            webutils_1.lifecycle.removeEventListener('exit', this.exitListener);
+                            this.onExit?.();
+                            break;
+                        case 'tjs-close':
+                            this.tjsWorker?.terminate();
+                            break;
                     }
                 }
             });
             await this.waitReady.get();
             await this.runScript(`this.__workerId='${this.workerId}'`);
-            webutils_1.lifecycle.addEventListener('pause', () => {
-                this.runScript(`require(['${__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('pause'));
-            })`);
-            });
-            webutils_1.lifecycle.addEventListener('resume', () => {
-                this.runScript(`require(['${__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('resume'));
-            })`);
-            });
-            webutils_1.lifecycle.addEventListener('exit', () => {
-                this.runScript(`require(['${__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('exit'));
-            })`);
-            });
+            webutils_1.lifecycle.addEventListener('exit', this.exitListener);
         }
         onHostRunScript(script) {
             (new Function('workerThread', script))(this);
@@ -253,7 +251,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
     class PxprpcRtbIo {
         static async connect(pipeServer) {
             let conn = __pxprpc4tjs__.pipeConnect(pipeServer);
-            if (conn == BigInt(0)) {
+            if (conn === 0n) {
                 return null;
             }
             else {
@@ -265,6 +263,8 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
         }
         ;
         receive() {
+            if (this.pipeAddr === 0n)
+                throw new Error('Not connected');
             return new Promise((resolve, reject) => {
                 __pxprpc4tjs__.ioReceive(this.pipeAddr, (buf) => {
                     if (typeof buf === 'string') {
@@ -278,6 +278,8 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
         }
         async send(data) {
             let res;
+            if (this.pipeAddr === 0n)
+                throw new Error('Not connected');
             if (data.length == 1 && data[0].byteOffset == 0 && data[0].length == data[0].buffer.byteLength) {
                 res = __pxprpc4tjs__.ioSend(this.pipeAddr, data[0].buffer);
             }
@@ -289,7 +291,10 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
             }
         }
         close() {
-            __pxprpc4tjs__.ioClose(this.pipeAddr);
+            if (this.pipeAddr !== 0n) {
+                __pxprpc4tjs__.ioClose(this.pipeAddr);
+                this.pipeAddr = 0n;
+            }
         }
     }
     exports.PxprpcRtbIo = PxprpcRtbIo;

@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/webutils", "partic2/jsutils1/base"], function (require, exports, webutils_1, base_1) {
+define("partic2/packageManager/webui", ["require", "exports", "partic2/jsutils1/webutils", "partic2/jsutils1/base"], function (require, exports, webutils_1, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     const __name__ = base_1.requirejs.getLocalRequireModule(require);
@@ -10,4 +10,3 @@ define(["require", "exports", "partic2/jsutils1/webutils", "partic2/jsutils1/bas
         }
     })();
 });
-//# sourceMappingURL=webui.js.map

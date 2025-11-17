@@ -1,7 +1,7 @@
-define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "partic2/jsutils1/webutils", "ws"], function (require, exports, base_1, net_1, extend_1, webutils_1, ws_1) {
+define(["require", "exports", "partic2/jsutils1/base", "net", "partic2/jsutils1/webutils", "ws", "pxprpc/backend"], function (require, exports, base_1, net_1, webutils_1, ws_1, backend_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.NodeWritableDataSink = exports.NodeReadableDataSource = exports.NodeWsIo = exports.PxprpcTcpServer = exports.PxprpcIoFromSocket = exports.wrappedStreams = void 0;
+    exports.NodeWritableDataSink = exports.NodeReadableDataSource = exports.NodeWsConnectionAdapter2 = exports.NodeWsIo = exports.PxprpcTcpServer = exports.PxprpcIoFromSocket = exports.wrappedStreams = void 0;
     exports.wrapReadable = wrapReadable;
     exports.createIoPxseedJsUrl = createIoPxseedJsUrl;
     exports.wrappedStreams = Symbol('wrappedStreams');
@@ -36,6 +36,10 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "
             nodeInput.on('error', (err) => {
                 this.chunkQueue.queueSignalPush(null);
                 this.err = err;
+            });
+            nodeInput.on('close', () => {
+                this.chunkQueue.queueSignalPush(null);
+                this.err = new Error('stream closed.');
             });
         }
         async read(buf, offset) {
@@ -161,14 +165,8 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "
     }
     exports.PxprpcTcpServer = PxprpcTcpServer;
     const __name__ = base_1.requirejs.getLocalRequireModule(require);
-    //security issue?
-    extend_1.defaultFuncMap[__name__ + '.createPxprpcIoFromTcpTarget'] = new extend_1.RpcExtendServerCallable(async (connectTo) => {
-        let s = new PxprpcIoFromSocket();
-        await s.connect(JSON.parse(connectTo));
-        return s;
-    }).typedecl('s->o');
     async function createIoPxseedJsUrl(url) {
-        let type = (0, webutils_1.GetUrlQueryVariable2)(url, 'type');
+        let type = (0, webutils_1.GetUrlQueryVariable2)(url, 'type') ?? 'tcp';
         if (type === 'tcp') {
             let io = new PxprpcIoFromSocket();
             let host = (0, webutils_1.GetUrlQueryVariable2)(url, 'host') ?? '127.0.0.1';
@@ -176,6 +174,20 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "
             await io.connect({ host, port });
             return io;
         }
+        else if (type == 'pipe') {
+            let io = new PxprpcIoFromSocket();
+            let path = (0, webutils_1.GetUrlQueryVariable2)(url, 'pipe');
+            (0, base_1.assert)(path != null);
+            await io.connect({ path });
+            return io;
+        }
+        else if (type === 'ws') {
+            let target = (0, webutils_1.GetUrlQueryVariable2)(url, 'target');
+            (0, base_1.assert)(target != null);
+            let io = await new backend_1.WebSocketIo().connect(target);
+            return io;
+        }
+        throw new Error(`Unsupported type ${type}`);
     }
     class NodeWsIo {
         constructor(ws) {
@@ -184,13 +196,13 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "
             this.closed = false;
             ws.on('message', (data, isBin) => {
                 if (data instanceof ArrayBuffer) {
-                    this.priv__cached.queueBlockPush(new Uint8Array(data));
+                    this.priv__cached.queueSignalPush(new Uint8Array(data));
                 }
                 else if (data instanceof Buffer) {
-                    this.priv__cached.queueBlockPush(data);
+                    this.priv__cached.queueSignalPush(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
                 }
                 else if (data instanceof Array) {
-                    this.priv__cached.queueBlockPush(new Uint8Array((0, base_1.ArrayBufferConcat)(data)));
+                    this.priv__cached.queueSignalPush(new Uint8Array((0, base_1.ArrayBufferConcat)(data)));
                 }
                 else {
                     throw new Error('Unknown data type');
@@ -227,31 +239,54 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "pxprpc/extend", "
         }
     }
     exports.NodeWsIo = NodeWsIo;
+    class NodeWsConnectionAdapter2 {
+        constructor(ws) {
+            this.ws = ws;
+            this.priv__cached = new base_1.ArrayWrap2();
+            this.ws.on('message', (data, isbin) => {
+                let chunk;
+                if (data instanceof ArrayBuffer) {
+                    chunk = new Uint8Array(data);
+                }
+                else if (data instanceof Buffer) {
+                    chunk = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+                }
+                else if (data instanceof Array) {
+                    chunk = new Uint8Array((0, base_1.ArrayBufferConcat)(data));
+                }
+                else {
+                    chunk = data;
+                }
+                this.priv__cached.queueSignalPush(chunk);
+            });
+        }
+        async send(obj) {
+            if (obj instanceof Array) {
+                obj = new Uint8Array((0, base_1.ArrayBufferConcat)(obj));
+            }
+            return new Promise((resolve, reject) => this.ws.send(obj, (err) => {
+                if (err == null)
+                    resolve();
+                reject(err);
+            }));
+        }
+        async receive() {
+            return await this.priv__cached.queueBlockShift();
+        }
+        close() {
+            this.ws.close();
+        }
+    }
+    exports.NodeWsConnectionAdapter2 = NodeWsConnectionAdapter2;
     globalThis.WebSocket = ws_1.WebSocket;
     class NodeReadableDataSource {
         constructor(nodeReadable) {
             this.nodeReadable = nodeReadable;
         }
-        async pull(controller) {
-            let errorHandler = null;
-            let resolveHandler = null;
-            try {
-                let chunk = await new Promise((resolve, reject) => {
-                    errorHandler = reject;
-                    this.nodeReadable.on('error', errorHandler);
-                    resolveHandler = resolve;
-                    this.nodeReadable.on('data', resolveHandler);
-                });
-                controller.enqueue(chunk);
-            }
-            finally {
-                if (errorHandler != null) {
-                    this.nodeReadable.off('error', errorHandler);
-                }
-                if (resolveHandler != null) {
-                    this.nodeReadable.off('data', resolveHandler);
-                }
-            }
+        start(controller) {
+            this.nodeReadable.on('data', (chunk) => controller.enqueue(chunk));
+            this.nodeReadable.on('error', (err) => { controller.error(); controller.close(); });
+            this.nodeReadable.on('end', () => controller.close());
         }
     }
     exports.NodeReadableDataSource = NodeReadableDataSource;

@@ -1,8 +1,7 @@
-define(["require", "exports", "./tjsenv"], function (require, exports, tjsenv_1) {
+define(["require", "exports", "./tjsenv"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     (function () {
-        (0, tjsenv_1.setupImpl)();
         const WorkerThreadMessageMark = '__messageMark_WorkerThread';
         self.globalThis = self;
         addEventListener('message', function (msg) {
@@ -21,6 +20,24 @@ define(["require", "exports", "./tjsenv"], function (require, exports, tjsenv_1)
             }
         });
         if ('postMessage' in globalThis) {
+            let workerClose;
+            if ('close' in globalThis) {
+                workerClose = globalThis.close.bind(globalThis);
+            }
+            else {
+                workerClose = () => globalThis.postMessage({ [WorkerThreadMessageMark]: true, type: 'tjs-close' });
+            }
+            globalThis.close = function () {
+                require(['partic2/jsutils1/webutils'], function (webutils) {
+                    webutils.lifecycle.dispatchEvent(new Event('exit'));
+                    globalThis.postMessage({ [WorkerThreadMessageMark]: true, type: 'closing' });
+                    workerClose();
+                }, function () {
+                    globalThis.postMessage({ [WorkerThreadMessageMark]: true, type: 'closing' });
+                    ;
+                    workerClose();
+                });
+            };
             globalThis.postMessage({ [WorkerThreadMessageMark]: true, type: 'ready' });
         }
     })();

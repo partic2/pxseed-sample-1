@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/CodeRunner/simplecli", "partic2/nodehelper/nodeio", "./workerInit"], function (require, exports, base_1, simplecli_1, nodeio_1) {
+define(["require", "exports", "partic2/jsutils1/base", "partic2/CodeRunner/simplecli", "partic2/nodehelper/nodeio", "./pxseedhttpserver"], function (require, exports, base_1, simplecli_1, nodeio_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     let __name__ = base_1.requirejs.getLocalRequireModule(require);

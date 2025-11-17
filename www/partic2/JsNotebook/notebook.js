@@ -6,15 +6,14 @@ define(["require", "exports", "partic2/CodeRunner/CodeContext", "partic2/CodeRun
     ;
     exports.__name__ = 'partic2/JsNotebook/notebook';
     //LWRP = LocalWindowRequireProvider, setup to requirejs
-    let LWRPSetuped = [false, new base_1.future()];
+    let LWRPSetuped = new base_1.future();
     async function ensureLWRPInstalled() {
-        if (!LWRPSetuped[0]) {
+        if (!LWRPSetuped.done) {
             await (0, JsEnviron_1.ensureDefaultFileSystem)();
             await JsEnviron_1.defaultFileSystem.ensureInited();
-            LWRPSetuped[0] = true;
-            LWRPSetuped[1].setResult(await (0, JsEnviron_1.installRequireProvider)(JsEnviron_1.defaultFileSystem));
+            LWRPSetuped.setResult(await (0, JsEnviron_1.installRequireProvider)(JsEnviron_1.defaultFileSystem));
         }
-        await LWRPSetuped[1].get();
+        await LWRPSetuped.get();
     }
     class IJSNBFileHandler extends fileviewer_1.FileTypeHandlerBase {
         constructor() {
@@ -146,7 +145,7 @@ define(["require", "exports", "partic2/CodeRunner/CodeContext", "partic2/CodeRun
                             ] } })));
                 let form2 = await form.waitValid();
                 form2.value = { path: this.path };
-                if ((await dlg.answer.get()) == 'ok') {
+                if ((await dlg.response.get()) == 'ok') {
                     this.path = form2.value.path;
                 }
                 dlg.close();

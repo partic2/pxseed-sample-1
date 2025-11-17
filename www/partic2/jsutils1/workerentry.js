@@ -20,6 +20,19 @@ Due to same-origin-policy.  That mean, dataurl is unavailable. */
         }
     });
     if ('postMessage' in globalThis) {
+        if ('close' in globalThis) {
+            let workerClose = globalThis.close.bind(globalThis);
+            globalThis.close = function () {
+                require(['partic2/jsutils1/webutils'], function (webutils) {
+                    webutils.lifecycle.dispatchEvent(new Event('exit'));
+                    globalThis.postMessage({ [WorkerThreadMessageMark]: true, type: 'closing' });
+                    workerClose();
+                }, function () {
+                    globalThis.postMessage({ [WorkerThreadMessageMark]: true, type: 'closing' });
+                    workerClose();
+                });
+            };
+        }
         globalThis.postMessage({ [WorkerThreadMessageMark]: true, type: 'ready' });
     }
 })();

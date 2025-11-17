@@ -220,7 +220,7 @@ define(["require", "exports", "partic2/pComponentUi/domui", "preact", "./filebro
                     React.createElement(ui_1.RegistryUI, null)),
                 React.createElement("div", { style: { flexBasis: (this.state.panel12SplitX ?? 302 - 2) + 'px', flexShrink: '0',
                         height: '100%', overflowY: 'auto' }, ref: this.rref.panel1 },
-                    React.createElement("a", { href: "javascript:;", onClick: () => this.rref.rpcRegistry.current?.active() }, "RpcRegistry"),
+                    React.createElement("a", { href: "javascript:;", onClick: () => this.rref.rpcRegistry.current?.activate() }, "RpcRegistry"),
                     React.createElement("span", null, "\u00A0\u00A0"),
                     React.createElement("div", { style: { flexGrow: 1 } },
                         React.createElement(filebrowser_1.FileBrowser, { ref: this.rref.fb, sfs: this.state.fs, initDir: this.state.initFileDir, workspace: this, onOpenRequest: (path) => this.doOpenFileRequest(path), onCreateRequest: (dir) => this.doCreateFileRequest(dir) }))),
@@ -240,25 +240,26 @@ define(["require", "exports", "partic2/pComponentUi/domui", "preact", "./filebro
     exports.Workspace = Workspace;
     let defaultOpenWorkspaceWindowFor = async function (supportedContext, title) {
         let wsref = new domui_1.ReactRefEx();
-        let appendedWindow = [];
-        const onCloseWindow = () => {
-            appendedWindow.forEach(wnd => (0, window_1.removeFloatWindow)(wnd));
-        };
-        if (supportedContext == 'local window' || (supportedContext instanceof CodeContext_1.LocalRunCodeContext)) {
-            (0, window_2.appendFloatWindow)(React.createElement(window_1.WindowComponent, { key: (0, base_1.GenerateRandomString)(), title: title, onClose: onCloseWindow },
-                React.createElement(Workspace, { ref: wsref, divStyle: { backgroundColor: 'white' } })));
+        let newWindowHandle = await (async () => {
+            if (supportedContext == 'local window' || (supportedContext instanceof CodeContext_1.LocalRunCodeContext)) {
+                return (0, workspace_1.openNewWindow)(React.createElement(Workspace, { ref: wsref, divStyle: { backgroundColor: 'white' } }), { title });
+            }
+            else if (supportedContext instanceof registry_1.ClientInfo) {
+                return (0, workspace_1.openNewWindow)(React.createElement(Workspace, { ref: wsref, rpc: supportedContext, divStyle: { backgroundColor: 'white' } }), { title });
+            }
+            else if (supportedContext instanceof RemoteCodeContext_1.RemoteRunCodeContext) {
+                let rpc = (0, misclib_1.findRpcClientInfoFromClient)(supportedContext.client1);
+                (0, base_1.assert)(rpc != null);
+                return (0, workspace_1.openNewWindow)(React.createElement(Workspace, { ref: wsref, rpc: rpc, divStyle: { backgroundColor: 'white' } }), { title });
+            }
+        })();
+        if (newWindowHandle != null) {
+            (await wsref.waitValid()).openNotebookFor(supportedContext);
+            newWindowHandle.waitClose().then(async () => {
+                let ws = await wsref.waitValid();
+                await ws.saveProfile();
+            });
         }
-        else if (supportedContext instanceof registry_1.ClientInfo) {
-            (0, window_2.appendFloatWindow)(React.createElement(window_1.WindowComponent, { key: (0, base_1.GenerateRandomString)(), title: title, onClose: onCloseWindow },
-                React.createElement(Workspace, { ref: wsref, rpc: supportedContext, divStyle: { backgroundColor: 'white' } })));
-        }
-        else if (supportedContext instanceof RemoteCodeContext_1.RemoteRunCodeContext) {
-            let rpc = (0, misclib_1.findRpcClientInfoFromClient)(supportedContext.client1);
-            (0, base_1.assert)(rpc != null);
-            (0, window_2.appendFloatWindow)(React.createElement(window_1.WindowComponent, { key: (0, base_1.GenerateRandomString)(), title: title, onClose: onCloseWindow },
-                React.createElement(Workspace, { ref: wsref, rpc: rpc, divStyle: { backgroundColor: 'white' } })));
-        }
-        (await wsref.waitValid()).openNotebookFor(supportedContext);
     };
     exports.defaultOpenWorkspaceWindowFor = defaultOpenWorkspaceWindowFor;
     async function setDefaultOpenWorkspaceWindowFor(openNotebook) {

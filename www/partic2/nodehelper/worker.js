@@ -74,6 +74,11 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         constructor(workerId) {
             this.workerId = '';
             this.waitReady = new base_1.future();
+            this.exitListener = () => {
+                this.runScript(`require(['${webutils_2.__name__}'],function(webutils){
+            webutils.lifecycle.dispatchEvent(new Event('exit'));
+        })`);
+            };
             this.processingScript = {};
             this.workerId = workerId ?? (0, base_1.GenerateRandomString)();
         }
@@ -97,26 +102,16 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                         case 'ready':
                             this.waitReady.setResult(0);
                             break;
+                        case 'closing':
+                            webutils_1.lifecycle.removeEventListener('exit', this.exitListener);
+                            this.onExit?.();
+                            break;
                     }
                 }
             });
             await this.waitReady.get();
             await this.runScript(`global.__workerId='${this.workerId}'`);
-            webutils_1.lifecycle.addEventListener('pause', () => {
-                this.runScript(`require(['${webutils_2.__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('pause'));
-            })`);
-            });
-            webutils_1.lifecycle.addEventListener('resume', () => {
-                this.runScript(`require(['${webutils_2.__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('resume'));
-            })`);
-            });
-            webutils_1.lifecycle.addEventListener('exit', () => {
-                this.runScript(`require(['${webutils_2.__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('exit'));
-            })`);
-            });
+            webutils_1.lifecycle.addEventListener('exit', this.exitListener);
             this.port = new MessagePortForNodeWorker(this.nodeWorker);
         }
         onHostRunScript(script) {

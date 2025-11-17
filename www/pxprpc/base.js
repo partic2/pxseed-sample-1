@@ -136,7 +136,6 @@ define(["require", "exports"], function (require, exports) {
                     let packet = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
                     let sid = packet.getUint32(0, true);
                     let cb = this.waitingSessionCb[sid & 0x7fffffff];
-                    delete this.waitingSessionCb[sid & 0x7fffffff];
                     cb(null, [sid, new Uint8Array(buf.buffer, buf.byteOffset + 4, buf.byteLength - 4)]);
                 }
             }
@@ -160,7 +159,7 @@ define(["require", "exports"], function (require, exports) {
             hdr2.setInt32(4, callableIndex, true);
             let respFut = new Promise((resolve, reject) => {
                 this.waitingSessionCb[sid] = (err, resp) => {
-                    if (err == null) {
+                    if (err === null) {
                         resolve(resp);
                     }
                     else {
@@ -171,6 +170,7 @@ define(["require", "exports"], function (require, exports) {
             });
             await this.io1.send([hdr, ...parameter]);
             let [sid2, result] = await respFut;
+            delete this.waitingSessionCb[sid & 0x7fffffff];
             if (sid != sid2) {
                 throw new PxprpcRemoteError(new TextDecoder().decode(result));
             }
@@ -200,10 +200,29 @@ define(["require", "exports"], function (require, exports) {
             let result = await this.call(-4, [], sid);
             return new TextDecoder().decode(result);
         }
-        async sequence(mask, maskCnt = 24, sid = 0x100) {
-            let hdr = new Uint8Array(4);
-            new DataView(hdr.buffer).setUint32(0, mask | maskCnt, true);
-            return await this.call(-5, [hdr], sid);
+        poll(callableIndex, parameter, onResult, sid = 0x100) {
+            let hdr = new Uint8Array(12);
+            let hdr2 = new DataView(hdr.buffer);
+            hdr2.setUint32(0, sid, true);
+            hdr2.setInt32(4, -5, true);
+            hdr2.setInt32(8, callableIndex, true);
+            let cb = (err, result) => {
+                if (err === null) {
+                    if (sid != result[0]) {
+                        delete this.waitingSessionCb[sid & 0x7fffffff];
+                        onResult(new PxprpcRemoteError(new TextDecoder().decode(result[1])));
+                    }
+                    else {
+                        onResult(null, result[1]);
+                    }
+                }
+                else {
+                    onResult(err);
+                }
+                ;
+            };
+            this.waitingSessionCb[sid] = cb;
+            this.io1.send([hdr, ...parameter]).catch((err) => onResult(err));
         }
     }
     exports.Client = Client;
@@ -214,8 +233,6 @@ define(["require", "exports"], function (require, exports) {
             this.callableIndex = -1;
             this.result = [];
             this.rejected = null;
-            this.nextPending = null;
-            this.inSequence = false;
         }
     }
     exports.PxpRequest = PxpRequest;
@@ -233,47 +250,10 @@ define(["require", "exports"], function (require, exports) {
         constructor(io1) {
             this.io1 = io1;
             this.refPool = new Array();
-            this.sequenceSession = 0xffffffff;
-            this.sequenceMaskBitsCnt = 0;
             this.freeRefEntry = null;
             this.running = false;
-            this.pendingRequests = {};
-            this.builtInCallable = [null, this.getFunc, this.freeRefHandler, this.closeHandler, this.getInfo, this.sequence];
+            this.builtInCallable = [null, this.getFunc, this.freeRefHandler, this.closeHandler, this.getInfo, this.poll];
             this.funcMap = null;
-        }
-        queueRequest(r) {
-            if (this.sequenceSession === 0xffffffff || (r.session >>> (32 - this.sequenceMaskBitsCnt) != this.sequenceSession)) {
-                this.processRequest(r);
-                return;
-            }
-            r.inSequence = true;
-            let r2 = this.pendingRequests[r.session];
-            if (r2 == undefined) {
-                this.pendingRequests[r.session] = r;
-                this.processRequest(r);
-            }
-            else {
-                while (r2.nextPending != null) {
-                    r2 = r2.nextPending;
-                }
-                r2.nextPending = r;
-            }
-        }
-        //return next request to process
-        finishRequest(r) {
-            if (r.inSequence) {
-                if (r.nextPending != null) {
-                    this.pendingRequests[r.session] = r.nextPending;
-                    return r.nextPending;
-                }
-                else {
-                    delete this.pendingRequests[r.session];
-                    return null;
-                }
-            }
-            else {
-                return null;
-            }
         }
         expandRefPools() {
             let start = this.refPool.length;
@@ -318,29 +298,27 @@ define(["require", "exports"], function (require, exports) {
         }
         async processRequest(r) {
             try {
-                while (r != null) {
-                    if (r.callableIndex >= 0) {
-                        await this.getRef(r.callableIndex).object.call(r);
-                    }
-                    else {
-                        await this.builtInCallable[-r.callableIndex].call(this, r);
-                    }
-                    //abort if closed
-                    if (r.callableIndex === -3)
-                        return;
-                    let sid = new DataView(new ArrayBuffer(4));
-                    if (r.rejected === null) {
-                        sid.setUint32(0, r.session, true);
-                        await this.io1.send([new Uint8Array(sid.buffer), ...r.result]);
-                    }
-                    else {
-                        sid.setUint32(0, r.session ^ 0x80000000, true);
-                        await this.io1.send([new Uint8Array(sid.buffer), new TextEncoder().encode(String(r.rejected))]);
-                    }
-                    r = this.finishRequest(r);
+                if (r.callableIndex >= 0) {
+                    await this.getRef(r.callableIndex).object.call(r);
+                }
+                else {
+                    await this.builtInCallable[-r.callableIndex].call(this, r);
+                }
+                //-3 close, don't response.Also -5 poll will set the callableIndex to -3 to avoid response.
+                if (r.callableIndex === -3)
+                    return;
+                let sid = new DataView(new ArrayBuffer(4));
+                if (r.rejected === null) {
+                    sid.setUint32(0, r.session, true);
+                    await this.io1.send([new Uint8Array(sid.buffer), ...r.result]);
+                }
+                else {
+                    sid.setUint32(0, r.session ^ 0x80000000, true);
+                    await this.io1.send([new Uint8Array(sid.buffer), new TextEncoder().encode(String(r.rejected))]);
                 }
             }
             catch (e) {
+                this.close();
                 // mute all error here.
             }
         }
@@ -355,7 +333,7 @@ define(["require", "exports"], function (require, exports) {
                     let r = new PxpRequest(this, packet.getUint32(0, true));
                     r.callableIndex = packet.getInt32(4, true);
                     r.parameter = new Uint8Array(buf.buffer, buf.byteOffset + 8, buf.byteLength - 8);
-                    this.queueRequest(r);
+                    this.processRequest(r);
                 }
             }
             finally {
@@ -380,20 +358,18 @@ define(["require", "exports"], function (require, exports) {
             r.result = [new TextEncoder().encode("server name:pxprpc for typescript\n" +
                     "version:2.0\n")];
         }
-        async sequence(r) {
-            this.sequenceSession = new DataView(r.parameter.buffer, r.parameter.byteOffset, r.parameter.byteLength).getUint32(0, true);
-            if (this.sequenceSession === 0xffffffff) {
-                //discard pending request. execute immdiately mode, default value
-                for (let i2 in this.pendingRequests) {
-                    let r2 = this.pendingRequests[i2];
-                    r2.nextPending = null;
-                }
-                this.pendingRequests = this.pendingRequests;
+        async poll(r) {
+            let view = new DataView(r.parameter.buffer, r.parameter.byteOffset, r.parameter.byteLength);
+            r.callableIndex = view.getInt32(0, true);
+            r.parameter = new Uint8Array(r.parameter.buffer, r.parameter.byteOffset + 4, r.parameter.byteLength - 4);
+            while (this.running) {
+                r.rejected = null;
+                r.result = [];
+                await this.processRequest(r);
+                if (r.rejected !== null)
+                    break;
             }
-            else {
-                this.sequenceMaskBitsCnt = this.sequenceSession & 0xff;
-                this.sequenceSession = this.sequenceSession >>> (32 - this.sequenceMaskBitsCnt);
-            }
+            r.callableIndex = -3;
         }
         close() {
             if (!this.running)

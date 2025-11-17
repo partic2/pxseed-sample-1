@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/pxprpcClient/registry", "partic2/jsutils1/webutils", "../CodeRunner/jsutils2"], function (require, exports, base_1, registry_1, webutils_1, jsutils2_1) {
+define("partic2/packageManager/misc", ["require", "exports", "partic2/jsutils1/base", "partic2/pxprpcClient/registry", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2", "partic2/tjshelper/tjsbuilder", "pxseedBuildScript/util"], function (require, exports, base_1, registry_1, webutils_1, jsutils2_1, tjsbuilder_1, util_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__name__ = void 0;
@@ -6,6 +6,8 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pxprpcClient/reg
     exports.ensureCodeUpdated = ensureCodeUpdated;
     exports.getServerWWWRoot = getServerWWWRoot;
     exports.processDirectoryContainFile = processDirectoryContainFile;
+    exports.findBrowserExecutable = findBrowserExecutable;
+    exports.openUrlInBrowser = openUrlInBrowser;
     let servShell = null;
     exports.__name__ = 'partic2/packageManager/misc';
     let remoteModule = {
@@ -61,7 +63,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pxprpcClient/reg
                 await (0, webutils_1.SavePersistentConfig)(exports.__name__);
             }
             if (opt.reload == true) {
-                let serverConfig = await new Promise((resolve_5, reject_5) => { require(['pxseedServer2023/entry'], resolve_5, reject_5); });
+                let serverConfig = await new Promise((resolve_5, reject_5) => { require(['pxseedServer2023/pxseedhttpserver'], resolve_5, reject_5); });
                 if (serverConfig.config.subprocessIndex != undefined) {
                     (async () => {
                         await (0, base_1.sleep)(100);
@@ -126,5 +128,83 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pxprpcClient/reg
             return await misc.processDirectoryContainFile(file);
         }
     }
+    async function findBrowserExecutableWin32() {
+        let tjs = await (0, tjsbuilder_1.buildTjs)();
+        let { fs, path } = await (0, util_1.getNodeCompatApi)();
+        let chromiumPath = [['Google', 'Chrome', 'Application', 'chrome.exe'], ['Chromium', 'Application', 'chrome.exe'], ['Microsoft', 'Edge', 'Application', 'msedge.exe']];
+        let geckoPath = [['Mozilla Firefox', 'firefox.exe']];
+        let ProgramFilePrefix = Array.from(new Set([tjs.env['LOCALAPPDATA'], tjs.env['PROGRAMFILES'], tjs.env['PROGRAMFILES(X86)']].filter(t1 => t1 != undefined)));
+        for (let t1 of ProgramFilePrefix) {
+            let existed = false;
+            for (let tpath of chromiumPath) {
+                let exePath = path.join(t1, ...tpath);
+                await tjs.stat(exePath).then(() => existed = true, () => existed = false);
+                if (existed) {
+                    return { type: 'chromium', exePath };
+                }
+            }
+            for (let tpath of geckoPath) {
+                let exePath = path.join(t1, ...tpath);
+                await tjs.stat(exePath).then(() => existed = true, () => existed = false);
+                if (existed) {
+                    return { type: 'gecko', exePath };
+                }
+            }
+        }
+        return null;
+    }
+    async function findBrowserExecutabeLinux() {
+        //Check PATH environment variable
+        let tjs = await (0, tjsbuilder_1.buildTjs)();
+        let { fs, path } = await (0, util_1.getNodeCompatApi)();
+        let paths = (tjs.env['PATH'] ?? '').split(':');
+        let chromiumName = ['chrome', 'chromium', 'microsoft-edge'];
+        let geckoName = ['firefox'];
+        for (let tpath of paths) {
+            let existed = false;
+            for (let tname of chromiumName) {
+                let exePath = path.join(tpath, tname);
+                await tjs.stat(exePath).then(() => existed = true, () => existed = false);
+                if (existed) {
+                    return { type: 'chromium', exePath };
+                }
+            }
+            for (let tname of geckoName) {
+                let exePath = path.join(tpath, tname);
+                await tjs.stat(exePath).then(() => existed = true, () => existed = false);
+                if (existed) {
+                    return { type: 'chromium', exePath };
+                }
+            }
+        }
+        return null;
+    }
+    async function findBrowserExecutable() {
+        let tjs = await (0, tjsbuilder_1.buildTjs)();
+        let platform = tjs.system.platform;
+        if (platform === 'windows') {
+            return await findBrowserExecutableWin32();
+        }
+        else if (platform === 'linux') {
+            return await findBrowserExecutabeLinux();
+        }
+        else {
+            //Unsupport yet;
+            return null;
+        }
+    }
+    async function openUrlInBrowser(url, opts) {
+        let browser = await findBrowserExecutable();
+        (0, base_1.assert)(browser !== null, "Can't found an available browser.");
+        let tjs = await (0, tjsbuilder_1.buildTjs)();
+        let args = [browser.exePath];
+        if (opts?.appMode === true && browser.type == 'chromium') {
+            args.push('--app=' + url);
+        }
+        else {
+            //TODO: Firefox appMode support.
+            args.push(url);
+        }
+        tjs.spawn(args);
+    }
 });
-//# sourceMappingURL=misc.js.map

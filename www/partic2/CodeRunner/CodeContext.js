@@ -49,7 +49,14 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                 let e = new FuncCallEvent(FuncCallEventType);
                 e.argv = argv;
                 e.originalFunction = that.originalFunction;
-                that.dispatchEvent(e);
+                e.probe = that;
+                try {
+                    that.dispatchEvent(e);
+                }
+                catch (err) {
+                    //Mute any error, to avoid recursive call.
+                }
+                ;
                 return that.originalFunction.apply(this, argv);
             };
         }
@@ -71,6 +78,7 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
             p2 = func[CodeContextProp];
             if (p2.funcCallProbe == undefined) {
                 p2.funcCallProbe = new CFuncCallProbe(func);
+                p2.funcCallProbe.name = p.toString();
                 o[p] = p2.funcCallProbe.hooked();
                 o[p][CodeContextProp] = p2;
             }
@@ -79,6 +87,7 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
             p2 = {
                 funcCallProbe: new CFuncCallProbe(func)
             };
+            p2.funcCallProbe.name = p.toString();
             func[CodeContextProp] = p2;
             o[p] = p2.funcCallProbe.hooked();
             o[p][CodeContextProp] = p2;
@@ -111,7 +120,7 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
             };
             this.onConsoleLogListener = (e) => {
                 let e2 = e;
-                let name = e2.originalFunction.name;
+                let name = e2.probe?.name ?? '';
                 let outputTexts = [];
                 for (let t1 of e2.argv) {
                     if (typeof t1 == 'object') {
@@ -203,28 +212,50 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
             let result = acorn.parse(source, { allowAwaitOutsideFunction: true, ecmaVersion: 'latest', allowReturnOutsideFunction: true });
             replacePlan.parsedAst = result;
             let foundDecl = [];
+            function parseDeclStat(decl) {
+                let declNames = [];
+                decl.forEach(v => {
+                    if (v.id.type === 'Identifier') {
+                        declNames.push(v.id.name);
+                    }
+                    else if (v.id.type === 'ObjectPattern') {
+                        declNames.push(...v.id.properties.map(v2 => v2.value.name));
+                    }
+                    else if (v.id.type === 'ArrayPattern') {
+                        declNames.push(...v.id.elements.filter(v2 => v2 != null).map(v2 => v2.name));
+                    }
+                });
+                return { declNames };
+            }
             (0, acorn_walk_1.ancestor)(result, {
-                VariableDeclaration(node, state, ancetors) {
-                    if (ancetors.find(v => v.type === 'FunctionExpression'))
+                VariableDeclaration(node, state, ancestors) {
+                    //Performance issue.
+                    if (ancestors.find(v => v.type.endsWith('FunctionExpression')))
                         return;
-                    if (ancetors.find(v => v.type === 'BlockStatement') !== undefined && node.kind !== 'var')
+                    if (ancestors.find(v => ['BlockStatement'].includes(v.type)) !== undefined && node.kind !== 'var')
                         return;
-                    replacePlan.plan.push({ start: node.start, end: node.declarations[0].start, newString: ' ' });
-                    node.declarations.forEach(v => {
-                        if (v.id.type === 'Identifier') {
-                            foundDecl.push(v.id.name);
+                    if ((['ForStatement', 'ForOfStatement'].includes(ancestors.at(-2)?.type ?? ''))) {
+                        if (node.kind == 'var') {
+                            let { declNames } = parseDeclStat(node.declarations);
+                            foundDecl.push(...declNames);
+                            let declaratorStart = node.declarations[0].start;
+                            replacePlan.plan.push({ start: node.start, end: declaratorStart, newString: '' });
+                            return;
                         }
-                        else if (v.id.type === 'ObjectPattern') {
-                            foundDecl.push(...v.id.properties.map(v2 => v2.key.name));
+                        else {
+                            return;
                         }
-                        else if (v.id.type === 'ArrayPattern') {
-                            foundDecl.push(...v.id.elements.filter(v2 => v2 != null).map(v2 => v2.name));
-                        }
-                    });
+                    }
+                    let { declNames } = parseDeclStat(node.declarations);
+                    foundDecl.push(...declNames);
+                    let declaratorStart = node.declarations[0].start;
+                    let declaratorEnd = node.declarations.at(-1).end;
+                    replacePlan.plan.push({ start: node.start, end: declaratorStart, newString: '(' });
+                    replacePlan.plan.push({ start: declaratorEnd, end: declaratorEnd, newString: ')' });
                 },
-                FunctionDeclaration(node, state, ancetors) {
+                FunctionDeclaration(node, state, ancestors) {
                     if (node.expression ||
-                        ancetors.find(v => v.type === 'FunctionExpression') != undefined) {
+                        ancestors.find(v => v.type === 'FunctionExpression') != undefined) {
                         return;
                     }
                     if (node.id == null)
@@ -233,8 +264,8 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                     let funcType1 = source.substring(node.start, node.id.start);
                     replacePlan.plan.push({ start: node.start, end: node.id.end, newString: node.id.name + '=' + funcType1 });
                 },
-                ClassDeclaration(node, state, ancetors) {
-                    if (ancetors.find(v => v.type === 'FunctionExpression') != undefined) {
+                ClassDeclaration(node, state, ancestors) {
+                    if (ancestors.find(v => v.type === 'FunctionExpression') != undefined) {
                         return;
                     }
                     if (node.id == null)
@@ -243,7 +274,7 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                     let clsType1 = source.substring(node.start, node.id.start);
                     replacePlan.plan.push({ start: node.start, end: node.id.end, newString: node.id.name + '=' + clsType1 });
                 },
-                ImportExpression(node, state, ancetors) {
+                ImportExpression(node, state, ancestors) {
                     replacePlan.plan.push({ start: node.start, end: node.start + 6, newString: '_ENV.__priv_import' });
                 },
                 ImportDeclaration(node, state, ancestor) {
@@ -254,11 +285,12 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                     }
                     else if (node.specifiers.length > 0 && node.specifiers[0].type === 'ImportSpecifier') {
                         let specs = node.specifiers;
-                        let importStat = [];
+                        let importStat = [`{let __timp=(await _ENV.__priv_import('${node.source.value}'));`];
                         for (let spec of specs) {
-                            importStat.push(`${spec.local.name}=(await _ENV.__priv_import('${node.source.value}')).${spec.imported.name};`);
+                            importStat.push(`_ENV.${spec.local.name}=__timp.${spec.imported.name};`);
                             foundDecl.push(spec.local.name);
                         }
+                        importStat.push('}');
                         replacePlan.plan.push({ start: node.start, end: node.end, newString: importStat.join('') });
                     }
                     else if (node.specifiers.length === 1 && node.specifiers[0].type === 'ImportDefaultSpecifier') {

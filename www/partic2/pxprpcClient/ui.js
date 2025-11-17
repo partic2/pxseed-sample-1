@@ -77,7 +77,7 @@ define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domu
         async doAdd() {
             let addCard = new domui_1.ReactRefEx();
             let dlg = await (0, window_1.prompt)(React.createElement(AddCard, { ref: addCard }), 'New rpc client');
-            if (await dlg.answer.get() === 'ok') {
+            if (await dlg.response.get() === 'ok') {
                 let { url, name } = (await addCard.waitValid()).getAddClientInfo();
                 await (0, registry_1.addClient)(url, name);
             }
@@ -93,7 +93,7 @@ define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domu
                 name: selected,
                 url: (0, registry_1.getRegistered)(selected)?.url ?? ''
             });
-            if (await dlg.answer.get() === 'ok') {
+            if (await dlg.response.get() === 'ok') {
                 let { url, name } = (await addCard.waitValid()).getAddClientInfo();
                 await (0, registry_1.removeClient)(selected);
                 await (0, registry_1.addClient)(url, name);

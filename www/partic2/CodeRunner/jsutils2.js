@@ -2,38 +2,44 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.Singleton = exports.ExtendStreamReader = exports.TaskLocalRef = void 0;
+    exports.utf8conv = utf8conv;
+    exports.u8hexconv = u8hexconv;
+    exports.FlattenArray = FlattenArray;
+    exports.FlattenArraySync = FlattenArraySync;
     exports.deepEqual = deepEqual;
     exports.setupAsyncHook = setupAsyncHook;
+    Object.defineProperty(exports, "TaskLocalRef", { enumerable: true, get: function () { return base_1.TaskLocalRef; } });
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
-    class TaskLocalRef extends base_1.Ref2 {
-        constructor(defaultVal) {
-            super(defaultVal);
-            this.taskLocalVarName = __name__ + '.var-' + (0, base_1.GenerateRandomString)();
-            let loc = base_1.Task.locals();
-            if (loc != undefined) {
-                loc[this.taskLocalVarName] = defaultVal;
-            }
+    let utf8decoder = new TextDecoder();
+    let utf8encoder = new TextEncoder();
+    function utf8conv(input) {
+        if (typeof input === 'string') {
+            return utf8encoder.encode(input);
         }
-        get() {
-            let loc = base_1.Task.locals();
-            if (loc != undefined) {
-                return loc[this.taskLocalVarName] ?? this.__val;
-            }
-            else {
-                return super.get();
-            }
-        }
-        set(val) {
-            let loc = base_1.Task.locals();
-            if (loc != undefined) {
-                loc[this.taskLocalVarName] = val;
-            }
-            else {
-                this.__val = val;
-            }
+        else {
+            return utf8decoder.decode(input);
         }
     }
-    exports.TaskLocalRef = TaskLocalRef;
+    function u8hexconv(input) {
+        if (typeof input === 'string') {
+            let hex = input;
+            hex = hex.replace(/[^0-9a-fA-F]/g, '');
+            let bytes = new Uint8Array(hex.length >> 1);
+            for (let t1 = 0; t1 < hex.length; t1 += 2) {
+                bytes[t1 >> 1] = parseInt(hex.substring(t1, t1 + 2), 16);
+            }
+            return bytes;
+        }
+        else {
+            let b = input;
+            let hex = '';
+            for (let t1 of b) {
+                let ch = t1.toString(16);
+                hex += ch.length == 2 ? ch : '0' + ch;
+            }
+            return hex;
+        }
+    }
     class ExtendStreamReader {
         constructor(wrapped) {
             this.wrapped = wrapped;
@@ -96,8 +102,9 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
                         concated = new Uint8Array((0, base_1.ArrayBufferConcat)([concated, chunk.value]));
                     }
                     let markMatched = false;
-                    let t2 = concated.length - mark.length;
-                    for (; t2 >= 0; t2--) {
+                    let t2 = 0;
+                    let t3 = concated.length - mark.length;
+                    for (t2 = 0; t2 <= t3; t2++) {
                         markMatched = true;
                         for (let t3 = 0; t3 < mark.length; t3++) {
                             if (concated[t2 + t3] !== mark[t3]) {
@@ -116,6 +123,8 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
                     }
                 }
                 else {
+                    if (concated != null)
+                        this.unshiftBuffer(concated);
                     throw new Error('No mark found before EOF occured');
                 }
             }
@@ -137,10 +146,44 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
                     writePos.set(writeAt + readBytes);
                 return readBytes;
             }
-            return null;
+            throw new Error('stream closed');
         }
     }
     exports.ExtendStreamReader = ExtendStreamReader;
+    async function FlattenArray(source) {
+        let parts = [];
+        for (let t1 of source) {
+            if (t1 instanceof Promise) {
+                parts.push(await t1);
+            }
+            else if (t1 == null) {
+            }
+            else if (typeof (t1) === 'object' && (Symbol.iterator in t1)) {
+                parts.push(...await FlattenArray(t1));
+            }
+            else {
+                parts.push(t1);
+            }
+        }
+        return parts;
+    }
+    //Promise will be ignored
+    function FlattenArraySync(source) {
+        let parts = [];
+        for (let t1 of source) {
+            if (t1 instanceof Promise) {
+            }
+            else if (t1 == null) {
+            }
+            else if (typeof (t1) === 'object' && (Symbol.iterator in t1)) {
+                parts.push(...FlattenArraySync(t1));
+            }
+            else {
+                parts.push(t1);
+            }
+        }
+        return parts;
+    }
     class Singleton extends base_1.future {
         constructor(init) {
             super();
@@ -178,37 +221,30 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
     }
     function setupAsyncHook() {
         if (!('__onAwait' in Promise)) {
-            let asyncStack = [];
+            let asyncStackDepth = 0;
             Promise.__onAsyncEnter = () => {
-                asyncStack.push({ yielded: false });
+                asyncStackDepth++;
             };
-            Promise.__onAsyncExit = async () => {
-                let last = asyncStack.pop();
-                if (last?.yielded) {
+            Promise.__onAsyncExit = () => {
+                asyncStackDepth--;
+                if (asyncStackDepth === 0) {
                     base_1.Task.currentTask = null;
                 }
             };
+            //Only call ONCE for each 'await'
             Promise.__onAwait = async (p) => {
                 base_1.Task.getAbortSignal()?.throwIfAborted();
-                let saved = {
-                    task: base_1.Task.currentTask,
-                    lastAsync: asyncStack.pop()
-                };
-                if (saved.lastAsync != undefined) {
-                    if (saved.lastAsync.yielded) {
-                        base_1.Task.currentTask = null;
-                    }
-                    else {
-                        saved.lastAsync.yielded = true;
-                    }
+                let task = base_1.Task.currentTask;
+                asyncStackDepth--;
+                if (asyncStackDepth === 0) {
+                    base_1.Task.currentTask = null;
                 }
                 try {
                     return await p;
                 }
                 finally {
-                    base_1.Task.currentTask = saved.task;
-                    if (saved.lastAsync)
-                        asyncStack.push(saved.lastAsync);
+                    asyncStackDepth++;
+                    base_1.Task.currentTask = task;
                 }
             };
         }

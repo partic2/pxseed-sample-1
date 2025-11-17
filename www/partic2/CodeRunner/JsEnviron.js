@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/jsutils1/webutils"], function (require, exports, base_1, webutils_1, webutils_2) {
+define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./jsutils2"], function (require, exports, base_1, webutils_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.installedRequirejsResourceProvider = exports.DirAsRootFS = exports.NodeSimpleFileSystem = exports.defaultFileSystem = exports.LocalWindowSFS = exports.TjsSfs = void 0;
@@ -8,6 +8,16 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     exports.getFileSysteWritableStream = getFileSysteWritableStream;
     exports.installRequireProvider = installRequireProvider;
     exports.initCodeEnv = initCodeEnv;
+    //treat both slash and back slash as sep
+    function dirname2(path) {
+        for (let t1 = path.length - 1; t1 >= 0; t1--) {
+            let ch = path.charAt(t1);
+            if ('\\/'.includes(ch)) {
+                return path.substring(0, t1);
+            }
+        }
+        return '';
+    }
     class MountFileEntry {
         //pxseed url for mounted fs, eg:  "pxseedjs:your/module/name.asynchronizedBuilder?param=xxx"
         //asynchronizedBuilder:async function asynchronizedBuilder(url:string):Promise<SimpleFileSystem>
@@ -60,7 +70,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             }
         }
         async writeAll(path, data) {
-            let dirname = webutils_2.path.dirname(path);
+            let dirname = dirname2(path);
             if (await this.filetype(dirname) !== 'dir') {
                 await this.mkdir(dirname);
             }
@@ -73,7 +83,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                     if (data.length - offset < sizemax) {
                         sizemax = data.length - offset;
                     }
-                    let write = await file.write(new Uint8Array(data, offset, sizemax), offset);
+                    let write = await file.write(new Uint8Array(data.buffer, offset, sizemax), offset);
                     offset += write;
                 }
             }
@@ -91,19 +101,17 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
         pathConvert(path) {
             if (path === '') {
-                return '/';
+                path = '/';
             }
             if (path.startsWith('/') && this.winbasepath) {
                 if (path.length <= 3) {
-                    return path.substring(1) + '\\';
+                    path = path.substring(1) + '\\';
                 }
                 else {
-                    return path.substring(1);
+                    path = path.substring(1);
                 }
             }
-            else {
-                return path;
-            }
+            return path;
         }
         async listdir(path) {
             if ((path === '/' || path === '') && this.winbasepath) {
@@ -154,6 +162,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             return datadir;
         }
         async read(path, offset, buf) {
+            path = this.pathConvert(path);
             let fh = await this.impl.open(path, 'r+');
             try {
                 let len = await fh.read(buf, offset);
@@ -167,7 +176,14 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             }
         }
         async write(path, offset, buf) {
-            let fh = await this.impl.open(path, 'r+');
+            path = this.pathConvert(path);
+            let fh;
+            try {
+                fh = await this.impl.open(path, 'r+');
+            }
+            catch (err) {
+                fh = await this.impl.open(path, 'w');
+            }
             try {
                 let len = await fh.write(buf, offset);
                 return len;
@@ -177,10 +193,12 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             }
         }
         async stat(path) {
+            path = this.pathConvert(path);
             let statRes = await this.impl.stat(path);
             return { atime: statRes.atim, mtime: statRes.mtim, ctime: statRes.ctim, birthtime: statRes.birthtim, size: statRes.size };
         }
         async truncate(path, newSize) {
+            path = this.pathConvert(path);
             let f = await this.impl.open(path, 'r+');
             try {
                 await f.truncate(newSize);
@@ -674,7 +692,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             path = this.pathConvert(path);
             let parent = this.nodepath.dirname(path);
             if (await this.filetype(parent) === 'none') {
-                this.mkdir(parent);
+                await this.mkdir(parent);
             }
             await this.nodefs.writeFile(path, data);
         }
@@ -724,7 +742,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             await this.nodefs.rename(path, newPath);
         }
         async dataDir() {
-            return webutils_2.path.dirname((0, webutils_1.getWWWRoot)().replace(/\\/, '/'));
+            return dirname2((0, webutils_1.getWWWRoot)());
         }
         async read(path, offset, buf) {
             path = this.pathConvert(path);
@@ -741,7 +759,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             path = this.pathConvert(path);
             let parent = this.nodepath.dirname(path);
             if (await this.filetype(parent) === 'none') {
-                this.mkdir(parent);
+                await this.mkdir(parent);
             }
             let fh = await this.nodefs.open(path, 'r+');
             try {
@@ -766,6 +784,9 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         constructor(fs, rootDir) {
             this.fs = fs;
             this.rootDir = rootDir;
+            if (!this.rootDir.endsWith('/')) {
+                this.rootDir += '/';
+            }
         }
         async ensureInited() {
             return await this.fs.ensureInited();
@@ -855,32 +876,46 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             dataSink.writePos = initialSeek;
         return new WritableStream(dataSink);
     }
-    class RequirejsResourceProvider {
-        constructor(fs) {
-            this.fs = fs;
-            this.rootPath = 'www';
-            this.handler = async (modName, url) => {
-                await this.fs.ensureInited();
-                let { baseUrl } = base_1.requirejs.getConfig();
-                let fileName = url.substring(baseUrl.length);
-                let data = await this.fs.readAll(this.rootPath + '/' + fileName);
-                if (data != null) {
-                    return new TextDecoder().decode(data);
-                }
-                return null;
-            };
+    class CSimpleFileSystemScriptLoader {
+        constructor(providers) {
+            this.providers = providers;
+            this.currentDefining = null;
         }
-        ;
+        loadModule(moduleId, url, done) {
+            this.loadModuleAsync(moduleId, url).then(() => done(null), (err) => done(err));
+        }
+        getDefiningModule() {
+            return this.currentDefining;
+        }
+        async loadModuleAsync(moduleId, url) {
+            url = moduleId;
+            if (!url.endsWith('.js'))
+                url = url + '.js';
+            for (let t1 of this.providers) {
+                let data = await t1.fs.readAll(t1.rootPath + '/' + url);
+                if (data != null) {
+                    this.currentDefining = moduleId;
+                    try {
+                        new Function((0, jsutils2_1.utf8conv)(data))();
+                    }
+                    finally {
+                        this.currentDefining = null;
+                        return;
+                    }
+                }
+            }
+            throw new Error(`module ${moduleId} not found by CSimpleFileSystemScriptLoader`);
+        }
     }
+    let simpleFileSystemScriptLoader = null;
     exports.installedRequirejsResourceProvider = [];
     async function installRequireProvider(fs, rootPath) {
-        let provider = new RequirejsResourceProvider(fs);
-        if (rootPath != undefined) {
-            provider.rootPath = rootPath;
+        if (simpleFileSystemScriptLoader == null) {
+            simpleFileSystemScriptLoader = new CSimpleFileSystemScriptLoader(exports.installedRequirejsResourceProvider);
+            base_1.requirejs.addScriptLoader(simpleFileSystemScriptLoader, true);
         }
-        base_1.requirejs.addResourceProvider(provider.handler);
-        exports.installedRequirejsResourceProvider.push(provider);
-        return provider.handler;
+        exports.installedRequirejsResourceProvider.push({ fs, rootPath: rootPath ?? 'www' });
+        return { fs, rootPath: rootPath ?? 'www' };
     }
     /* Usage: Run below code in CodeContext to init CodeContext _ENV
         ```javascript
@@ -912,7 +947,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                 (0, base_1.assert)(this.simple != undefined);
                 if (path.startsWith('.')) {
                     (0, base_1.assert)(this.codePath != undefined);
-                    path = webutils_2.path.dirname(this.codePath) + path.substring(1);
+                    path = dirname2(this.codePath) + path.substring(1);
                 }
                 let jsbin = await this.simple.readAll(path);
                 if (jsbin == null) {

@@ -36,19 +36,21 @@ define(["require", "exports"], function (require, exports) {
                 }
             }
             else if (walker.currentNode instanceof Text) {
-                let prev = walker.currentNode.previousSibling;
                 let textData = '';
-                if (prev != null) {
-                    if (prev instanceof HTMLDivElement || prev instanceof HTMLParagraphElement) {
-                        textData += '\n';
-                    }
-                }
                 if (textData == ' ') {
                     textData = '';
                 }
                 else {
                     //trim charCode(32) and THEN replace charCode(160)
                     textData += walker.currentNode.data.replace(/\n|(^ +)|( +$)/g, '').replace(/\u00a0/g, ' ');
+                }
+                if (textData != '') {
+                    let prev = walker.currentNode.previousSibling;
+                    if (prev != null) {
+                        if (prev instanceof HTMLDivElement || prev instanceof HTMLParagraphElement) {
+                            textParts.push({ node: 'phony', text: '\n' });
+                        }
+                    }
                 }
                 textParts.push({ node: walker.currentNode,
                     text: textData });

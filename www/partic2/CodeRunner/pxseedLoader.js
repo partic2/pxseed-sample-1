@@ -78,7 +78,7 @@ define(["require", "exports", "acorn", "acorn-walk", "partic2/jsutils1/base", ".
                     replacePlan.plan.push({
                         start: node.argument.start,
                         end: node.argument.start,
-                        newString: awaitHook
+                        newString: ' ' + awaitHook
                     });
                     replacePlan.plan.push({
                         start: node.argument.end,

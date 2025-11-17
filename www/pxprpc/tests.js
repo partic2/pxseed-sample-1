@@ -8,7 +8,7 @@ define(["require", "exports", "./backend", "./base", "./extend", "partic2/jsutil
             if (client2 == undefined) {
                 client2 = await new extend_1.RpcExtendClient1(new base_1.Client(await new backend_1.WebSocketIo().connect('ws://127.0.0.1:1345/pxprpc'))).init();
             }
-            console.log(await client2.conn.getInfo());
+            console.log(await client2.baseClient.getInfo());
             console.log('server name:' + client2.serverName);
             let get1234 = (await client2.getFunc('test1.get1234'));
             get1234.typedecl('->o');
@@ -31,7 +31,7 @@ define(["require", "exports", "./backend", "./base", "./extend", "partic2/jsutil
             await testUnser.call(serdata);
             let testTableUnser = (await client2.getFunc('test1.testTableUnser'));
             testTableUnser.typedecl('b->');
-            serdata = new extend_1.TableSerializer().setColumnInfo('iscl', null).fromMapArray([{ id: 1554, name: '1.txt', isdir: false, filesize: BigInt('12345') }, { id: 1555, name: 'docs', isdir: true, filesize: BigInt('0') }]).build();
+            serdata = new extend_1.TableSerializer().setColumnsInfo('iscl', null).fromMapArray([{ id: 1554, name: '1.txt', isdir: false, filesize: BigInt('12345') }, { id: 1555, name: 'docs', isdir: true, filesize: BigInt('0') }]).build();
             await testTableUnser.call(serdata);
             let raiseError1 = (await client2.getFunc('test1.raiseError1'));
             try {
@@ -40,6 +40,20 @@ define(["require", "exports", "./backend", "./base", "./extend", "partic2/jsutil
             }
             catch (e) {
                 console.log(e);
+            }
+            let testPollCall = await client2.getFunc('test1.testPollCall');
+            if (testPollCall != null) {
+                console.info('poll test,tick 5 times');
+                testPollCall.typedecl('->o');
+                let tickEmitter = await (await testPollCall.call()).asCallable();
+                tickEmitter.typedecl('s->s');
+                tickEmitter.poll((err, msg) => {
+                    console.info('poll call message ', msg, err);
+                }, 'pxprpc-msg');
+                await new Promise((resolve) => setTimeout(() => { resolve('tick'); }, 5000));
+            }
+            else {
+                console.info('test1.testPollCall not found, skipped.');
             }
             let autoCloseable = (await client2.getFunc('test1.autoCloseable')).typedecl('->o');
             await autoCloseable.call();
@@ -52,7 +66,7 @@ define(["require", "exports", "./backend", "./base", "./extend", "partic2/jsutil
     async function testAsServer(server2) {
         try {
             if (server2 == undefined) {
-                server2 = await new extend_1.RpcExtendServer1(new base_1.Server(await new backend_1.WebSocketIo().connect('ws://127.0.0.1:1345/pxprpcClient')));
+                server2 = new extend_1.RpcExtendServer1(new base_1.Server(await new backend_1.WebSocketIo().connect('ws://127.0.0.1:1345/pxprpcClient')));
             }
             extend_1.defaultFuncMap['test1.get1234'] = new extend_1.RpcExtendServerCallable(async () => '1234').typedecl('->o');
             extend_1.defaultFuncMap['test1.printString'] = new extend_1.RpcExtendServerCallable(async (s) => console.log(s)).typedecl('o->');
@@ -68,20 +82,30 @@ define(["require", "exports", "./backend", "./base", "./extend", "partic2/jsutil
             extend_1.defaultFuncMap['test1.testPrintArg'] = new extend_1.RpcExtendServerCallable(async (a, b, c, d, e, f) => { console.log(a, b, c, d, e, new TextDecoder().decode(f)); return [100, BigInt('1234567890')]; }).typedecl('cilfdb->il');
             extend_1.defaultFuncMap['test1.testNone'] = new extend_1.RpcExtendServerCallable(async (nullValue) => { console.log('expect null', nullValue); return null; }).typedecl('o->o');
             extend_1.defaultFuncMap['test1.autoCloseable'] = new extend_1.RpcExtendServerCallable(async () => { return { close: () => { console.log('auto closeable closed'); } }; }).typedecl('->o');
+            extend_1.defaultFuncMap['test1.testPollCall'] = new extend_1.RpcExtendServerCallable(async () => {
+                let count = 0;
+                return new extend_1.RpcExtendServerCallable(async (s) => {
+                    count++;
+                    if (count > 3)
+                        throw new Error('Stopped');
+                    await new Promise((resolve) => setTimeout(() => { resolve('tick'); }, 1000));
+                    return s + count;
+                }).typedecl('s->s');
+            }).typedecl('->o');
             await server2.serve();
         }
         catch (e) {
             console.error(e);
         }
     }
-    var __name__ = './tests';
+    var __name__ = 'pxprpc/tests';
     (async () => {
         if (globalThis.window != undefined) {
             let workerThread = (0, webutils_1.CreateWorkerThread)();
             await workerThread.start();
             backend_2.WebMessage.bind(workerThread.port);
             let serv = new backend_2.WebMessage.Server(async (conn) => {
-                let server2 = await new extend_1.RpcExtendServer1(new base_1.Server(conn));
+                let server2 = new extend_1.RpcExtendServer1(new base_1.Server(conn));
                 await testAsServer(server2);
             });
             serv.listen('pxprpc test 1');
@@ -93,8 +117,8 @@ define(["require", "exports", "./backend", "./base", "./extend", "partic2/jsutil
             let client2 = await new extend_1.RpcExtendClient1(new base_1.Client(await new backend_2.WebMessage.Connection().connect('pxprpc test 1'))).init();
             await testAsClient(client2);
         }
-        await testAsClient();
-        await testAsServer();
+        //await testAsClient();
+        //await testAsServer();
     })();
 });
 //# sourceMappingURL=tests.js.map

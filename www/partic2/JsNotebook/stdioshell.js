@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/pComponentUi/texteditor", "preact", "./fileviewer", "partic2/pComponentUi/workspace", "partic2/tjshelper/tjsonjserpc", "partic2/jsutils1/base", "partic2/pComponentUi/domui"], function (require, exports, texteditor_1, React, fileviewer_1, workspace_1, tjsonjserpc_1, base_1, domui_1) {
+define(["require", "exports", "partic2/pComponentUi/texteditor", "preact", "./fileviewer", "partic2/pComponentUi/workspace", "partic2/tjshelper/tjsonjserpc", "partic2/jsutils1/base", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/pComponentUi/input"], function (require, exports, texteditor_1, React, fileviewer_1, workspace_1, tjsonjserpc_1, base_1, domui_1, window_1, input_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.StdioShellProfile1 = exports.StdioShell = void 0;
@@ -8,12 +8,11 @@ define(["require", "exports", "partic2/pComponentUi/texteditor", "preact", "./fi
             this.rref = {
                 stdout: React.createRef(),
                 stdin: React.createRef(),
-                switchProcessInput: React.createRef()
             };
             this.inputHistory = [];
             this.currentUseHistory = -1;
             this.state = {
-                stdoutBuffer: [], procAlive: true, switchProcessDialog: -1
+                stdoutBuffer: [], procAlive: true
             };
             this.startProcess(this.props.cmdline);
         }
@@ -74,12 +73,18 @@ define(["require", "exports", "partic2/pComponentUi/texteditor", "preact", "./fi
             this.rref.stdout.current.scrollToBottom();
         }
         async openSwitchProcessDialog() {
-            this.setState({ switchProcessDialog: (0, base_1.GetCurrentTime)().getTime() });
-        }
-        async switchProcessDialogOk() {
-            let cmdline = this.rref.switchProcessInput.current.value;
-            this.startProcess(cmdline);
-            this.setState({ switchProcessDialog: -1 });
+            let v = {};
+            let p = await (0, window_1.prompt)(React.createElement(input_1.SimpleReactForm1, { onChange: newVal => v = newVal }, (form) => React.createElement("div", null,
+                "command:",
+                React.createElement("input", { type: "text", ref: form.getRefForInput('command') }),
+                React.createElement("br", null))), 'switch process');
+            if (await p.response.get() == 'ok') {
+                let { command } = v;
+                this.startProcess(command);
+            }
+            else {
+                p.close();
+            }
         }
         async onStdInAreaKeyDown(ev) {
             if (ev.code == 'ArrowUp') {
@@ -113,15 +118,7 @@ define(["require", "exports", "partic2/pComponentUi/texteditor", "preact", "./fi
                 React.createElement(texteditor_1.TextEditor, { ref: this.rref.stdin, divClass: [domui_1.css.simpleCard], divAttr: { onKeyDown: (ev) => this.onStdInAreaKeyDown(ev) } }),
                 React.createElement("div", null,
                     React.createElement("a", { onClick: () => this.openSwitchProcessDialog(), href: 'javascript:;' }, "\u00A0\u00A0Switch process\u00A0\u00A0"),
-                    React.createElement("span", null, this.state.procAlive ? 'process alive' : ('process stopped with code ' + this.state.exitCode))),
-                React.createElement(domui_1.FloatLayerComponent, { activeTime: this.state.switchProcessDialog, divClass: [domui_1.css.activeLayer, domui_1.css.simpleCard, domui_1.css.flexColumn] },
-                    React.createElement("div", null,
-                        "command:",
-                        React.createElement("input", { ref: this.rref.switchProcessInput, type: "text" }),
-                        React.createElement("br", null)),
-                    React.createElement("div", { className: domui_1.css.flexRow },
-                        React.createElement("a", { onClick: () => this.switchProcessDialogOk(), href: "javascript:;", style: { flexGrow: '1' } }, "Ok"),
-                        React.createElement("a", { onClick: () => this.setState({ switchProcessDialog: -1 }), href: "javascript:;", style: { flexGrow: '1' } }, "Cancel"))));
+                    React.createElement("span", null, this.state.procAlive ? 'process alive' : ('process stopped with code ' + this.state.exitCode))));
         }
     }
     exports.StdioShell = StdioShell;

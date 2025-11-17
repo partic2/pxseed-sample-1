@@ -82,11 +82,6 @@ export const main=async (entry)=>{
     globalThis.require([entry],(ent)=>{});
 };
 
-if(globalThis.postMessage==undefined){
-    if(tjs.args[2].endsWith('txikirun.js')){
-        main(tjs.args[3]);
-    }
-}else{
-    //worker
+if(globalThis.postMessage!==undefined){
     main('partic2/tjshelper/workerentry');
 }

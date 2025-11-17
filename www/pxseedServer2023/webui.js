@@ -9,7 +9,7 @@ define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "part
         }
         catch (err) {
             (0, base_1.throwIfAbortError)(err);
-            (0, window_1.alert)(err.message);
+            (0, window_1.alert)(err.message + '\n' + err.stack);
         }
     }
     class PxseedServerAdministrateTool extends React.Component {
@@ -40,7 +40,7 @@ define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "part
             await alertIfError(async () => {
                 let resp = await this.rpcFunc.buildPackages();
                 let wnd = await (0, window_1.prompt)(React.createElement("pre", null, resp));
-                await wnd.answer.get();
+                await wnd.response.get();
                 wnd.close();
             });
         }
@@ -48,7 +48,7 @@ define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "part
             await alertIfError(async () => {
                 let resp = await this.rpcFunc.rebuildPackages();
                 let wnd = await (0, window_1.prompt)(React.createElement("pre", null, resp));
-                await wnd.answer.get();
+                await wnd.response.get();
                 wnd.close();
             });
         }
@@ -56,6 +56,16 @@ define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "part
             await alertIfError(async () => {
                 await this.rpcFunc.subprocessRestart(index);
                 await (0, window_1.alert)('restart done');
+            });
+        }
+        async restartServerHostWorker1() {
+            await alertIfError(async () => {
+                let host1 = await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName);
+                let client1 = await host1.ensureConnected();
+                let funcs = await (0, registry_1.getAttachedRemoteRigstryFunction)(client1);
+                funcs.jsExec('globalThis.close()', null).catch();
+                await (0, base_1.sleep)(1000);
+                window.location.reload();
             });
         }
         renderConnected() {
@@ -72,6 +82,7 @@ define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "part
                     React.createElement("a", { href: "javascript:;", onClick: () => this.buildEnviron() }, "build environ"),
                     React.createElement("a", { href: "javascript:;", onClick: () => this.buildPackage() }, "build packages"),
                     React.createElement("a", { href: "javascript:;", onClick: () => this.forceRebuildPackages() }, "force rebuild pakcages"),
+                    React.createElement("a", { href: "javascript:;", onClick: () => this.restartServerHostWorker1() }, "restart server host worker 1"),
                     React.createElement("a", { href: "javascript:;" }, "stop server"),
                     (this.state.serverConfig?.deamonMode?.enabled == true) ? this.state.serverConfig.deamonMode.subprocessConfig.map((cfg, index) => {
                         return React.createElement("a", { href: "javascript:;", onClick: () => this.restartSubprocess(index) },

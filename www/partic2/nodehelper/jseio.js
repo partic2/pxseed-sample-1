@@ -63,7 +63,7 @@ define(["require", "exports", "pxprpc/extend", "fs/promises", "os", "fs-extra", 
         extend_1.defaultFuncMap['JseHelper.JseIo.mkdir'] = new extend_1.RpcExtendServerCallable(async (path) => fs.mkdir(path, { recursive: true })).typedecl('s->');
         extend_1.defaultFuncMap['JseHelper.JseIo.copyFile'] = new extend_1.RpcExtendServerCallable(async (path, newPath) => fse.copy(path, newPath, { overwrite: true })).typedecl('ss->');
         extend_1.defaultFuncMap['JseHelper.JseIo.readdir'] = new extend_1.RpcExtendServerCallable(async (path) => {
-            let ser = new extend_1.TableSerializer().setColumnInfo(null, ['name', 'type', 'size', 'mtime']);
+            let ser = new extend_1.TableSerializer().setColumnsInfo(null, ['name', 'type', 'size', 'mtime']);
             for (let f of await fs.readdir(path)) {
                 try {
                     let fileStat = await fs.stat(path + path_1.sep + f);

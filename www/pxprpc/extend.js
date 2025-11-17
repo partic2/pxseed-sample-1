@@ -6,6 +6,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     class RpcExtendError extends Error {
     }
     exports.RpcExtendError = RpcExtendError;
+    //Client side
     class RpcExtendClientObject {
         constructor(client, value) {
             this.client = client;
@@ -14,16 +15,20 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         async free() {
             if (this.value != undefined) {
                 let sid = this.client.allocSid();
+                let v = this.value;
+                this.value = undefined;
                 try {
-                    await this.client.conn.freeRef([this.value], sid);
+                    await this.client.baseClient.freeRef([v], sid);
                 }
                 finally {
-                    await this.client.freeSid(this.value);
+                    this.client.freeSid(sid);
                 }
             }
         }
         async asCallable() {
-            return new RpcExtendClientCallable(this.client, this.value);
+            let value = this.value;
+            this.value = undefined;
+            return new RpcExtendClientCallable(this.client, value);
         }
     }
     exports.RpcExtendClientObject = RpcExtendClientObject;
@@ -61,7 +66,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             [this.tParam, this.tResult] = decl.split('->');
             return this;
         }
-        async call(...args) {
+        serArgs(args) {
             let buf = [];
             if (this.tParam === 'b') {
                 let abuf = args[0];
@@ -70,50 +75,72 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             else {
                 let ser = new base_1.Serializer().prepareSerializing(32);
                 new TableSerializer().
-                    bindContext(null, this.client).bindSerializer(ser).setColumnInfo(this.tParam, null).
+                    bindContext(null, this.client).bindSerializer(ser).setColumnsInfo(this.tParam, null).
                     putRowsData([args]);
                 let serbuf = ser.build();
                 buf = [serbuf];
             }
-            let sid = this.client.allocSid();
-            try {
-                let resp = await this.client.conn.call(this.value, buf, sid);
-                if (this.tResult === 'b') {
-                    return resp;
+            return buf;
+        }
+        unserRet(resp) {
+            if (this.tResult === 'b') {
+                return resp;
+            }
+            else {
+                let ser = new base_1.Serializer().prepareUnserializing(resp);
+                let rets = new TableSerializer().
+                    bindContext(null, this.client).bindSerializer(ser).setColumnsInfo(this.tResult, null).
+                    getRowsData(1)[0];
+                if (this.tResult.length === 1) {
+                    return rets[0];
+                }
+                else if (this.tResult.length === 0) {
+                    return null;
                 }
                 else {
-                    let ser = new base_1.Serializer().prepareUnserializing(resp);
-                    let rets = new TableSerializer().
-                        bindContext(null, this.client).bindSerializer(ser).setColumnInfo(this.tResult, null).
-                        getRowsData(1)[0];
-                    if (this.tResult.length === 1) {
-                        return rets[0];
-                    }
-                    else if (this.tResult.length === 0) {
-                        return null;
-                    }
-                    else {
-                        return rets;
-                    }
+                    return rets;
                 }
+            }
+        }
+        async call(...args) {
+            let buf = this.serArgs(args);
+            let sid = this.client.allocSid();
+            try {
+                this.client.throwIfNotRunning();
+                let resp = await this.client.baseClient.call(this.value, buf, sid);
+                return this.unserRet(resp);
             }
             finally {
                 this.client.freeSid(sid);
             }
         }
+        async poll(onResult, ...args) {
+            let buf = this.serArgs(args);
+            let sid = this.client.allocSid();
+            this.client.throwIfNotRunning();
+            this.client.baseClient.poll(this.value, buf, (err, result) => {
+                if (err !== null) {
+                    this.client.freeSid(sid);
+                    onResult(err);
+                }
+                else {
+                    onResult(null, this.unserRet(result));
+                }
+            }, sid);
+        }
     }
     exports.RpcExtendClientCallable = RpcExtendClientCallable;
     class RpcExtendClient1 {
-        constructor(conn) {
-            this.conn = conn;
+        constructor(baseClient) {
+            this.baseClient = baseClient;
             this.__usedSid = {};
             this.__sidStart = 1;
             this.__sidEnd = 0xffff;
             this.__nextSid = this.__sidStart;
         }
         async init() {
-            this.conn.run();
-            for (let item of (await this.conn.getInfo()).split('\n')) {
+            this.baseClient.run();
+            for (let item of (await this.baseClient.getInfo()).split('\n')) {
                 if (item.indexOf(':') >= 0) {
                     let [key, val] = item.split(':');
                     if (key === 'server name') {
@@ -125,7 +152,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         }
         allocSid() {
             let reachEnd = false;
-            while (this.__usedSid[this.__nextSid]) {
+            while (this.__usedSid[this.__nextSid] === true) {
                 this.__nextSid += 1;
                 if (this.__nextSid >= this.__sidEnd) {
                     if (reachEnd) {
@@ -148,10 +175,16 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         freeSid(index) {
             delete this.__usedSid[index];
         }
+        throwIfNotRunning() {
+            if (!this.baseClient.isRunning()) {
+                throw new RpcExtendError('baseClient is not running.');
+            }
+        }
         async getFunc(name) {
+            this.throwIfNotRunning();
             let sid = this.allocSid();
             try {
-                let index = await this.conn.getFunc(name, sid);
+                let index = await this.baseClient.getFunc(name, sid);
                 if (index === -1)
                     return null;
                 return new RpcExtendClientCallable(this, index);
@@ -161,10 +194,12 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             }
         }
         async close() {
-            await this.conn.close();
+            await this.baseClient.close();
         }
     }
     exports.RpcExtendClient1 = RpcExtendClient1;
+    //Server side
+    //auto '.close' on free
     function allocRefFor(serv, obj) {
         let ref = serv.allocRef();
         ref.object = obj;
@@ -195,7 +230,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             else {
                 let ser = new base_1.Serializer().prepareUnserializing(buf);
                 param = new TableSerializer().
-                    bindContext(req.context, null).bindSerializer(ser).setColumnInfo(this.tParam, null).
+                    bindContext(req.context, null).bindSerializer(ser).setColumnsInfo(this.tParam, null).
                     getRowsData(1)[0];
             }
             return param;
@@ -203,7 +238,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         async call(req) {
             try {
                 let r = await this.wrapped.apply(this, this.readParameter(req));
-                req.result = await this.writeResult(req, r);
+                req.result = this.writeResult(req, r);
             }
             catch (e) {
                 return req.rejected = e;
@@ -217,7 +252,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
                 let ser = new base_1.Serializer().prepareSerializing(8);
                 let results = this.tResult.length > 1 ? r : [r];
                 new TableSerializer().
-                    bindContext(req.context, null).bindSerializer(ser).setColumnInfo(this.tResult, null).
+                    bindContext(req.context, null).bindSerializer(ser).setColumnsInfo(this.tResult, null).
                     putRowsData([results]);
                 let buf = ser.build();
                 if (buf.byteLength == 0)
@@ -259,16 +294,16 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     class TableSerializer {
         constructor() {
             this.FLAG_NO_COLUMN_NAME = 1;
-            this.columnName = null;
-            this.columnType = null;
+            this.columnsName = null;
+            this.columnsType = null;
             this.rows = [];
             this.boundServContext = null;
             this.boundClieContext = null;
             this.ser = null;
         }
-        setColumnInfo(types, names) {
-            this.columnName = names;
-            this.columnType = types;
+        setColumnsInfo(types, names) {
+            this.columnsName = names;
+            this.columnsType = types;
             return this;
         }
         bindContext(serv, clie) {
@@ -292,13 +327,13 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         }
         getRowsData(rowCnt) {
             let rows = [];
-            let colCnt = this.columnType.length;
+            let colCnt = this.columnsType.length;
             let ser = this.ser;
             for (let i1 = 0; i1 < rowCnt; i1++) {
                 rows.push(new Array(colCnt));
             }
             for (let i1 = 0; i1 < colCnt; i1++) {
-                let type = this.columnType.charAt(i1);
+                let type = this.columnsType.charAt(i1);
                 switch (type) {
                     case 'i':
                         for (let i2 = 0; i2 < rowCnt; i2++) {
@@ -352,7 +387,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
                         }
                         break;
                     default:
-                        throw new Error("Unknown Type");
+                        throw new RpcExtendError("Unknown Type");
                 }
             }
             return rows;
@@ -364,23 +399,23 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             let ser = this.ser;
             let flag = ser.getVarint();
             let rowCnt = ser.getVarint();
-            this.columnType = ser.getString();
-            let colCnt = this.columnType.length;
+            this.columnsType = ser.getString();
+            let colCnt = this.columnsType.length;
             if ((flag & this.FLAG_NO_COLUMN_NAME) === 0) {
-                this.columnName = [];
+                this.columnsName = [];
                 for (let i1 = 0; i1 < colCnt; i1++) {
-                    this.columnName.push(ser.getString());
+                    this.columnsName.push(ser.getString());
                 }
             }
             this.rows = this.getRowsData(rowCnt);
             return this;
         }
         putRowsData(rows) {
-            let colCnt = this.columnType.length;
+            let colCnt = this.columnsType.length;
             let rowCnt = rows.length;
             let ser = this.ser;
             for (let i1 = 0; i1 < colCnt; i1++) {
-                let type = this.columnType.charAt(i1);
+                let type = this.columnsType.charAt(i1);
                 switch (type) {
                     case 'i':
                         for (let i2 = 0; i2 < rowCnt; i2++) {
@@ -434,7 +469,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
                         }
                         break;
                     default:
-                        throw new Error("Unknown Type");
+                        throw new RpcExtendError("Unknown Type");
                 }
             }
         }
@@ -443,29 +478,29 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
                 this.bindSerializer(new base_1.Serializer().prepareSerializing(64));
             }
             let ser = this.ser;
-            if (this.columnType == null) {
-                this.columnType = '';
+            if (this.columnsType == null) {
+                this.columnsType = '';
                 if (this.rows.length >= 1) {
                     for (let t1 of this.rows[0]) {
                         switch (typeof t1) {
                             case 'number':
-                                this.columnType += 'd';
+                                this.columnsType += 'd';
                                 break;
                             case 'string':
-                                this.columnType += 's';
+                                this.columnsType += 's';
                                 break;
                             case 'boolean':
-                                this.columnType += 'c';
+                                this.columnsType += 'c';
                                 break;
                             case 'bigint':
-                                this.columnType += 'l';
+                                this.columnsType += 'l';
                                 break;
                             default:
                                 if (t1 instanceof Uint8Array) {
-                                    this.columnType += 'b';
+                                    this.columnsType += 'b';
                                 }
                                 else {
-                                    this.columnType += 'o';
+                                    this.columnsType += 'o';
                                 }
                                 break;
                         }
@@ -473,15 +508,15 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
                 }
             }
             let flag = 0;
-            if (this.columnName == null) {
+            if (this.columnsName == null) {
                 flag |= this.FLAG_NO_COLUMN_NAME;
             }
             ser.putVarint(flag);
             let rowCnt = this.rows.length;
             ser.putVarint(rowCnt);
-            ser.putString(this.columnType);
-            if (this.columnName !== null) {
-                for (let e of this.columnName) {
+            ser.putString(this.columnsType);
+            if (this.columnsName !== null) {
+                for (let e of this.columnsName) {
                     ser.putString(e);
                 }
             }
@@ -491,30 +526,30 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         toMapArray() {
             let r = [];
             let rowCount = this.getRowCount();
-            let colCount = this.columnName.length;
+            let colCount = this.columnsName.length;
             for (let t1 = 0; t1 < rowCount; t1++) {
                 let r0 = {};
                 let row = this.getRow(t1);
                 for (let t2 = 0; t2 < colCount; t2++) {
-                    r0[this.columnName[t2]] = row[t2];
+                    r0[this.columnsName[t2]] = row[t2];
                 }
                 r.push(r0);
             }
             return r;
         }
         fromMapArray(val) {
-            if (val.length > 0 && this.columnName === null) {
-                this.columnName = [];
+            if (val.length > 0 && this.columnsName === null) {
+                this.columnsName = [];
                 for (let k in val[0]) {
-                    this.columnName.push(k);
+                    this.columnsName.push(k);
                 }
             }
             let rowCount = val.length;
-            let colCount = this.columnName.length;
+            let colCount = this.columnsName.length;
             for (let t1 = 0; t1 < rowCount; t1++) {
                 let row = [];
                 for (let t2 = 0; t2 < colCount; t2++) {
-                    row.push(val[t1][this.columnName[t2]]);
+                    row.push(val[t1][this.columnsName[t2]]);
                 }
                 this.addRow(row);
             }

@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/domui", "preact", "partic2/jsutils1/webutils", "partic2/pComponentUi/texteditor", "./Inspector", "./Component1"], function (require, exports, base_1, domui_1, React, webutils_1, texteditor_1, Inspector_1, Component1_1) {
+define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/domui", "preact", "partic2/jsutils1/webutils", "partic2/pComponentUi/texteditor", "./Inspector", "./Component1", "partic2/pComponentUi/utils", "./jsutils2"], function (require, exports, base_1, domui_1, React, webutils_1, texteditor_1, Inspector_1, Component1_1, utils_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.CodeCellList = exports.DefaultCodeCellList = exports.CodeCell = exports.css = void 0;
@@ -29,11 +29,21 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             this.requestCodeComplete = new Inspector_1.DelayOnceCall(async () => {
                 this.setState({
                     codeCompleteCandidate: await this.props.codeContext.codeComplete(this.getCellInput(), this.rref.codeInput.current.getTextCaretOffset())
+                }, () => {
+                    this.props.onTooltips?.(React.createElement("div", null,
+                        this.state.extraTooltips ? React.createElement("div", { dangerouslySetInnerHTML: { __html: this.state.extraTooltips } }) : null,
+                        this.renderCodeComplete()));
                 });
-            }, 300);
-            this.setState({ codeCompleteCandidate: null, focusin: false });
+            }, 200);
+            this.requestUpdateTooltips = new Inspector_1.DelayOnceCall(async () => {
+                this.props.onTooltips?.(React.createElement("div", null,
+                    this.state.extraTooltips ? React.createElement("div", { dangerouslySetInnerHTML: { __html: this.state.extraTooltips } }) : null,
+                    this.renderCodeComplete()));
+            }, 100);
+            this.setState({ codeCompleteCandidate: null, focusin: false, extraTooltips: null });
         }
         async runCode() {
+            this.props.onTooltips?.(null);
             this.props.onRun?.();
             try {
                 this.setState({ cellOutput: 'Running...' });
@@ -82,15 +92,14 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                 if (this.state.codeCompleteCandidate != null) {
                     if (this.state.codeCompleteCandidate.length > 0) {
                         this.insertCodeComplete(this.state.codeCompleteCandidate[0]);
+                        this.setState({ codeCompleteCandidate: [] });
+                        this.requestUpdateTooltips.call();
                     }
                 }
                 ev.preventDefault();
             }
         }
         onCellInput(editor, inputData) {
-            if (inputData.char != null && inputData.char.search(/[a-zA-Z_\.\/]/) >= 0) {
-                this.requestCodeComplete.call();
-            }
             if (inputData.char == '\n') {
                 let fullText = editor.getPlainText();
                 let backwardText = fullText.substring(0, editor.getTextCaretOffset()).split('\n');
@@ -104,6 +113,10 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                     editor.insertText(leadingSpace);
                 }
             }
+            if ((inputData.char != null && inputData.char.search(/[a-zA-Z_\.\/]/) >= 0) || inputData.type === 'deleteContentBackward') {
+                this.requestCodeComplete.call();
+            }
+            this.requestUpdateTooltips.call();
         }
         getCellInput() {
             let t1 = this.rref.codeInput.current.getPlainText();
@@ -125,13 +138,10 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             this.rref.codeInput.current.insertText(cc.candidate);
         }
         renderCodeComplete() {
-            if (this.state.codeCompleteCandidate != null && this.state.focusin) {
-                return React.createElement("div", { style: { display: 'flex', flexDirection: 'row', flexWrap: 'wrap' } }, this.state.codeCompleteCandidate.map(v => {
-                    return [React.createElement("span", null, "\u00A0\u00A0"), React.createElement("a", { href: "javascript:;", onClick: () => this.insertCodeComplete(v) },
-                            v.candidate,
-                            "(",
-                            v.type,
-                            ")"), React.createElement("span", null, "\u00A0\u00A0")];
+            if (this.state.codeCompleteCandidate != null) {
+                return React.createElement("div", { style: { display: 'flex', flexDirection: 'column', maxHeight: '300px' } }, this.state.codeCompleteCandidate.map(v => {
+                    return React.createElement("div", null,
+                        React.createElement("a", { href: "javascript:;", onClick: () => this.insertCodeComplete(v) }, v.candidate));
                 }));
             }
         }
@@ -139,21 +149,21 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             if (this.props.onFocusChange != undefined) {
                 this.props.onFocusChange(focusin);
             }
-            if (this.props.focusin === 'auto') {
-                if (focusin) {
-                    //avoid click event failed.
-                    await (0, base_1.sleep)(200);
-                    this.setState({ focusin: true });
+            if (focusin) {
+                //avoid click event failed.
+                await (0, base_1.sleep)(100);
+                this.setState({ focusin: true });
+            }
+            else {
+                //wait to check focus really move out
+                await (0, base_1.sleep)(500);
+                if (document.activeElement == null ||
+                    (this.rref.container.current != null &&
+                        (document.activeElement.compareDocumentPosition(this.rref.container.current) & Node.DOCUMENT_POSITION_CONTAINS) === 0)) {
+                    this.setState({ focusin: false });
                 }
-                else {
-                    //wait to check focus realy move out
-                    await (0, base_1.sleep)(500);
-                    if (document.activeElement == null ||
-                        (this.rref.container.current != null &&
-                            (document.activeElement.compareDocumentPosition(this.rref.container.current) & Node.DOCUMENT_POSITION_CONTAINS) === 0)) {
-                        this.setState({ focusin: false });
-                    }
-                }
+                this.setState({ codeCompleteCandidate: [] });
+                this.props.onTooltips?.(null);
             }
         }
         async onBtnRun() {
@@ -172,44 +182,46 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
         }
         renderActionButton() {
             let result = [];
-            if (this.state.focusin) {
-                if (this.props.customBtns != undefined) {
-                    for (let t1 of this.props.customBtns) {
-                        result.push(React.createElement("a", { href: "javascript:;", onClick: () => t1.cb() }, t1.label));
-                    }
+            if (this.props.customBtns != undefined) {
+                for (let t1 of this.props.customBtns) {
+                    result.push(React.createElement("a", { href: "javascript:;", onClick: () => t1.cb() }, t1.label));
                 }
-                result.push(React.createElement("a", { href: "javascript:;", onClick: () => this.onBtnRun() },
-                    "Run(",
-                    this.getRunCodeKey(),
-                    ")"));
-                result.push(React.createElement("a", { href: "javascript:;", onClick: () => this.onBtnClearOutputs() }, "ClearOutputs"));
             }
+            result.push(React.createElement("a", { href: "javascript:;", onClick: () => this.onBtnRun() },
+                "Run(",
+                this.getRunCodeKey(),
+                ")"));
+            result.push(React.createElement("a", { href: "javascript:;", onClick: () => this.onBtnClearOutputs() }, "ClearOutputs"));
             result = result.map(v => [React.createElement("span", null, "\u00A0\u00A0"), v, React.createElement("span", null, "\u00A0\u00A0")]);
             return result;
         }
-        renderTooltip() {
-            if (this.state.tooltip != undefined) {
-                return React.createElement("div", { dangerouslySetInnerHTML: { __html: this.state.tooltip } });
-            }
-            else {
-                return null;
-            }
-        }
         prepareRender() {
-            if (this.props.focusin !== 'auto') {
-                if (this.state.focusin !== this.props.focusin) {
-                    this.setState({ focusin: this.props.focusin });
-                }
-            }
         }
         render(props, state, context) {
             this.prepareRender();
-            return React.createElement("div", { style: { display: 'flex', flexDirection: 'column' }, ref: this.rref.container, onFocusOut: () => this.doOnFocusChange(false), onFocusIn: () => { this.doOnFocusChange(true); } },
+            return React.createElement("div", { style: { display: 'flex', flexDirection: 'column', position: 'relative' }, ref: this.rref.container, onFocusOut: () => this.doOnFocusChange(false), onFocusIn: () => { this.doOnFocusChange(true); } },
                 React.createElement(texteditor_1.TextEditor, { ref: this.rref.codeInput, divAttr: { onKeyDown: (ev) => this.onCellKeyDown(ev) }, onInput: (target, inputData) => this.onCellInput(target, inputData), divClass: [exports.css.inputCell] }),
-                React.createElement("div", null, this.renderActionButton()),
-                React.createElement("div", null, this.renderCodeComplete()),
-                React.createElement("div", null, this.renderTooltip()),
-                React.createElement(Component1_1.ObjectViewer, { object: this.state.cellOutput, name: '' }));
+                this.state.focusin ? React.createElement("div", { style: { position: 'relative', display: 'flex', justifyContent: 'end' } },
+                    React.createElement("div", { style: { position: 'absolute', backgroundColor: 'white' } },
+                        React.createElement("div", null, this.renderActionButton()))) : null,
+                this.props.onTooltips ? null : React.createElement("div", null,
+                    this.state.extraTooltips ? React.createElement("div", { dangerouslySetInnerHTML: { __html: this.state.extraTooltips } }) : null,
+                    this.renderCodeComplete()),
+                React.createElement("div", { style: { overflow: 'auto' } },
+                    React.createElement(Component1_1.ObjectViewer, { object: this.state.cellOutput, name: '' })));
+        }
+        getInputCaretCoordinate() {
+            let codeInput = this.rref.codeInput.current;
+            if (codeInput == null || codeInput.rref.div1.current == null)
+                return null;
+            let coor = codeInput.getCoordinateByTextOffset(codeInput.getTextCaretOffset());
+            if (coor == null)
+                return null;
+            let { offsetLeft, offsetTop } = codeInput.rref.div1.current;
+            coor.left += offsetLeft;
+            coor.top += offsetTop;
+            coor.bottom += offsetTop;
+            return coor;
         }
         async setAsEditTarget() {
             (await this.rref.codeInput.waitValid()).setTextCaretOffset('end');
@@ -231,6 +243,9 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             this.priv__initCellValue = null;
             this.lastRunCellKey = '';
             this.__currentCodeContext = null;
+            this.rref = {
+                container: new domui_1.ReactRefEx()
+            };
             this.onConsoleData = (event) => {
                 let index = this.state.list.findIndex(v => v.key === this.lastRunCellKey);
                 if (index < 0)
@@ -243,6 +258,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                 this.forceUpdate();
             };
             this.resetState();
+            this.setState({ cellTooltips: null, padBottomCell: 0 });
         }
         beforeRender() {
             if (this.props.codeContext !== this.state.codeContext) {
@@ -255,8 +271,9 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
         }
         async newCell(afterCellKey) {
             let pos = this.state.list.findIndex(v => v.key == afterCellKey);
-            if (pos < 0)
+            if (pos < 0) {
                 pos = this.state.list.length - 1;
+            }
             let newKey = (0, base_1.GenerateRandomString)();
             this.state.list.splice(pos + 1, 0, { ref: new domui_1.ReactRefEx(), key: newKey });
             await new Promise(resolve => this.forceUpdate(resolve));
@@ -311,20 +328,67 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
         getCellList() {
             return this.state.list;
         }
+        onCellTooltips(node, cell) {
+            if (cell.ref.current != null) {
+                if (node == null) {
+                    this.setState({ cellTooltips: null });
+                    return;
+                }
+                let inputCoor = cell.ref.current.getInputCaretCoordinate();
+                if (inputCoor != null && cell.ref.current.rref.container.current != null) {
+                    let { offsetTop, offsetLeft } = cell.ref.current.rref.container.current;
+                    let left = inputCoor.left + offsetLeft;
+                    let top = inputCoor.bottom + offsetTop + 2;
+                    let maxWidth = this.rref.container.current.clientWidth - left - 20;
+                    let maxHeight = this.rref.container.current.clientHeight - top;
+                    if (maxHeight < 200) {
+                        maxHeight = maxHeight + 200 - this.state.padBottomCell;
+                        this.setState({ padBottomCell: 200 });
+                    }
+                    if (maxWidth < 150) {
+                        left = left + maxWidth - 150;
+                        maxWidth = 150;
+                    }
+                    this.setState({ cellTooltips: { left, top, maxWidth, maxHeight, content: node } });
+                }
+            }
+        }
+        renderCellTooltips() {
+            if (this.state.cellTooltips == null)
+                return null;
+            let css2 = {
+                position: 'absolute', zIndex: 600,
+                left: this.state.cellTooltips.left + 'px', maxWidth: this.state.cellTooltips.maxWidth + 'px',
+                top: this.state.cellTooltips.top + 'px', maxHeight: this.state.cellTooltips.maxHeight + 'px',
+                overflow: 'auto',
+                backgroundColor: 'white'
+            };
+            return React.createElement("div", { style: css2 }, this.state.cellTooltips.content);
+        }
         render(props, state, context) {
             this.beforeRender();
-            return (this.state.codeContext != null && this.state.error == null) ? React.createElement("div", { style: { width: '100%', overflowX: 'auto' } }, (0, base_1.FlattenArraySync)(this.state.list.map((v, index1) => {
-                let r = [React.createElement(CodeCell, { ref: v.ref, key: v.key, codeContext: this.state.codeContext, customBtns: [
-                            { label: 'New', cb: () => this.newCell(v.key) },
-                            { label: 'Del', cb: () => this.deleteCell(v.key) }
-                        ], onClearOutputs: () => this.clearConsoleOutput(v.key), onRun: async () => { this.lastRunCellKey = v.key; this.props.onRun?.(v.key); }, onFocusChange: (focusin) => { if (focusin)
-                            this.setState({ lastFocusCellKey: v.key }); }, focusin: this.state.lastFocusCellKey == v.key, ...this.props.cellProps })];
-                if (v.key in this.state.consoleOutput) {
-                    r.push(React.createElement("pre", null, this.state.consoleOutput[v.key].content));
-                }
-                return r;
-            }))) :
-                React.createElement("div", null,
+            return (this.state.codeContext != null && this.state.error == null) ? React.createElement("div", { style: { width: '100%', overflowX: 'auto', position: 'relative' }, ref: this.rref.container },
+                (0, jsutils2_1.FlattenArraySync)(this.state.list.map((v, index1) => {
+                    let r = [React.createElement(CodeCell, { ref: v.ref, key: v.key, codeContext: this.state.codeContext, customBtns: [
+                                { label: 'New', cb: () => this.newCell(v.key) },
+                                { label: 'Del', cb: () => this.deleteCell(v.key) }
+                            ], onClearOutputs: () => this.clearConsoleOutput(v.key), onRun: async () => {
+                                this.lastRunCellKey = v.key;
+                                this.props.onRun?.(v.key);
+                                this.setState({ padBottomCell: 0 });
+                            }, onFocusChange: (focusin) => {
+                                if (focusin) {
+                                    this.setState({ lastFocusCellKey: v.key });
+                                }
+                            }, onTooltips: (node) => this.onCellTooltips(node, v), ...this.props.cellProps })];
+                    if (v.key in this.state.consoleOutput) {
+                        r.push(React.createElement("div", { style: { wordBreak: 'break-all' }, dangerouslySetInnerHTML: { __html: (0, utils_1.text2html)(this.state.consoleOutput[v.key].content) } }));
+                    }
+                    return r;
+                })),
+                React.createElement("div", { style: { height: this.state.padBottomCell + 'px' } }),
+                this.renderCellTooltips()) :
+                React.createElement("div", { style: { width: '100%', overflow: 'auto', position: 'relative' }, ref: this.rref.container },
                     React.createElement("pre", null, this.state.error),
                     React.createElement("a", { href: "javascript:;", onClick: () => this.resetState() }, "Reset"));
         }

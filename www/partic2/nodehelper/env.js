@@ -1,8 +1,8 @@
 define(["require", "exports", "./kvdb", "./worker", "./jseio", "partic2/jsutils1/base", "partic2/pxprpcClient/registry"], function (require, exports, kvdb_1, worker_1, jseio_1, base_1, registry_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.setupEnv = setupEnv;
-    function setupEnv() {
+    exports.setupImpl = setupImpl;
+    function setupImpl() {
         (0, kvdb_1.setupImpl)();
         (0, worker_1.setupImpl)();
         (0, jseio_1.setup)();
@@ -41,6 +41,14 @@ define(["require", "exports", "./kvdb", "./worker", "./jseio", "partic2/jsutils1
                 }
             });
         }
+    }
+    if (globalThis.process?.versions?.node == undefined) {
+        console.warn('This module is only used to initialize pxseed environment on Node.js,' +
+            ' and has no effect on other platform.' +
+            'Also avoid to import this module on other platform.');
+    }
+    else {
+        setupImpl();
     }
 });
 //# sourceMappingURL=env.js.map

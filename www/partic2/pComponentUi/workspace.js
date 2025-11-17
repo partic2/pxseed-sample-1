@@ -1,7 +1,7 @@
-define(["require", "exports", "preact", "./domui", "./window", "partic2/jsutils1/base", "./window"], function (require, exports, React, domui_1, window_1, base_1, window_2) {
+define(["require", "exports", "preact", "./domui", "./window", "partic2/jsutils1/base", "./window", "partic2/pxseedMedia1/index1"], function (require, exports, React, domui_1, window_1, base_1, window_2, index1_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.TabView = exports.TabInfoBase = exports.openNewWindow = exports.NewWindowHandleLists = void 0;
+    exports.TabView = exports.TabInfoBase = exports.openNewWindow = exports.WorkspaceWindowContext = exports.NewWindowHandleLists = void 0;
     exports.setBaseWindowView = setBaseWindowView;
     exports.setOpenNewWindowImpl = setOpenNewWindowImpl;
     class CNewWindowHandleLists extends EventTarget {
@@ -11,10 +11,41 @@ define(["require", "exports", "preact", "./domui", "./window", "partic2/jsutils1
         }
     }
     exports.NewWindowHandleLists = new CNewWindowHandleLists();
+    exports.WorkspaceWindowContext = React.createContext({});
     let openNewWindow = async function (contentVNode, options) {
         options = options ?? {};
         let closeFuture = new base_1.future();
         let windowRef = new domui_1.ReactRefEx();
+        let handle = {
+            ...options,
+            waitClose: async function () {
+                await closeFuture.get();
+            },
+            close: function () {
+                for (let t1 of this.children) {
+                    t1.close();
+                }
+                (0, window_2.removeFloatWindow)(windowVNode);
+            },
+            async activate() {
+                (await this.windowRef.waitValid()).activate();
+                for (let t1 of this.children) {
+                    await t1.activate();
+                }
+            },
+            async hide() {
+                for (let t1 of this.children) {
+                    await t1.hide();
+                }
+                (await this.windowRef.waitValid()).hide();
+            },
+            async isHidden() {
+                return (await this.windowRef.waitValid()).isHidden();
+            },
+            windowRef, windowVNode: null,
+            children: new Set()
+        };
+        //TODO: Find a good initial window place.
         let windowVNode = React.createElement(window_2.WindowComponent, { ref: windowRef, onClose: () => {
                 closeFuture.setResult(true);
                 (0, window_2.removeFloatWindow)(windowVNode);
@@ -24,36 +55,30 @@ define(["require", "exports", "preact", "./domui", "./window", "partic2/jsutils1
                 exports.NewWindowHandleLists.dispatchEvent(new Event('change'));
             }, onComponentDidUpdate: () => {
                 exports.NewWindowHandleLists.dispatchEvent(new Event('change'));
-            }, title: options.title }, contentVNode);
+            }, titleBarButton: [{
+                    icon: (0, index1_1.getIconUrl)('minus.svg'),
+                    onClick: async () => handle.hide()
+                }], title: options.title, ...(options.windowOptions ?? {}) },
+            React.createElement(exports.WorkspaceWindowContext.Provider, { value: { lastWindow: handle } }, contentVNode));
+        handle.windowVNode = windowVNode;
         (0, window_2.appendFloatWindow)(windowVNode, true);
-        let handle = {
-            ...options,
-            onClose: async function () {
-                await closeFuture.get();
-            },
-            close: function () { (0, window_2.removeFloatWindow)(windowVNode); },
-            async active() {
-                (await this.windowRef.waitValid()).active();
-            },
-            async hide() {
-                (await this.windowRef.waitValid()).hide();
-            },
-            async isHidden() {
-                return (await this.windowRef.waitValid()).isHidden();
-            },
-            windowVNode, windowRef
-        };
         exports.NewWindowHandleLists.value.push(handle);
+        if (options.parentWindow != undefined) {
+            options.parentWindow.children.add(handle);
+        }
         exports.NewWindowHandleLists.dispatchEvent(new Event('change'));
         return handle;
     };
     exports.openNewWindow = openNewWindow;
     let baseWindowComponnet = null;
+    let baseWindowRef = new domui_1.ReactRefEx();
     function setBaseWindowView(vnode) {
         if (baseWindowComponnet != null) {
             (0, window_2.removeFloatWindow)(baseWindowComponnet);
         }
-        (0, window_2.appendFloatWindow)(React.createElement(window_2.WindowComponent, { disablePassiveActive: true, noTitleBar: true, position: 'fill', windowDivClassName: window_1.css.borderlessWindowDiv }, vnode));
+        baseWindowComponnet = vnode;
+        (0, window_2.appendFloatWindow)(React.createElement(window_2.WindowComponent, { disableUserInputActivate: true, noTitleBar: true, noResizeHandle: true, windowDivClassName: window_1.css.borderlessWindowDiv, ref: baseWindowRef, initialLayout: { left: 0, top: 0, width: '100%', height: '100%' } }, vnode));
+        baseWindowRef.waitValid().then((wnd) => wnd.activate(1));
     }
     function setOpenNewWindowImpl(impl) {
         exports.openNewWindow = impl;

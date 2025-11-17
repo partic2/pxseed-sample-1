@@ -127,7 +127,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             let dlg = await (0, window_1.prompt)(React.createElement("div", null,
                 React.createElement("input", { type: 'text', ref: newFileNameInput, style: { width: '100%', minWidth: '200px' }, value: initname })), 'Input file name...');
             let newFileName = null;
-            if ((await dlg.answer.get()) == 'ok') {
+            if ((await dlg.response.get()) == 'ok') {
                 newFileName = (await newFileNameInput.waitValid()).value;
             }
             dlg.close();
@@ -250,7 +250,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             let newPathInput = new domui_1.ReactRefEx();
             let dlg = await (0, window_1.prompt)(React.createElement(texteditor_1.TextEditor, { divClass: [domui_1.css.simpleCard], divStyle: { minWidth: 300 }, ref: newPathInput }), 'Jump to');
             (await newPathInput.waitValid()).setPlainText(this.state.currPath ?? '');
-            if (await dlg.answer.get() === 'ok') {
+            if (await dlg.response.get() === 'ok') {
                 this.doFileOpen(await (await newPathInput.waitValid()).getPlainText());
             }
             dlg.close();

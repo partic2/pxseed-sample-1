@@ -48,9 +48,9 @@ define(["require", "exports", "partic2/jsutils1/base", "pxprpc/extend", "pxprpc/
     //To be standardized BEGIN
     async function wsPipeConnectDirectly(id) {
         if (exports.wsPipeApi.wsUrl == undefined) {
-            if ('pxseedServer2023/workerInit' in (await base_1.requirejs.getDefined())) {
-                let { rootConfig } = await new Promise((resolve_1, reject_1) => { require(['pxseedServer2023/workerInit'], resolve_1, reject_1); });
-                exports.wsPipeApi.wsUrl = `ws://${rootConfig.listenOn.host}:${rootConfig.listenOn.port}${rootConfig.pxseedBase}${rootConfig.pxprpcPath}`;
+            if ('pxseedServer2023/pxseedhttpserver' in (await base_1.requirejs.getDefined())) {
+                let { rootConfig } = await new Promise((resolve_1, reject_1) => { require(['pxseedServer2023/pxseedhttpserver'], resolve_1, reject_1); });
+                exports.wsPipeApi.wsUrl = `ws://${rootConfig.listenOn.host}:${rootConfig.listenOn.port}${rootConfig.pxseedBase}/pxprpc/0`;
             }
             else {
                 exports.wsPipeApi.wsUrl = (await (await new Promise((resolve_2, reject_2) => { require(['./webentry'], resolve_2, reject_2); })).getPxseedUrl()).wsPipeUrl;
@@ -136,8 +136,8 @@ define(["require", "exports", "partic2/jsutils1/base", "pxprpc/extend", "pxprpc/
     }
     //To be standardized END
     async function getServerConfig() {
-        if ('pxseedServer2023/workerInit' in await base_1.requirejs.getDefined()) {
-            let serv = await new Promise((resolve_4, reject_4) => { require(['pxseedServer2023/workerInit'], resolve_4, reject_4); });
+        if ('pxseedServer2023/pxseedhttpserver' in await base_1.requirejs.getDefined()) {
+            let serv = await new Promise((resolve_4, reject_4) => { require(['pxseedServer2023/pxseedhttpserver'], resolve_4, reject_4); });
             return { root: serv.rootConfig, current: serv.config };
         }
         else {
@@ -147,7 +147,7 @@ define(["require", "exports", "partic2/jsutils1/base", "pxprpc/extend", "pxprpc/
     async function restartSubprocessSelf() {
         let { current, root } = (await getServerConfig());
         (0, base_1.assert)(current.subprocessIndex != undefined);
-        let client1 = new extend_1.RpcExtendClient1(new base_2.Client(await new backend_1.WebSocketIo().connect(`ws://127.0.0.1:${root.listenOn.port}${root.pxseedBase}${root.pxprpcPath}?key=${encodeURIComponent(root.pxprpcKey ?? '')}`)));
+        let client1 = new extend_1.RpcExtendClient1(new base_2.Client(await new backend_1.WebSocketIo().connect(`ws://127.0.0.1:${root.listenOn.port}${root.pxseedBase}/pxprpc/0?key=${encodeURIComponent(root.pxprpcKey ?? '')}`)));
         await client1.init();
         let func = new PxseedServer2023Function();
         await func.init(client1);

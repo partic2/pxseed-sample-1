@@ -2,12 +2,9 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.globalInputState = exports.GlobalInputStateTracer = exports.lifecycle = exports.path = exports.defaultHttpClient = exports.HttpClient = exports.DynamicPageCSSManager = exports.CDynamicPageCSSManager = exports.CKeyValueDb = exports.config = exports.__name__ = void 0;
-    exports.DomStringListToArray = DomStringListToArray;
-    exports.ConvertFormDataToObject = ConvertFormDataToObject;
     exports.GetUrlQueryVariable = GetUrlQueryVariable;
     exports.GetUrlQueryVariable2 = GetUrlQueryVariable2;
     exports.AddUrlQueryVariable = AddUrlQueryVariable;
-    exports.GetFullPathFromRelativePath = GetFullPathFromRelativePath;
     exports.RequestDownload = RequestDownload;
     exports.selectFile = selectFile;
     exports.AddStyleSheetNode = AddStyleSheetNode;
@@ -19,10 +16,11 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     exports.SavePersistentConfig = SavePersistentConfig;
     exports.CreateWorkerThread = CreateWorkerThread;
     exports.setWorkerThreadImplementation = setWorkerThreadImplementation;
-    exports.webFetch = webFetch;
+    exports.setDefaultHttpClient = setDefaultHttpClient;
     exports.GetJsEntry = GetJsEntry;
     exports.BuildUrlFromJsEntryModule = BuildUrlFromJsEntryModule;
     exports.getWWWRoot = getWWWRoot;
+    exports.setGetResourceManagerImpl = setGetResourceManagerImpl;
     exports.getResourceManager = getResourceManager;
     exports.useDeviceWidth = useDeviceWidth;
     exports.useCssFile = useCssFile;
@@ -218,13 +216,6 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         }
     }
     exports.CKeyValueDb = CKeyValueDb;
-    function ConvertFormDataToObject(data) {
-        var r = {};
-        data.forEach((val, key, parent) => {
-            r[key] = val;
-        });
-        return r;
-    }
     function GetUrlQueryVariable(name) {
         return GetUrlQueryVariable2(location.toString(), name);
     }
@@ -258,22 +249,19 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         }
         return url;
     }
-    function GetFullPathFromRelativePath(relPath) {
-        var dir = location.pathname.substring(location.pathname.lastIndexOf('/'));
-        return dir + relPath;
-    }
-    var priv__CachedDownloadLink = null;
     function RequestDownload(buff, fileName) {
-        if (priv__CachedDownloadLink == null) {
-            priv__CachedDownloadLink = document.createElement('a');
-            priv__CachedDownloadLink.style.display = 'none';
-            document.body.appendChild(priv__CachedDownloadLink);
-        }
-        priv__CachedDownloadLink.setAttribute('download', fileName);
+        let downloadAnchor = document.createElement('a');
+        downloadAnchor.style.display = 'none';
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.setAttribute('download', fileName);
         let url = URL.createObjectURL(new Blob([buff]));
-        priv__CachedDownloadLink.href = url;
-        priv__CachedDownloadLink.click();
-        (async () => { await (0, base_1.sleep)(5000, null); URL.revokeObjectURL(url); });
+        downloadAnchor.href = url;
+        downloadAnchor.click();
+        (async () => {
+            await (0, base_1.sleep)(5000, null);
+            URL.revokeObjectURL(url);
+            document.body.removeChild(downloadAnchor);
+        })();
     }
     async function selectFile() {
         let fileInput = document.createElement('input');
@@ -437,6 +425,11 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         constructor(workerId) {
             this.workerId = '';
             this.waitReady = new base_1.future();
+            this.exitListener = () => {
+                this.runScript(`require(['${exports.__name__}'],function(webutils){
+            webutils.lifecycle.dispatchEvent(new Event('exit'));
+        })`);
+            };
             this.processingScript = {};
             this.workerId = workerId ?? (0, base_1.GenerateRandomString)();
         }
@@ -460,26 +453,16 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
                         case 'ready':
                             this.waitReady.setResult(0);
                             break;
+                        case 'closing':
+                            exports.lifecycle.removeEventListener('exit', this.exitListener);
+                            this.onExit?.();
+                            break;
                     }
                 }
             });
             await this.waitReady.get();
             await this.runScript(`this.__workerId='${this.workerId}'`);
-            exports.lifecycle.addEventListener('pause', () => {
-                this.runScript(`require(['${exports.__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('pause'));
-            })`);
-            });
-            exports.lifecycle.addEventListener('resume', () => {
-                this.runScript(`require(['${exports.__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('resume'));
-            })`);
-            });
-            exports.lifecycle.addEventListener('exit', () => {
-                this.runScript(`require(['${exports.__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('exit'));
-            })`);
-            });
+            exports.lifecycle.addEventListener('exit', this.exitListener);
         }
         onHostRunScript(script) {
             (new Function('workerThread', script))(this);
@@ -544,12 +527,13 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     }
     exports.HttpClient = HttpClient;
     exports.defaultHttpClient = new HttpClient();
-    async function webFetch(url, init) {
-        return await exports.defaultHttpClient.fetch(url, init);
+    function setDefaultHttpClient(client) {
+        exports.defaultHttpClient = client;
     }
     function GetJsEntry() {
         return __pxseedInit._entry;
     }
+    //Mainly for http url process, So don't modify 'sep' on windows.
     exports.path = {
         sep: '/',
         join(...args) {
@@ -570,8 +554,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             return parts.join(this.sep);
         },
         dirname(PathLike) {
-            let delim = PathLike.lastIndexOf(this.sep);
-            return PathLike.substring(0, delim);
+            return this.join(PathLike, '..');
         }
     };
     function BuildUrlFromJsEntryModule(entryModule, urlarg) {
@@ -580,15 +563,32 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     function getWWWRoot() {
         return base_1.requirejs.getConfig().baseUrl;
     }
-    function getResourceManager(modNameOrLocalRequire) {
+    let getResourceManagerImpl = (modNameOrLocalRequire) => {
         if (typeof modNameOrLocalRequire === 'function') {
             modNameOrLocalRequire = base_1.requirejs.getLocalRequireModule(modNameOrLocalRequire);
         }
         return {
             getUrl(path2) {
-                return exports.path.join(getWWWRoot(), modNameOrLocalRequire + '/..', path2);
+                if (path2.substring(0, 1) === '/') {
+                    return exports.path.join(getWWWRoot(), path2.substring(1));
+                }
+                else {
+                    return exports.path.join(getWWWRoot(), modNameOrLocalRequire, '..', path2);
+                }
+            },
+            async read(path2) {
+                let resp = await exports.defaultHttpClient.fetch(this.getUrl(path2));
+                (0, base_1.assert)(resp.ok, 'fetch failed with error HTTP error:' + resp.status + ' ' + resp.statusText);
+                (0, base_1.assert)(resp.body != null);
+                return resp.body;
             }
         };
+    };
+    function setGetResourceManagerImpl(impl) {
+        getResourceManagerImpl = impl;
+    }
+    function getResourceManager(modNameOrLocalRequire) {
+        return getResourceManagerImpl(modNameOrLocalRequire);
     }
     function useDeviceWidth() {
         let headmeta = document.createElement('meta');
@@ -603,13 +603,17 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         linkTag.href = cssUrl;
         document.head.appendChild(linkTag);
     }
+    let iconLinkTag = null;
     function usePageIcon(iconUrl, iconType) {
+        if (iconLinkTag != null) {
+            document.head.removeChild(iconLinkTag);
+        }
         iconType = iconType ?? 'image/x-icon';
-        let linkTag = document.createElement('link');
-        linkTag.rel = 'icon';
-        linkTag.type = iconType;
-        linkTag.href = iconUrl;
-        document.head.appendChild(linkTag);
+        iconLinkTag = document.createElement('link');
+        iconLinkTag.rel = 'icon';
+        iconLinkTag.type = iconType;
+        iconLinkTag.href = iconUrl;
+        document.head.appendChild(iconLinkTag);
     }
     class _LifecycleEventHandler extends EventTarget {
         addEventListener(type, callback, options) {

@@ -1,7 +1,7 @@
 define(["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.AssertError = exports.logger = exports.Ref2 = exports.ErrorChain = exports.requirejs = exports.amdContext = exports.mutex = exports.ArrayWrap2 = exports.CanceledError = exports.future = exports.Task = void 0;
+    exports.AssertError = exports.logger = exports.TaskLocalRef = exports.Ref2 = exports.requirejs = exports.amdContext = exports.mutex = exports.ArrayWrap2 = exports.CanceledError = exports.future = exports.Task = void 0;
     exports.throwIfAbortError = throwIfAbortError;
     exports.copy = copy;
     exports.clone = clone;
@@ -10,16 +10,13 @@ define(["require", "exports"], function (require, exports) {
     exports.GetBlobArrayBufferContent = GetBlobArrayBufferContent;
     exports.sleep = sleep;
     exports.GenerateRandomString = GenerateRandomString;
-    exports.FlattenArray = FlattenArray;
-    exports.FlattenArraySync = FlattenArraySync;
     exports.DateAdd = DateAdd;
     exports.DateDiff = DateDiff;
     exports.GetCurrentTime = GetCurrentTime;
     exports.assert = assert;
     exports.ArrayBufferToBase64 = ArrayBufferToBase64;
     exports.Base64ToArrayBuffer = Base64ToArrayBuffer;
-    exports.BytesToHex = BytesToHex;
-    exports.BytesFromHex = BytesFromHex;
+    exports.stringToCharCodes = stringToCharCodes;
     exports.ArrayBufferConcat = ArrayBufferConcat;
     exports.WaitUntil = WaitUntil;
     exports.partial = partial;
@@ -94,7 +91,7 @@ define(["require", "exports"], function (require, exports) {
             return Task.currentTask?.getAbortSignal();
         }
         static fork(taskMain) {
-            if (Task.currentTask != undefined) {
+            if (Task.currentTask !== null) {
                 return Task.currentTask.fork(taskMain);
             }
             else {
@@ -324,20 +321,6 @@ define(["require", "exports"], function (require, exports) {
             }
             return this;
         }
-        removeFirst(predict) {
-            let idx = this.wrapped.findIndex(predict);
-            if (idx >= 0) {
-                return this.wrapped.splice(idx, 1)[0];
-            }
-        }
-        insertAfter(predict, newElem) {
-            let arr = this.arr();
-            arr.splice(arr.findIndex(predict), 1, newElem);
-            this.wrapped = arr;
-        }
-        last() {
-            return this.arr()[this.arr().length - 1];
-        }
         clone() {
             return new ArrayWrap2([...this.arr()]);
         }
@@ -374,17 +357,14 @@ define(["require", "exports"], function (require, exports) {
             this.arr().push(elem);
             this.emitQueueChange();
         }
-        processWrapped(processor) {
-            let result = processor(this.arr());
-            if (result != undefined) {
-                this.wrapped = result;
-            }
-            return this;
-        }
         [Symbol.iterator]() {
             return this.arr()[Symbol.iterator];
         }
         static *IntSequence(start, end, step) {
+            if (end == undefined) {
+                end = start;
+                start = 0;
+            }
             assert(step !== 0);
             step = step ?? (end >= start ? 1 : -1);
             for (let t1 = start; (step > 0) ? (t1 < end) : (t1 > end); t1 += step) {
@@ -427,6 +407,15 @@ define(["require", "exports"], function (require, exports) {
                 return false;
             }
         }
+        async exec(fn) {
+            await this.lock();
+            try {
+                await fn();
+            }
+            finally {
+                await this.unlock();
+            }
+        }
     }
     exports.mutex = mutex;
     exports.amdContext = {
@@ -440,41 +429,6 @@ define(["require", "exports"], function (require, exports) {
         exports.amdContext.requirejs = globalThis.requirejs;
     }
     catch (e) { /*Not AMD Environment*/ }
-    class ResourceProviderLoader {
-        constructor() {
-            this.currentDefining = null;
-        }
-        async loadModuleAsync(moduleId, url) {
-            url = (url.match(/[^\?]*/) ?? [''])[0];
-            if (exports.requirejs.resourceProvider == null) {
-                return new Error('ResourceProviderLoader:Module not found');
-            }
-            for (let t1 of exports.requirejs.resourceProvider) {
-                let res = await t1(moduleId, url);
-                if (res == null) {
-                    continue;
-                }
-                if (typeof res === 'string') {
-                    res = new Function(res);
-                }
-                try {
-                    this.currentDefining = moduleId;
-                    res();
-                }
-                finally {
-                    this.currentDefining = null;
-                }
-                return null;
-            }
-            return new Error('ResourceProviderLoader:Module not found');
-        }
-        loadModule(moduleId, url, done) {
-            this.loadModuleAsync(moduleId, url).then((e) => done(e)).catch(err => done(err));
-        }
-        getDefiningModule() {
-            return this.currentDefining;
-        }
-    }
     exports.requirejs = {
         define: function (name, dependency, mod) {
             exports.amdContext.define(name, dependency, mod);
@@ -505,14 +459,14 @@ define(["require", "exports"], function (require, exports) {
         undef: async function (mod) {
             exports.amdContext.requirejs.undef(mod);
         },
-        resourceProvider: null,
-        addResourceProvider(provider) {
+        addScriptLoader(loader, beforeOthers) {
             //partic2-iamdee feature
-            if (this.resourceProvider === null) {
-                this.resourceProvider = [];
-                exports.amdContext.define.amd.scriptLoaders.unshift(new ResourceProviderLoader());
+            if (beforeOthers) {
+                exports.amdContext.define.amd.scriptLoaders.unshift(loader);
             }
-            this.resourceProvider.unshift(provider);
+            else {
+                exports.amdContext.define.amd.scriptLoaders.push(loader);
+            }
         },
         getLocalRequireModule(localRequire) {
             //partic2-iamdee feature
@@ -551,46 +505,6 @@ define(["require", "exports"], function (require, exports) {
             s += part;
         }
         return s;
-    }
-    class ErrorChain extends Error {
-        constructor(message) {
-            super(message);
-        }
-    }
-    exports.ErrorChain = ErrorChain;
-    async function FlattenArray(source) {
-        let parts = [];
-        for (let t1 of source) {
-            if (t1 instanceof Promise) {
-                parts.push(await t1);
-            }
-            else if (t1 == null) {
-            }
-            else if (typeof (t1) === 'object' && (Symbol.iterator in t1)) {
-                parts.push(...await FlattenArray(t1));
-            }
-            else {
-                parts.push(t1);
-            }
-        }
-        return parts;
-    }
-    //Promise will be ignored
-    function FlattenArraySync(source) {
-        let parts = [];
-        for (let t1 of source) {
-            if (t1 instanceof Promise) {
-            }
-            else if (t1 == null) {
-            }
-            else if (typeof (t1) === 'object' && (Symbol.iterator in t1)) {
-                parts.push(...FlattenArraySync(t1));
-            }
-            else {
-                parts.push(t1);
-            }
-        }
-        return parts;
     }
     function DateAdd(org, add, field) {
         if (typeof add === 'number') {
@@ -670,6 +584,31 @@ define(["require", "exports"], function (require, exports) {
         }
     }
     exports.Ref2 = Ref2;
+    class TaskLocalRef extends Ref2 {
+        constructor(nonTaskValue) {
+            super(nonTaskValue);
+            this.taskLocalVarName = 'TaskLocalRef.var-' + GenerateRandomString();
+        }
+        get() {
+            let loc = Task.locals();
+            if (loc != undefined) {
+                return loc[this.taskLocalVarName];
+            }
+            else {
+                return super.get();
+            }
+        }
+        set(val) {
+            let loc = Task.locals();
+            if (loc != undefined) {
+                loc[this.taskLocalVarName] = val;
+            }
+            else {
+                super.set(val);
+            }
+        }
+    }
+    exports.TaskLocalRef = TaskLocalRef;
     exports.logger = {
         debug: function (...msg) { console.debug(...msg); },
         info: function (...msg) { console.info(...msg); },
@@ -757,21 +696,12 @@ define(["require", "exports"], function (require, exports) {
         return arraybuffer;
     }
     ;
-    function BytesToHex(b) {
-        let hex = '';
-        for (let t1 of b) {
-            let ch = t1.toString(16);
-            hex += ch.length == 2 ? ch : '0' + ch;
+    function stringToCharCodes(s) {
+        let r = new Array(s.length);
+        for (let t1 = 0; t1 < r.length; t1++) {
+            r[t1] = s.charCodeAt(t1);
         }
-        return hex;
-    }
-    function BytesFromHex(hex) {
-        hex = hex.replace(/[^0-9a-fA-F]/g, '');
-        let bytes = new Uint8Array(hex.length >> 1);
-        for (let t1 = 0; t1 < hex.length; t1 += 2) {
-            bytes[t1 >> 1] = parseInt(hex.substring(t1, t1 + 2), 16);
-        }
-        return bytes;
+        return r;
     }
     function ArrayBufferConcat(bufs) {
         let len = bufs.reduce((prev, curr) => prev + curr.byteLength, 0);
