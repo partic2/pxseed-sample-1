@@ -1,7 +1,7 @@
 define(["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/jsutils1/base", "partic2/CodeRunner/JsEnviron"], function (require, exports, jsutils2_1, base_1, JsEnviron_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.SimpleFileServer = exports.SimpleHttpServerRouter = exports.HttpServer = exports.WebSocketServerStreamHandler = void 0;
+    exports.SimpleFileServer = exports.SimpleHttpServerRouter = exports.HttpClient = exports.HttpServer = exports.WebSocketServerStreamHandler = void 0;
     const decode = TextDecoder.prototype.decode.bind(new TextDecoder());
     const encode = TextEncoder.prototype.encode.bind(new TextEncoder());
     const mimeDb = {
@@ -316,6 +316,39 @@ define(["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/jsutils1/b
     }
     exports.WebSocketServerStreamHandler = WebSocketServerStreamHandler;
     WebSocketServerStreamHandler.KEY_SUFFIX = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    let httpRequestExp = /^([A-Z-]+) ([^ ]+) HTTP\/([^ \t]+)\r\n$/;
+    let httpResponseExp = /^HTTP\/([^ \t]+)\s+(\.+)\s+(.*)$/;
+    let httpUrlExp = /^(https?):\/\/(?:\[([^\]]+)\]|([^/?#:]+))(?::(\d+))?(.*)$/;
+    const lineSpliter = '\n'.charCodeAt(0);
+    async function parseHttpKevValueHeader(r) {
+        let headers = new Headers();
+        for (let t1 = 0; t1 < 64 * 1024; t1++) {
+            let line = decode(await r.readUntil(lineSpliter));
+            if (line == '\r\n')
+                break;
+            let sepAt = line.indexOf(':');
+            headers.set(line.substring(0, sepAt), line.substring(sepAt + 1, line.length - 2).trim());
+        }
+        return headers;
+    }
+    async function parseHttpRequestHeader(r) {
+        let reqHdr = decode(await r.readUntil(lineSpliter));
+        let matchResult = reqHdr.match(httpRequestExp);
+        (0, base_1.assert)(matchResult != null);
+        let method = matchResult[1];
+        let pathname = matchResult[2];
+        let httpVersion = matchResult[3];
+        return { method, pathname, httpVersion, headers: await parseHttpKevValueHeader(r) };
+    }
+    async function parseHttpResponseHeader(r) {
+        let respHdr = decode(await r.readUntil(lineSpliter));
+        let matchResult = respHdr.match(httpResponseExp);
+        (0, base_1.assert)(matchResult != null);
+        let httpVersion = matchResult[1];
+        let status = matchResult[2];
+        let statusText = matchResult[3];
+        return { httpVersion, status, statusText, headers: await parseHttpKevValueHeader(r) };
+    }
     class HttpServer {
         constructor() {
             this.onfetch = async () => new Response();
@@ -375,26 +408,8 @@ define(["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/jsutils1/b
                 }).run();
             }
         }
-        async pParseHttpHeader(r) {
-            const lineSpliter = '\n'.charCodeAt(0);
-            var reqHdr = decode(await r.readUntil(lineSpliter));
-            let matchResult = reqHdr.match(HttpServer.requestExp);
-            (0, base_1.assert)(matchResult != null);
-            let method = matchResult[1];
-            let pathname = matchResult[2];
-            let httpVersion = matchResult[3];
-            let headers = new Headers();
-            for (let t1 = 0; t1 < 64 * 1024; t1++) {
-                let line = decode(await r.readUntil(lineSpliter));
-                if (line == '\r\n')
-                    break;
-                let sepAt = line.indexOf(':');
-                headers.set(line.substring(0, sepAt), line.substring(sepAt + 1, line.length - 2).trim());
-            }
-            return { method, pathname, httpVersion, headers };
-        }
         async pParseHttpRequest(r) {
-            let header1 = await this.pParseHttpHeader(r);
+            let header1 = await parseHttpRequestHeader(r);
             let bodySource;
             if (header1.headers.get('transfer-encoding') === 'chunked') {
                 bodySource = {
@@ -458,7 +473,7 @@ define(["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/jsutils1/b
                 body: ['GET', 'HEAD'].includes(header1.method.toUpperCase()) ? undefined
                     : new ReadableStream(bodySource),
                 headers: header1.headers,
-                duplex: 'half' //BUG:TS compain it, but it's required in this case.
+                duplex: 'half' //BUG:TS complain with it, but it's required in this case.
             });
             return req;
         }
@@ -501,7 +516,108 @@ define(["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/jsutils1/b
         }
     }
     exports.HttpServer = HttpServer;
-    HttpServer.requestExp = /^([A-Z-]+) ([^ ]+) HTTP\/([^ \t]+)\r\n$/;
+    class HttpClient {
+        async pWriteRequest(w, req) {
+            let urlMatch = req.url.match(httpUrlExp);
+            (0, base_1.assert)(urlMatch != null);
+            let protocol = urlMatch[1];
+            let hostname = urlMatch[2] ?? urlMatch[3];
+            let port = urlMatch[4];
+            let pathquery = urlMatch[5];
+            let headersString = new Array();
+            let chunked = req.headers.get('transfer-encoding') == 'chunked';
+            req.headers.forEach((val, key) => {
+                headersString.push(`${key}: ${val}`);
+            });
+            let nonChunkBody = null;
+            if (!chunked && !req.headers.has('content-length')) {
+                nonChunkBody = await req.arrayBuffer();
+                headersString.push('Content-Length:' + String(nonChunkBody.byteLength));
+            }
+            await w.write(encode([
+                `${req.method} ${pathquery} HTTP/1.1\r\n`,
+                ...headersString,
+                '\r\n'
+            ].join('\r\n')));
+            if (req.body != undefined) {
+                if (chunked) {
+                    await req.body.pipeTo(new WritableStream({
+                        write: async (chunk, controller) => {
+                            await w.write(new Uint8Array((0, base_1.ArrayBufferConcat)([encode(chunk.length.toString(16) + '\r\n'), chunk, encode('\r\n')])));
+                        }
+                    }));
+                    await w.write(encode('0\r\n\r\n'));
+                }
+                else if (nonChunkBody != null) {
+                    await w.write(new Uint8Array(nonChunkBody));
+                }
+                else {
+                    await req.body.pipeTo(new WritableStream({
+                        write: async (chunk, controller) => {
+                            await w.write(chunk);
+                        }
+                    }));
+                }
+            }
+        }
+        async pParseHttpResponse(r) {
+            let header1 = await parseHttpResponseHeader(r);
+            let bodySource;
+            if (header1.headers.get('transfer-encoding') === 'chunked') {
+                bodySource = {
+                    pull: async (controller) => {
+                        let length = Number(decode(await r.readUntil('\n'.charCodeAt(0))).trim());
+                        if (length == 0) {
+                            let eoc = new Uint8Array(2);
+                            await r.readInto(eoc);
+                            (0, base_1.assert)(decode(eoc) == '\r\n');
+                            controller.close();
+                        }
+                        else {
+                            let buf = new Uint8Array(length);
+                            let writePos = new base_1.Ref2(0);
+                            while (writePos.get() < length) {
+                                await r.readInto(buf, writePos);
+                            }
+                            let eoc = new Uint8Array(2);
+                            await r.readInto(eoc);
+                            (0, base_1.assert)(decode(eoc) == '\r\n');
+                            controller.enqueue(buf);
+                        }
+                    }
+                };
+            }
+            else if (header1.headers.has('content-length')) {
+                bodySource = {
+                    pull: async (controller) => {
+                        let contentLength = Number(header1.headers.get('content-length').trim());
+                        let buf = new Uint8Array(contentLength);
+                        let writePos = new base_1.Ref2(0);
+                        while (writePos.get() < length) {
+                            await r.readInto(buf, writePos);
+                        }
+                        controller.enqueue(buf);
+                        controller.close();
+                    }
+                };
+            }
+            else {
+                bodySource = {
+                    pull: async (controller) => {
+                        controller.close();
+                    }
+                };
+            }
+            bodySource;
+            let req = new Response(bodySource, {
+                status: Number(header1.status),
+                statusText: header1.statusText,
+                headers: header1.headers
+            });
+            return req;
+        }
+    }
+    exports.HttpClient = HttpClient;
     class SimpleHttpServerRouter {
         constructor() {
             this.root = { map: {} };
@@ -569,14 +685,38 @@ define(["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/jsutils1/b
             this.fs = fs;
             this.pathStartAt = 0;
             this.showIndex = true;
+            this.cacheControl = async (filepath) => ({ maxAge: 86400 });
+            this.interceptor = async () => null;
             this.onfetch = async (req) => {
                 let { pathname } = new URL(req.url);
-                let filepath = pathname.substring(this.pathStartAt);
+                let filepath = decodeURIComponent(pathname.substring(this.pathStartAt));
                 try {
+                    {
+                        let t1 = await this.interceptor(filepath);
+                        if (t1 !== null) {
+                            return t1;
+                        }
+                    }
                     let filetype = await this.fs.filetype(filepath);
                     if (filetype === 'file') {
                         let statResult = await this.fs.stat(filepath);
                         let headers = new Headers();
+                        headers.set('date', (0, base_1.GetCurrentTime)().toUTCString());
+                        let t1 = await this.cacheControl(filepath);
+                        if (typeof t1 === 'string') {
+                            headers.set('cache-control', t1);
+                        }
+                        else {
+                            headers.set('cache-control', 'max-age=' + t1.maxAge);
+                        }
+                        if (t1 !== 'no-store') {
+                            let etag = String(statResult.mtime.getTime());
+                            headers.set('etag', etag);
+                            let ifNoneMatch = req.headers.get('If-None-Match');
+                            if (ifNoneMatch === etag) {
+                                return new Response(null, { status: 304, headers });
+                            }
+                        }
                         let fileNameAt = filepath.lastIndexOf('/');
                         let fileName = filepath.substring(fileNameAt + 1);
                         let extStartAt = fileName.lastIndexOf('.');
@@ -593,7 +733,7 @@ define(["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/jsutils1/b
                         else {
                             headers.set('transfer-encoding', 'chunked');
                         }
-                        return new Response((0, JsEnviron_1.getFileSystemReadableStream)(this.fs, filepath), { headers });
+                        return new Response((0, JsEnviron_1.getFileSystemReadableStream)(this.fs, filepath), { status: 200, headers });
                     }
                     else if (filetype === 'dir' && this.showIndex) {
                         let children = await this.fs.listdir(filepath);

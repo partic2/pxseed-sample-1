@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/CodeRunner/simplecli", "partic2/nodehelper/nodeio", "./pxseedhttpserver"], function (require, exports, base_1, simplecli_1, nodeio_1) {
+define(["require", "exports", "partic2/jsutils1/base", "partic2/CodeRunner/simplecli", "partic2/nodehelper/nodeio", "partic2/nodehelper/env", "./pxseedhttpserver"], function (require, exports, base_1, simplecli_1, nodeio_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
@@ -11,6 +11,9 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/CodeRunner/simpl
         cli.codeContext.localScope.exit = (exitCode) => {
             cli.codeContext.close();
             process.exit(exitCode ?? 0);
+        };
+        cli.codeContext.localScope.startServer = async () => {
+            await new Promise((resolve_1, reject_1) => { require(['./nodeentry'], resolve_1, reject_1); });
         };
         let args = [...process.argv];
         let found = false;

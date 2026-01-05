@@ -1,7 +1,7 @@
 define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/jsutils1/webutils"], function (require, exports, base_1, JsEnviron_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.defaultCompletionHandlers = exports.builtInCompletionHandlers = exports.CustomFunctionParameterCompletionSymbol = exports.MiscObject = exports.RemoteReference = exports.getRemoteReference = exports.UnidentifiedArray = exports.UnidentifiedObject = exports.CodeContextRemoteObjectFetcher = exports.serializingEscapeMark = exports.DelayOnceCall = void 0;
+    exports.defaultCompletionHandlers = exports.CodeCellListData = exports.builtInCompletionHandlers = exports.CustomFunctionParameterCompletionSymbol = exports.MiscObject = exports.RemoteReference = exports.getRemoteReference = exports.UnidentifiedArray = exports.UnidentifiedObject = exports.CodeContextRemoteObjectFetcher = exports.serializingEscapeMark = void 0;
     exports.toSerializableObject = toSerializableObject;
     exports.fromSerializableObject = fromSerializableObject;
     exports.inspectCodeContextVariable = inspectCodeContextVariable;
@@ -9,44 +9,6 @@ define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/j
     exports.filepathCompletion = filepathCompletion;
     exports.makeFunctionCompletionWithFilePathArg0 = makeFunctionCompletionWithFilePathArg0;
     const __name__ = base_1.requirejs.getLocalRequireModule(require);
-    class DelayOnceCall {
-        constructor(fn, delayMs) {
-            this.fn = fn;
-            this.delayMs = delayMs;
-            this.callId = 1;
-            this.result = new base_1.future();
-            this.mut = new base_1.mutex();
-        }
-        async call() {
-            if (this.callId == -1) {
-                //waiting fn return
-                return await this.result.get();
-            }
-            this.callId++;
-            let thisCallId = this.callId;
-            await (0, base_1.sleep)(this.delayMs);
-            if (thisCallId == this.callId) {
-                try {
-                    this.callId = -1;
-                    let r = await this.fn();
-                    this.result.setResult(r);
-                }
-                catch (e) {
-                    this.result.setException(e);
-                }
-                finally {
-                    this.callId = 1;
-                    let r2 = this.result;
-                    this.result = new base_1.future();
-                    return r2.get();
-                }
-            }
-            else {
-                return await this.result.get();
-            }
-        }
-    }
-    exports.DelayOnceCall = DelayOnceCall;
     let DefaultSerializingOption = {
         maxDepth: 6,
         maxKeyCount: 100,
@@ -371,50 +333,54 @@ define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/j
                 }
             }
         }
-        for (let customProvider of JsEnviron_1.installedRequirejsResourceProvider) {
-            let lastDirIndex = partialName.lastIndexOf('/');
-            let lastdir = '';
-            if (lastDirIndex >= 0) {
-                lastdir = partialName.substring(0, lastDirIndex);
-            }
-            try {
-                let children = await customProvider.fs.listdir(customProvider.rootPath + '/' + lastdir);
-                let nameFilter = removeLeadingSlash(partialName.substring(lastdir.length));
-                for (let t1 of children) {
-                    if (t1.name.startsWith(nameFilter)) {
-                        if (t1.type == 'file' && t1.name.endsWith('.js')) {
-                            let modPath = removeLeadingSlash(lastdir + '/' + t1.name.substring(0, t1.name.length - 3));
-                            candidate.add(modPath);
-                        }
-                        else if (t1.type == 'dir') {
-                            let modPath = removeLeadingSlash(lastdir + '/' + t1.name);
-                            candidate.add(modPath);
+        try {
+            for (let customProvider of JsEnviron_1.installedRequirejsResourceProvider) {
+                let lastDirIndex = partialName.lastIndexOf('/');
+                let lastdir = '';
+                if (lastDirIndex >= 0) {
+                    lastdir = partialName.substring(0, lastDirIndex);
+                }
+                try {
+                    let children = await customProvider.fs.listdir(customProvider.rootPath + '/' + lastdir);
+                    let nameFilter = removeLeadingSlash(partialName.substring(lastdir.length));
+                    for (let t1 of children) {
+                        if (t1.name.startsWith(nameFilter)) {
+                            if (t1.type == 'file' && t1.name.endsWith('.js')) {
+                                let modPath = removeLeadingSlash(lastdir + '/' + t1.name.substring(0, t1.name.length - 3));
+                                candidate.add(modPath);
+                            }
+                            else if (t1.type == 'dir') {
+                                let modPath = removeLeadingSlash(lastdir + '/' + t1.name);
+                                candidate.add(modPath);
+                            }
                         }
                     }
                 }
+                catch (e) { }
+                ;
             }
-            catch (e) { }
-            ;
         }
-        //If in node environment
-        if (globalThis.process != undefined && globalThis.process.versions != undefined && globalThis.process.versions.node != undefined) {
-            let fs = await new Promise((resolve_1, reject_1) => { require(['fs/promises'], resolve_1, reject_1); });
-            let path = await new Promise((resolve_2, reject_2) => { require(['path'], resolve_2, reject_2); });
-            let moduleDir = (0, webutils_1.getWWWRoot)();
+        catch (err) { }
+        try {
+            await (0, JsEnviron_1.ensureDefaultFileSystem)();
+            let moduleDir = (0, webutils_1.getWWWRoot)().replace(/\\/g, '/');
+            if (!moduleDir.startsWith('/')) {
+                moduleDir = '/' + moduleDir;
+            }
             let lastDirIndex = partialName.lastIndexOf('/');
             let lastdir = '';
             if (lastDirIndex >= 0) {
                 lastdir = partialName.substring(0, lastDirIndex);
             }
             try {
-                let children = await fs.readdir(path.join(moduleDir, lastdir), { withFileTypes: true });
+                let children = await JsEnviron_1.defaultFileSystem.listdir(moduleDir + '/' + lastdir);
                 for (let t1 of children) {
                     let nameFilter = removeLeadingSlash(partialName.substring(lastdir.length));
                     if (t1.name.startsWith(nameFilter)) {
-                        if (!t1.isDirectory() && t1.name.endsWith('.js')) {
+                        if (t1.type !== 'dir' && t1.name.endsWith('.js')) {
                             candidate.add(removeLeadingSlash(lastdir + '/' + t1.name.substring(0, t1.name.length - 3)));
                         }
-                        else if (t1.isDirectory()) {
+                        else if (t1.type === 'dir') {
                             candidate.add(removeLeadingSlash(lastdir + '/' + t1.name));
                         }
                     }
@@ -423,6 +389,8 @@ define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/j
             catch (e) { }
             ;
         }
+        catch (err) { }
+        ;
         return Array.from(candidate);
     }
     async function filepathCompletion(partialPath, codeContext, current) {
@@ -592,6 +560,21 @@ define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/j
             }
         }
     };
+    class CodeCellListData {
+        constructor() {
+            this.cellList = new Array();
+            this.consoleOutput = {};
+        }
+        loadFrom(data) {
+            let loaded = fromSerializableObject(JSON.parse(data), {});
+            this.cellList = loaded.cellList;
+            this.consoleOutput = loaded.consoleOutput;
+        }
+        saveTo() {
+            return JSON.stringify(toSerializableObject({ cellList: this.cellList, consoleOutput: this.consoleOutput }, {}));
+        }
+    }
+    exports.CodeCellListData = CodeCellListData;
     exports.defaultCompletionHandlers = [
         exports.builtInCompletionHandlers.checkIsInStringLiteral,
         exports.builtInCompletionHandlers.propertyCompletion,

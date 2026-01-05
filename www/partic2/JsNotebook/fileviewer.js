@@ -1,157 +1,84 @@
-define(["require", "exports", "partic2/pComponentUi/domui", "preact", "partic2/pComponentUi/workspace", "partic2/pComponentUi/texteditor", "./misclib"], function (require, exports, domui_1, React, workspace_1, texteditor_1, misclib_1) {
+define(["require", "exports", "partic2/pComponentUi/domui", "preact", "partic2/pComponentUi/texteditor", "partic2/CodeRunner/jsutils2"], function (require, exports, domui_1, React, texteditor_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.ImageFileHandler = exports.JsModuleHandler = exports.TextFileHandler = exports.MediaFileViewerTab = exports.TextFileViewer = exports.FileTypeHandlerBase = void 0;
+    exports.__internal__ = exports.FileTypeHandlerBase = void 0;
     class FileTypeHandlerBase {
         constructor() {
             this.title = '';
             this.extension = [];
         }
-        setWorkspace(workspace) {
-            this.workspace = workspace;
-        }
-        async getUnusedFilename(dir, suffix) {
-            for (let t1 = 1; t1 < 100; t1++) {
-                let testname = dir + '/' + 'untitled' + t1.toString() + suffix;
-                if (await this.workspace.fs.filetype(testname) == 'none') {
-                    return testname;
-                }
-            }
-            throw new Error('no available file name');
-        }
+        async open(path) { }
     }
     exports.FileTypeHandlerBase = FileTypeHandlerBase;
-    class TextFileViewer extends workspace_1.TabInfoBase {
+    class TextFileViewer extends React.Component {
         constructor() {
             super(...arguments);
-            this.rref = { inputArea: React.createRef(), actionBar: React.createRef() };
-            this.initLoad = true;
+            this.rref = { inputArea: new domui_1.ReactRefEx() };
             this.action = {};
         }
-        async init(initval) {
-            await super.init(initval);
-            this.action.save = async () => {
-                let content = this.rref.inputArea.current.getPlainText();
-                let data = new TextEncoder().encode(content);
-                await this.fs.writeAll(this.path, data);
-            };
-            return this;
+        onKeyDown(ev) {
+            if (ev.key === 'KeyS' && ev.ctrlKey) {
+                this.doSave();
+                ev.preventDefault();
+            }
         }
-        async doLoad() {
-            let data = await this.fs.readAll(this.path);
+        async doSave() {
+            await this.props.context.fs.writeAll(this.props.path, (0, jsutils2_1.utf8conv)((await this.rref.inputArea.waitValid()).getPlainText()));
+        }
+        async componentDidMount() {
+            let data = await this.props.context.fs.readAll(this.props.path);
             data = data ?? new Uint8Array(0);
             this.rref.inputArea.current.setPlainText(new TextDecoder().decode(data));
         }
-        onKeyDown(ev) {
-            this.rref.actionBar.current?.processKeyEvent(ev);
-        }
-        renderPage() {
+        render(props, state, context) {
             return React.createElement("div", { className: domui_1.css.flexColumn, style: { flexGrow: '1' }, onKeyDown: (ev) => this.onKeyDown(ev) },
                 React.createElement("div", null,
-                    React.createElement(misclib_1.DefaultActionBar, { action: this.action, ref: this.rref.actionBar })),
-                React.createElement(texteditor_1.TextEditor, { ref: (refObj) => {
-                        this.rref.inputArea.current = refObj;
-                        if (this.initLoad) {
-                            this.doLoad();
-                            this.initLoad = false;
-                        }
-                    }, divClass: [domui_1.css.simpleCard] }));
+                    React.createElement("a", { onClick: () => this.doSave(), href: "javascript:;" }, "Save")),
+                React.createElement(texteditor_1.TextEditor, { ref: this.rref.inputArea, divClass: [domui_1.css.simpleCard] }));
         }
     }
-    exports.TextFileViewer = TextFileViewer;
-    class MediaFileViewerTab extends workspace_1.TabInfoBase {
+    class MediaFileViewer1 extends React.Component {
         constructor() {
             super(...arguments);
-            this.rref = { actionBar: React.createRef() };
-            this.initLoad = true;
-            this.action = {};
-        }
-        async init(initval) {
-            await super.init(initval);
-            await this.doLoad();
-            return this;
+            this.rref = {};
         }
         async doLoad() {
-            let data = await this.fs.readAll(this.path);
+            let data = await this.props.context.fs.readAll(this.props.path);
             data = data ?? new Uint8Array(0);
-            this.dataUrl = URL.createObjectURL(new Blob([data]));
-            this.requestPageViewUpdate();
-        }
-        async onClose() {
-            if (this.dataUrl != undefined) {
-                URL.revokeObjectURL(this.dataUrl);
-            }
-            return true;
-        }
-        onKeyDown(ev) {
-            this.rref.actionBar.current?.processKeyEvent(ev);
+            let dataUrl = URL.createObjectURL(new Blob([data]));
+            this.setState({ dataUrl });
         }
         renderMedia() {
-            if (this.dataUrl == undefined)
+            if (this.state.dataUrl == undefined)
                 return;
-            if (this.mediaType === 'image') {
-                return React.createElement("img", { src: this.dataUrl });
+            if (this.props.mediaType === 'image') {
+                return React.createElement("img", { src: this.state.dataUrl });
             }
-            else if (this.mediaType === 'audio') {
-                return React.createElement("audio", { src: this.dataUrl });
+            else if (this.props.mediaType === 'audio') {
+                return React.createElement("audio", { src: this.state.dataUrl });
             }
-            else if (this.mediaType === 'video') {
-                return React.createElement("video", { src: this.dataUrl });
+            else if (this.props.mediaType === 'video') {
+                return React.createElement("video", { src: this.state.dataUrl });
             }
         }
-        renderPage() {
-            return React.createElement("div", { className: domui_1.css.flexColumn, style: { flexGrow: '1' }, onKeyDown: (ev) => this.onKeyDown(ev) },
-                React.createElement("div", null,
-                    React.createElement(misclib_1.DefaultActionBar, { action: this.action, ref: this.rref.actionBar })),
-                this.renderMedia());
+        render() {
+            return React.createElement("div", { className: domui_1.css.flexColumn, style: { flexGrow: '1' } }, this.renderMedia());
         }
     }
-    exports.MediaFileViewerTab = MediaFileViewerTab;
     class TextFileHandler extends FileTypeHandlerBase {
         constructor() {
             super(...arguments);
             this.title = 'text file';
-            this.extension = '';
-        }
-        async create(dir) {
-            let fs = this.workspace.fs;
-            let path = await this.getUnusedFilename(dir, '.txt');
-            await fs.writeAll(path, new Uint8Array(0));
-            return path;
+            this.extension = [''];
         }
         async open(path) {
-            let fs = this.workspace.fs;
-            let t1 = new TextFileViewer();
-            let t2 = await t1.init({
-                id: 'file://' + path,
-                title: path.substring(path.lastIndexOf('/') + 1),
-                fs: fs, path: path
-            });
-            return t2;
-        }
-    }
-    exports.TextFileHandler = TextFileHandler;
-    class JsModuleHandler extends FileTypeHandlerBase {
-        constructor() {
-            super(...arguments);
-            this.title = 'js module(amd)';
-            this.extension = '.js';
-        }
-        async create(dir) {
-            let fs = this.workspace.fs;
-            let path = await this.getUnusedFilename(dir, '.js');
-            await fs.writeAll(path, new TextEncoder().encode("define(['require','exports','module'],function(require,exports,module){\n\n})"));
-            return path;
-        }
-        async open(path) {
-            return new TextFileViewer().init({
-                id: 'file://' + path,
-                title: path.substring(path.lastIndexOf('/') + 1),
-                fs: this.workspace.fs, path: path
+            await this.context.openNewWindowForFile({
+                vnode: React.createElement(TextFileViewer, { context: this.context, path: path }),
+                title: 'Text File:' + path.substring(path.lastIndexOf('/') + 1),
+                filePath: path
             });
         }
     }
-    exports.JsModuleHandler = JsModuleHandler;
     class ImageFileHandler extends FileTypeHandlerBase {
         constructor() {
             super(...arguments);
@@ -159,15 +86,15 @@ define(["require", "exports", "partic2/pComponentUi/domui", "preact", "partic2/p
             this.extension = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
         }
         async open(path) {
-            let fs = this.workspace.fs;
-            return new MediaFileViewerTab().init({
-                id: 'file://' + path,
-                title: path.substring(path.lastIndexOf('/') + 1),
-                fs: fs, path: path,
-                mediaType: 'image'
+            await this.context.openNewWindowForFile({
+                vnode: React.createElement(MediaFileViewer1, { context: this.context, path: path, mediaType: 'image' }),
+                title: 'Image File:' + path.substring(path.lastIndexOf('/') + 1),
+                filePath: path
             });
         }
     }
-    exports.ImageFileHandler = ImageFileHandler;
+    exports.__internal__ = {
+        TextFileViewer, MediaFileViewer1, TextFileHandler, ImageFileHandler
+    };
 });
 //# sourceMappingURL=fileviewer.js.map

@@ -1,13 +1,15 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./jsutils2"], function (require, exports, base_1, webutils_1, jsutils2_1) {
+define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./jsutils2", "partic2/tjshelper/tjsbuilder"], function (require, exports, base_1, webutils_1, jsutils2_1, tjsbuilder_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.installedRequirejsResourceProvider = exports.DirAsRootFS = exports.NodeSimpleFileSystem = exports.defaultFileSystem = exports.LocalWindowSFS = exports.TjsSfs = void 0;
     exports.getSimpleFileSystemFromPxprpc = getSimpleFileSystemFromPxprpc;
     exports.ensureDefaultFileSystem = ensureDefaultFileSystem;
+    exports.setDefaultFileSystem = setDefaultFileSystem;
     exports.getFileSystemReadableStream = getFileSystemReadableStream;
     exports.getFileSysteWritableStream = getFileSysteWritableStream;
     exports.installRequireProvider = installRequireProvider;
-    exports.initCodeEnv = initCodeEnv;
+    exports.getSimpleFileSysteNormalizedWWWRoot = getSimpleFileSysteNormalizedWWWRoot;
+    exports.initNotebookCodeEnv = initNotebookCodeEnv;
     //treat both slash and back slash as sep
     function dirname2(path) {
         for (let t1 = path.length - 1; t1 >= 0; t1--) {
@@ -644,8 +646,21 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     exports.LocalWindowSFS = LocalWindowSFS;
     exports.defaultFileSystem = null;
     async function ensureDefaultFileSystem() {
-        exports.defaultFileSystem = new LocalWindowSFS();
-        await exports.defaultFileSystem.ensureInited();
+        if (exports.defaultFileSystem === null) {
+            if (globalThis.location?.protocol.startsWith('http')) {
+                exports.defaultFileSystem = new LocalWindowSFS();
+            }
+            else {
+                let tjs1 = await (0, tjsbuilder_1.buildTjs)();
+                let t1 = new TjsSfs();
+                t1.from(tjs1);
+                exports.defaultFileSystem = t1;
+            }
+            await exports.defaultFileSystem.ensureInited();
+        }
+    }
+    function setDefaultFileSystem(fs) {
+        exports.defaultFileSystem = fs;
     }
     class NodeSimpleFileSystem {
         constructor() {
@@ -917,32 +932,19 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         exports.installedRequirejsResourceProvider.push({ fs, rootPath: rootPath ?? 'www' });
         return { fs, rootPath: rootPath ?? 'www' };
     }
-    /* Usage: Run below code in CodeContext to init CodeContext _ENV
-        ```javascript
-        await (await import('partic2/CodeRunner/JsEnviron')).initCodeEnv(_ENV,{currentDirectory:'xxx'});
-        ```
-        Then these variable list in CodeContextEnvInitVar will be set to _ENV
-    */
-    async function initCodeEnv(_ENV, opt) {
-        let env = 'unknown';
-        if (globalThis.process?.versions?.node != undefined) {
-            env = 'node';
+    function getSimpleFileSysteNormalizedWWWRoot() {
+        let wwwroot = (0, webutils_1.getWWWRoot)().replace(/\\/g, '/');
+        if (!wwwroot.startsWith('/')) {
+            wwwroot = '/' + wwwroot;
         }
-        else if (globalThis.navigator != undefined) {
-            env = 'browser';
-        }
-        let simplefs = undefined;
-        if (exports.installedRequirejsResourceProvider.length > 0) {
-            simplefs = exports.installedRequirejsResourceProvider[0].fs;
-        }
-        else if (env === 'node') {
-            simplefs = new NodeSimpleFileSystem();
-            await simplefs.ensureInited();
-        }
+        return wwwroot;
+    }
+    //Used in workerinit.createRunCodeContextConnectorForNotebookFile
+    async function initNotebookCodeEnv(_ENV, opt) {
+        await ensureDefaultFileSystem();
         let fs = {
-            simple: simplefs,
+            simple: exports.defaultFileSystem,
             codePath: opt?.codePath,
-            env: env,
             loadScript: async function (path) {
                 (0, base_1.assert)(this.simple != undefined);
                 if (path.startsWith('.')) {
@@ -980,7 +982,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                 context.completionItems.push(...t1.map(v => ({ type: 'literal', candidate: v, replaceRange })));
             }
         };
-        _ENV.fs.loadScript[CustomFunctionParameterCompletionSymbol] = makeFunctionCompletionWithFilePathArg0(webutils_1.path.dirname(_ENV.fs.codePath));
+        _ENV.fs.loadScript[CustomFunctionParameterCompletionSymbol] = makeFunctionCompletionWithFilePathArg0(webutils_1.path.dirname(_ENV.fs.codePath ?? ''));
         if (_ENV.fs.simple != undefined) {
             _ENV.fs.simple.readAll[CustomFunctionParameterCompletionSymbol] = makeFunctionCompletionWithFilePathArg0(undefined);
             _ENV.fs.simple.writeAll[CustomFunctionParameterCompletionSymbol] = makeFunctionCompletionWithFilePathArg0(undefined);

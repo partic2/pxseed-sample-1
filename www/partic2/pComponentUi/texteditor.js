@@ -11,10 +11,10 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
         }
         pushHistory() {
             let currText = this.getPlainText();
-            if (currText == this.undoHistory.at(this.undoHistoryCurrent))
+            if (currText == this.undoHistory.at(this.undoHistoryCurrent)?.text)
                 return;
             if (this.undoHistoryCurrent >= this.undoHistory.length - 1) {
-                this.undoHistory.push(currText);
+                this.undoHistory.push({ text: currText, caret: this.getTextCaretOffset() });
                 if (this.undoHistory.length > 10) {
                     this.undoHistory.unshift();
                 }
@@ -22,7 +22,7 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             }
             else {
                 this.undoHistoryCurrent++;
-                this.undoHistory[this.undoHistoryCurrent] = currText;
+                this.undoHistory[this.undoHistoryCurrent] = { text: currText, caret: this.getTextCaretOffset() };
             }
         }
         textUndo() {
@@ -31,22 +31,26 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             }
             this.pushHistory();
             this.undoHistoryCurrent--;
-            let last = this.undoHistory[this.undoHistoryCurrent];
+            let last = this.undoHistory.at(this.undoHistoryCurrent);
             this.undoHistoryCurrent--;
-            this.setPlainText(last);
-            this.setTextCaretOffset('end');
+            this.setPlainText(last.text);
+            this.setTextCaretOffset(last.caret);
         }
         textRedo() {
             let currText = this.getPlainText();
             for (; this.undoHistoryCurrent + 1 < this.undoHistory.length; this.undoHistoryCurrent++) {
                 let last = this.undoHistory[this.undoHistoryCurrent + 1];
-                if (currText != last) {
-                    this.setPlainText(last);
+                if (currText != last.text) {
+                    this.setPlainText(last.text);
+                    this.setTextCaretOffset(last.caret);
                     break;
                 }
             }
         }
         onInputHandler(ev) {
+            this.props.divAttr?.onInput?.(ev);
+            if (ev.defaultPrevented)
+                return;
             let ch = ev.data;
             if (ev.inputType == 'insertParagraph' || (ev.inputType == 'insertText' && ch == null)) {
                 ch = '\n';
@@ -56,10 +60,15 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             }
             this.props.onInput?.(this, { char: ch, text: ev.dataTransfer?.getData('text/plain') ?? null, type: ev.inputType });
         }
-        onPasteHandler(text) {
+        onPasteHandler(ev) {
+            this.props.divAttr?.onPaste?.(ev);
+            if (ev.defaultPrevented)
+                return;
+            let text = ev.clipboardData.getData('text/plain');
             this.pushHistory();
             this.insertText(text);
-            this.rref.div1.current.addEventListener('click', () => { });
+            this.props.onInput?.(this, { char: null, text: text, type: 'paste' });
+            ev.preventDefault();
         }
         onKeyDownHandler(ev) {
             if (this.props.divAttr?.onKeyDown != undefined) {
@@ -68,7 +77,7 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             if (ev.defaultPrevented) {
                 return;
             }
-            if (ev.key.toLowerCase() == 'z' && ev.ctrlKey) {
+            if (ev.code == 'KeyZ' && ev.ctrlKey) {
                 ev.preventDefault();
                 if (ev.shiftKey) {
                     this.textRedo();
@@ -79,7 +88,7 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             }
         }
         render(props, state, context) {
-            return React.createElement("div", { contentEditable: true, ref: this.rref.div1, onInput: (ev) => this.onInputHandler(ev), style: { wordBreak: 'break-all', overflowWrap: 'word-break', position: 'relative', ...this.props.divStyle }, className: (this.props.divClass ?? []).join(' '), onPaste: (ev) => { this.onPasteHandler(ev.clipboardData.getData('text/plain')); ev.preventDefault(); }, onBlur: (ev) => this.onBlurHandler(ev), onFocus: (ev) => this.onFocusHandler(ev), onKeyDown: (ev) => this.onKeyDownHandler(ev), ...this.props.divAttr }, " ");
+            return React.createElement("div", { contentEditable: true, ref: this.rref.div1, style: { wordBreak: 'break-all', overflowWrap: 'word-break', whiteSpace: 'pre-wrap', position: 'relative', ...this.props.divStyle }, className: (this.props.divClass ?? []).join(' '), ...this.props.divAttr, onPaste: (ev) => { this.onPasteHandler(ev); }, onInput: (ev) => this.onInputHandler(ev), onBlur: (ev) => this.onBlurHandler(ev), onFocus: (ev) => this.onFocusHandler(ev), onKeyDown: (ev) => this.onKeyDownHandler(ev) });
         }
         insertText(text) {
             let { anchor, focus } = this.getTextCaretSelectedRange();
@@ -192,7 +201,9 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
                 return;
             if (typeof offset === 'number') {
                 let pos = textParts.nodeFromTextOffset(offset);
-                sel.setPosition(pos.node, pos.offset);
+                if (pos.node != null) {
+                    sel.setPosition(pos.node, pos.offset);
+                }
             }
             else if (offset == 'start') {
                 let rng1 = new Range();

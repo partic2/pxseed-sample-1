@@ -1,7 +1,8 @@
 define(["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    let __inited__ = (async () => {
+    exports.__inited__ = void 0;
+    exports.__inited__ = (async () => {
         if (globalThis.tjs !== undefined) {
             await new Promise((resolve_1, reject_1) => { require(['./tjsentry'], resolve_1, reject_1); });
         }

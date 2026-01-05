@@ -1,4 +1,4 @@
-define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/pComponentUi/workspace", "partic2/pxprpcClient/registry", "./clientFunction", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./webentry"], function (require, exports, React, texteditor_1, domui_1, window_1, workspace_1, registry_1, clientFunction_1, base_1, webutils_1, webentry_1) {
+define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/pComponentUi/workspace", "partic2/pxprpcClient/registry", "./clientFunction", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./webentry", "partic2/JsNotebook/workspace"], function (require, exports, React, texteditor_1, domui_1, window_1, workspace_1, registry_1, clientFunction_1, base_1, webutils_1, webentry_1, workspace_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.PxseedServerAdministrateTool = void 0;
@@ -83,14 +83,22 @@ define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "part
                     React.createElement("a", { href: "javascript:;", onClick: () => this.buildPackage() }, "build packages"),
                     React.createElement("a", { href: "javascript:;", onClick: () => this.forceRebuildPackages() }, "force rebuild pakcages"),
                     React.createElement("a", { href: "javascript:;", onClick: () => this.restartServerHostWorker1() }, "restart server host worker 1"),
-                    React.createElement("a", { href: "javascript:;" }, "stop server"),
                     (this.state.serverConfig?.deamonMode?.enabled == true) ? this.state.serverConfig.deamonMode.subprocessConfig.map((cfg, index) => {
                         return React.createElement("a", { href: "javascript:;", onClick: () => this.restartSubprocess(index) },
                             "restart subprocess ",
                             index,
                             " on ",
                             `${cfg.listenOn?.host}:${cfg.listenOn?.port}`);
-                    }) : null));
+                    }) : null,
+                    React.createElement("a", { href: "javascript:;", onClick: () => this.openNotebookWorkspace() }, "notebook")));
+        }
+        async openNotebookWorkspace() {
+            let wb = await workspace_2.openWorkspaceWithProfile.openJSNotebookFirstProfileWorkspace({
+                defaultRpc: registry_1.ServerHostWorker1RpcName,
+                defaultStartupScript: `await (await import('pxseedServer2023/pxseedhttpserver')).initNotebookCodeEnv(_ENV)`,
+                notebookDirectory: webutils_1.path.join(__name__, '..', 'notebook')
+            });
+            wb.start();
         }
         async doLogin() {
             await (0, webentry_1.updatePxseedServerConfig)(this.state.pxprpcKey);

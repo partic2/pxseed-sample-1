@@ -1,33 +1,12 @@
-define("pxseedBuildScript/build", ["require", "exports", "fs/promises", "fs", "path", "./loaders", "./buildlib"], function (require, exports, fs, fs_1, path_1, loaders_1, buildlib_1) {
+define(["require", "exports", "./loaders", "./buildlib", "./util"], function (require, exports, loaders_1, buildlib_1, util_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    ;
     (async () => {
         await loaders_1.inited;
         let buildScriptAt = process.argv.indexOf('pxseedBuildScript/build');
         let command = process.argv[buildScriptAt + 1] ?? 'build';
         if (command == 'build') {
             let buildDone = false;
-            try {
-                await fs.access((0, path_1.join)(buildlib_1.sourceDir, 'pxseed.build-hint.json'), fs_1.constants.R_OK);
-                let buildHint = JSON.parse(new TextDecoder().decode(await fs.readFile((0, path_1.join)(buildlib_1.sourceDir, 'pxseed.build-hint.json'))));
-                if ('use' in buildHint) {
-                    buildHint = buildHint.profiles[buildHint.use];
-                }
-                if (buildHint.includeDir && buildHint.includeDir.indexOf('*') < 0) {
-                    console.log('only process directory in buildHint.includeDir', buildHint.includeDir);
-                    for (let subdir of buildHint.includeDir) {
-                        await (0, buildlib_1.processDirectory)((0, path_1.join)(buildlib_1.sourceDir, subdir));
-                    }
-                    buildDone = true;
-                }
-            }
-            catch (e) {
-                if (e.toString().indexOf('no such file or directory') < 0) {
-                    console.warn(e);
-                }
-            }
-            ;
             if (!buildDone) {
                 await (0, buildlib_1.processDirectory)(buildlib_1.sourceDir);
             }
@@ -39,7 +18,8 @@ define("pxseedBuildScript/build", ["require", "exports", "fs/promises", "fs", "p
             }
         }
         else {
-            console.error(`unknown command ${command}`);
+            util_1.console.error(`unknown command ${command}`);
         }
     })();
 });
+//# sourceMappingURL=build.js.map

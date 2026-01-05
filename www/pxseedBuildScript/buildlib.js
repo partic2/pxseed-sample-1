@@ -20,12 +20,12 @@ define(["require", "exports", "./loaders", "./util"], function (require, exports
     async function processDirectory(dir) {
         await loaders_1.inited;
         const { fs, path } = await (0, util_1.getNodeCompatApi)();
-        console.log(`enter ${dir}`);
+        util_1.console.info(`enter ${dir}`);
         let children = await fs.readdir(dir, { withFileTypes: true });
         let hasPxseedConfig = false;
         if (children.find(v => v.name == 'pxseed.config.json')) {
             hasPxseedConfig = true;
-            console.log('pxseed.config.json found');
+            util_1.console.info('pxseed.config.json found');
         }
         if (!hasPxseedConfig) {
             for (let child of children) {
@@ -35,10 +35,10 @@ define(["require", "exports", "./loaders", "./util"], function (require, exports
             }
         }
         else {
-            let pxseedConfig = await (0, util_1.readJson)(path.join(dir, 'pxseed.config.json'));
+            let pxseedConfig = await util_1.__internal__.readJson(path.join(dir, 'pxseed.config.json'));
             let pstat;
             if (children.find(v => v.name == '.pxseed.status.json')) {
-                pstat = await (0, util_1.readJson)(path.join(dir, '.pxseed.status.json'));
+                pstat = await util_1.__internal__.readJson(path.join(dir, '.pxseed.status.json'));
                 pstat = { ...makeDefaultStatus(), ...pstat };
             }
             else {
@@ -92,11 +92,11 @@ define(["require", "exports", "./loaders", "./util"], function (require, exports
                 pstat.lastSuccessBuildTime = pstat.lastBuildTime;
             }
             else {
-                console.info('build failed.');
-                console.info(pstat.lastBuildError);
+                util_1.console.info('build failed.');
+                util_1.console.info(pstat.lastBuildError);
             }
             pstat.currentBuildError = [];
-            await (0, util_1.writeJson)(path.join(dir, '.pxseed.status.json'), pstat);
+            await util_1.__internal__.writeJson(path.join(dir, '.pxseed.status.json'), pstat);
         }
     }
     async function cleanBuildStatus(dir) {

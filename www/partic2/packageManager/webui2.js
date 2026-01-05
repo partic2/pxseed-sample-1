@@ -1,7 +1,7 @@
-define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/pxprpcClient/registry", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/input", "partic2/pComponentUi/window", "partic2/CodeRunner/jsutils2", "partic2/JsNotebook/workspace", "partic2/pComponentUi/texteditor", "partic2/pComponentUi/workspace", "partic2/pxseedMedia1/index1", "partic2/pComponentUi/transform"], function (require, exports, React, domui_1, registry_1, base_1, webutils_1, input_1, window_1, jsutils2_1, workspace_1, texteditor_1, workspace_2, index1_1, transform_1) {
+define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/pxprpcClient/registry", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/input", "partic2/pComponentUi/window", "partic2/CodeRunner/jsutils2", "partic2/pxprpcClient/bus", "partic2/JsNotebook/workspace", "partic2/pComponentUi/texteditor", "partic2/pComponentUi/workspace", "partic2/pxseedMedia1/index1", "partic2/pComponentUi/transform", "pxprpc/extend", "pxprpc/base", "../pxprpcClient/rpcworker"], function (require, exports, React, domui_1, registry_1, base_1, webutils_1, input_1, window_1, jsutils2_1, bus_1, workspace_1, texteditor_1, workspace_2, index1_1, transform_1, extend_1, base_2, rpcworker_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.renderPackagePanel = exports.__name__ = void 0;
+    exports.__inited__ = exports.renderPackagePanel = exports.__name__ = void 0;
     var registryModuleName = 'partic2/packageManager/registry';
     exports.__name__ = base_1.requirejs.getLocalRequireModule(require);
     let i18n = {
@@ -35,14 +35,7 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
     }
     let remoteModule = {
         registry: new jsutils2_1.Singleton(async () => {
-            let rpc1 = await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName);
-            if (rpc1 != undefined) {
-                return await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName)).ensureConnected(), 'partic2/packageManager/registry');
-            }
-            else {
-                //Local worker with xplatj mode.
-                return await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.WebWorker1RpcName)).ensureConnected(), 'partic2/packageManager/registry');
-            }
+            return await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName)).ensureConnected(), 'partic2/packageManager/registry');
         })
     };
     let resourceManager = (0, webutils_1.getResourceManager)(exports.__name__);
@@ -53,9 +46,10 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
             this.mounted = false;
             this.onWindowListChange = async () => {
                 let windows = new Array();
-                for (let t1 of workspace_2.NewWindowHandleLists.value) {
+                for (let t2 = 0; t2 < workspace_2.NewWindowHandleLists.value.length; t2++) {
+                    let t1 = workspace_2.NewWindowHandleLists.value[t2];
                     if (t1.parentWindow == undefined) {
-                        windows.push({ title: t1.title ?? 'Untitle', visible: !await t1.isHidden() });
+                        windows.push({ title: t1.title ?? 'Untitle', visible: !await t1.isHidden(), index: t2 });
                     }
                 }
                 this.setState({ windows });
@@ -87,14 +81,14 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
         }
         render(props, state, context) {
             return React.createElement("div", { style: { display: 'inline-block', position: 'absolute', pointerEvents: 'none' }, ref: this.drag.draggedRef({ left: window.innerWidth - this.state.listWidth - 10, top: window.innerHeight - this.state.listHeight - 40 }) },
-                React.createElement("div", { style: { width: this.state.listWidth + 'px', height: this.state.listHeight + 'px', display: 'flex', flexDirection: 'column-reverse' } }, this.state.hideList ? null : React.createElement("div", null, this.state.windows.map((t1, t2) => React.createElement("div", { className: [domui_1.css.flexRow, domui_1.css.simpleCard].join(' '), style: { pointerEvents: 'auto' } },
-                    React.createElement("div", { style: { display: 'flex', flexGrow: '1', wordBreak: 'break-all' }, onClick: () => workspace_2.NewWindowHandleLists.value[t2].activate() }, t1.title),
+                React.createElement("div", { style: { width: this.state.listWidth + 'px', height: this.state.listHeight + 'px', display: 'flex', flexDirection: 'column-reverse' } }, this.state.hideList ? null : React.createElement("div", null, this.state.windows.map((t1) => React.createElement("div", { className: [domui_1.css.flexRow, domui_1.css.simpleCard].join(' '), style: { pointerEvents: 'auto' } },
+                    React.createElement("div", { style: { display: 'flex', flexGrow: '1', wordBreak: 'break-all' }, onClick: () => workspace_2.NewWindowHandleLists.value[t1.index].activate() }, t1.title),
                     React.createElement("img", { draggable: false, src: t1.visible ? (0, index1_1.getIconUrl)('eye.svg') : (0, index1_1.getIconUrl)('eye-off.svg'), onClick: () => {
                             if (t1.visible) {
-                                workspace_2.NewWindowHandleLists.value[t2].hide();
+                                workspace_2.NewWindowHandleLists.value[t1.index].hide();
                             }
                             else {
-                                workspace_2.NewWindowHandleLists.value[t2].activate();
+                                workspace_2.NewWindowHandleLists.value[t1.index].activate();
                             }
                         } }))))),
                 React.createElement("div", { className: domui_1.css.flexRow },
@@ -360,7 +354,17 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
         }
         async openNotebook() {
             try {
-                await (0, workspace_1.openWorkspaceWindowFor)((await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName)), 'packageManager/registry');
+                let nbw = await workspace_1.openWorkspaceWithProfile.openJSNotebookFirstProfileWorkspace({
+                    defaultRpc: registry_1.ServerHostWorker1RpcName,
+                    defaultStartupScript: `import2env('partic2/jsutils1/base');
+import2env('partic2/jsutils1/webutils');
+import2env('partic2/CodeRunner/jsutils2');
+import2env('partic2/packageManager/registry');`,
+                    notebookDirectory: webutils_1.path.join(exports.__name__, '..', 'notebook'),
+                    sampleCode: [`installPackage('xxx')`, `listPackageArray('')`]
+                });
+                nbw.title = 'PackageManager';
+                await nbw.start();
             }
             catch (err) {
                 await (0, window_1.alert)(err.errorMessage, i18n.error);
@@ -408,9 +412,18 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
     }
     let renderPackagePanel = async () => {
         (0, webutils_1.useDeviceWidth)();
-        (0, workspace_2.openNewWindow)(React.createElement(PackagePanel, null), { title: i18n.packageManager });
+        (0, workspace_2.openNewWindow)(React.createElement(PackagePanel, null), { title: i18n.packageManager, layoutHint: exports.__name__ + '.PackagePanel' });
         (0, window_1.appendFloatWindow)(React.createElement(window_1.WindowComponent, { keepTop: true, noTitleBar: true, noResizeHandle: true, windowDivClassName: window_1.css.borderlessWindowDiv },
             React.createElement(WindowListIcon, null)));
     };
     exports.renderPackagePanel = renderPackagePanel;
+    exports.__inited__ = (async () => {
+        if ((0, webutils_1.GetJsEntry)() == exports.__name__) {
+            document.body.style.overflow = 'hidden';
+            (0, exports.renderPackagePanel)();
+            bus_1.RemotePxseedJsIoServer.serve(`/pxprpc/pxseed_webui/${exports.__name__.replace(/\//g, '.')}/${rpcworker_1.rpcId.get()}`, {
+                onConnect: (io) => new extend_1.RpcExtendServer1(new base_2.Server(io))
+            });
+        }
+    })();
 });

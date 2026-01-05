@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils"], function (require, exports, base_1, webutils_1) {
+define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pxprpcClient/registry"], function (require, exports, base_1, webutils_1, registry_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.pathCompat = exports.NodeFsAdapter = void 0;
@@ -169,7 +169,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
     };
     async function buildNodeCompatApiTjs() {
-        const { buildTjs, XplatjDefaultRpcName } = await new Promise((resolve_1, reject_1) => { require(['partic2/tjshelper/tjsbuilder'], resolve_1, reject_1); });
+        const { buildTjs } = await new Promise((resolve_1, reject_1) => { require(['partic2/tjshelper/tjsbuilder'], resolve_1, reject_1); });
         const tjs = await buildTjs();
         const { TjsSfs } = await new Promise((resolve_2, reject_2) => { require(['partic2/CodeRunner/JsEnviron'], resolve_2, reject_2); });
         const fs = new TjsSfs();
@@ -183,21 +183,11 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             //get the server wwwroot
             const serverWorker1 = await getPersistentRegistered(ServerHostWorker1RpcName);
             if (serverWorker1 != undefined) {
-                const remoteJsRpc = await getAttachedRemoteRigstryFunction(await serverWorker1.ensureConnected());
-                const webutilsMod = await remoteJsRpc.loadModule('partic2/jsutils1/webutils');
-                wwwroot = await remoteJsRpc.callJsonFunction(webutilsMod, 'getWWWRoot', []);
+                wwwroot = await (0, registry_1.easyCallRemoteJsonFunction)(await serverWorker1.ensureConnected(), 'partic2/jsutils1/webutils', 'getWWWRoot', []);
+                ;
                 wwwroot = wwwroot.replace(/\\/g, '/');
                 if (wwwroot.startsWith('/')) {
                     wwwroot = '/' + wwwroot;
-                }
-                webutilsMod.free();
-            }
-            else {
-                if (await getPersistentRegistered(XplatjDefaultRpcName) != undefined) {
-                    let { pathname } = new URL((0, webutils_1.getWWWRoot)());
-                    if (pathname.startsWith('/localFile')) {
-                        wwwroot = pathname.replace(/^\/localFile/, '');
-                    }
                 }
             }
         }

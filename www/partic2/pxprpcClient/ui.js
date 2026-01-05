@@ -1,7 +1,11 @@
-define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/jsutils1/base"], function (require, exports, React, registry_1, domui_1, window_1, base_1) {
+define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/jsutils1/base", "./rpcworker", "partic2/jsutils1/webutils"], function (require, exports, React, registry_1, domui_1, window_1, base_1, rpcworker_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.RegistryUI = void 0;
+    let css2 = {
+        rpcClientCard: (0, base_1.GenerateRandomString)()
+    };
+    webutils_1.DynamicPageCSSManager.PutCss('.' + css2.rpcClientCard, ['word-break:break-all']);
     class AddCard extends React.Component {
         constructor(props, ctx) {
             super(props, ctx);
@@ -46,7 +50,7 @@ define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domu
             this.setState({ url: info.url, name: info.name });
         }
         render(props, state, context) {
-            return React.createElement("div", { className: [domui_1.css.simpleCard, domui_1.css.flexColumn].join(' '), style: { minWidth: '360px' } },
+            return React.createElement("div", { className: [domui_1.css.simpleCard, domui_1.css.flexColumn].join(' ') },
                 React.createElement("input", { type: "text", placeholder: 'name', value: this.state.name, onChange: (ev) => { this.setState({ name: ev.target.value }); } }),
                 React.createElement("input", { type: "text", placeholder: 'url', value: this.state.url, onChange: (ev) => { this.setState({ url: ev.target.value }); } }),
                 React.createElement("div", { className: [domui_1.css.flexRow].join(' '), style: { flexWrap: 'wrap' } },
@@ -144,22 +148,25 @@ define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domu
             btns.push({ label: 'Add', handler: () => this.doAdd() });
             let allClients = Array.from((0, registry_1.listRegistered)());
             allClients.sort((a, b) => (a[0] < b[0]) ? -1 : (a[0] === b[0] ? 0 : 1));
-            return React.createElement("div", { className: domui_1.css.simpleCard, ref: this.rref.div },
-                "RPC id for this scope:",
-                registry_1.rpcId,
-                React.createElement("br", null),
-                "PXPRPC Connection:",
-                React.createElement("br", null),
+            return React.createElement("div", { className: [domui_1.css.simpleCard, domui_1.css.flexColumn].join(' '), ref: this.rref.div },
+                React.createElement("h3", null, "PXPRPC Connection:"),
                 allClients.map(ent => {
-                    return React.createElement("div", { key: ent[0], className: [domui_1.css.simpleCard, domui_1.css.selectable, this.state.selected === ent[0] ? domui_1.css.selected : ''].join(' '), onClick: () => this.doSelect(ent[0]) },
+                    return React.createElement("div", { key: ent[0], className: [css2.rpcClientCard, domui_1.css.simpleCard, domui_1.css.selectable,
+                            this.state.selected === ent[0] ? domui_1.css.selected : ''].join(' '), onClick: () => this.doSelect(ent[0]) },
                         React.createElement("div", null, ent[0]),
+                        React.createElement("hr", null),
                         React.createElement("div", null, ent[1].url.toString()),
+                        React.createElement("hr", null),
                         React.createElement("div", null, ent[1].connected() ? 'connected' : 'disconnected'));
                 }),
                 React.createElement("div", null, btns.map(v => React.createElement("span", null,
                     "\u2003",
                     React.createElement("a", { href: "javascript:;", onClick: v.handler }, v.label),
-                    "\u2003"))));
+                    "\u2003"))),
+                React.createElement("hr", null),
+                React.createElement("div", { style: { wordBreak: 'break-all' } },
+                    "RPC id for this scope:",
+                    rpcworker_1.rpcId.get()));
         }
     }
     exports.RegistryUI = RegistryUI;

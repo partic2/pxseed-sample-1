@@ -6,54 +6,46 @@ define(["require", "exports"], function (require, exports) {
     exports.GetCookieNamed = GetCookieNamed;
     exports.PutCookie = PutCookie;
     function text2html(src) {
-        let lines = src.split('\n').map(t1 => t1.replace(/[<>&"\u0020]/g, function (c) {
-            return { '<': '&lt;', '>': '&gt;', '&': '&amp', '"': '&quot;', '\u0020': '&nbsp;' }[c] ?? '';
+        let lines = src.split(/\r?\n/).map(t1 => t1.replace(/[<>&"]/g, function (c) {
+            return { '<': '&lt;', '>': '&gt;', '&': '&amp', '"': '&quot;' }[c] ?? '';
         }));
         return lines.map(t1 => '<div>' + ((t1 === '') ? '<br/>' : t1) + '</div>').join('');
     }
     function docNode2text(node) {
-        let walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+        let walker = globalThis.document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
         let textParts = [];
-        while (walker.nextNode()) {
-            if (walker.currentNode instanceof HTMLDivElement || walker.currentNode instanceof HTMLParagraphElement) {
-                if (walker.currentNode.previousSibling == null) {
-                    textParts.push({ node: walker.currentNode, text: '' });
-                }
-                else if (walker.currentNode.previousSibling instanceof HTMLBRElement) {
-                    textParts.push({ node: walker.currentNode, text: '' });
-                }
-                else {
-                    textParts.push({ node: 'phony', text: '\n' });
-                    textParts.push({ node: walker.currentNode, text: '' });
-                }
+        const isBlockElement = (e) => {
+            if (e instanceof Element) {
+                return !getComputedStyle(e).display.includes('inline');
             }
-            else if (walker.currentNode instanceof HTMLBRElement) {
-                if (walker.currentNode.previousSibling != null) {
-                    textParts.push({ node: walker.currentNode, text: '\n' });
-                }
-                else {
-                    textParts.push({ node: walker.currentNode, text: '' });
-                }
+            return false;
+        };
+        while (walker.nextNode()) {
+            if (walker.currentNode.previousSibling != null && (isBlockElement(walker.currentNode.previousSibling) ||
+                isBlockElement(walker.currentNode))) {
+                textParts.push({ node: 'phony', text: '\n' });
+            }
+            if (walker.currentNode instanceof HTMLBRElement && walker.currentNode.nextSibling != null && !isBlockElement(walker.currentNode.nextSibling)) {
+                textParts.push({ node: walker.currentNode, text: '\n' });
             }
             else if (walker.currentNode instanceof Text) {
                 let textData = '';
-                if (textData == ' ') {
-                    textData = '';
+                let parentElem = walker.currentNode.parentElement;
+                if (parentElem != undefined && getComputedStyle(parentElem).whiteSpace.startsWith('pre')) {
+                    textData += walker.currentNode.data;
                 }
                 else {
                     //trim charCode(32) and THEN replace charCode(160)
                     textData += walker.currentNode.data.replace(/\n|(^ +)|( +$)/g, '').replace(/\u00a0/g, ' ');
                 }
-                if (textData != '') {
-                    let prev = walker.currentNode.previousSibling;
-                    if (prev != null) {
-                        if (prev instanceof HTMLDivElement || prev instanceof HTMLParagraphElement) {
-                            textParts.push({ node: 'phony', text: '\n' });
-                        }
-                    }
+                if (walker.currentNode.nextSibling == null && textData.at(-1) == '\n') {
+                    textData = textData.substring(0, textData.length - 1);
                 }
                 textParts.push({ node: walker.currentNode,
                     text: textData });
+            }
+            else {
+                textParts.push({ node: walker.currentNode, text: '' });
             }
         }
         return { textParts, node,

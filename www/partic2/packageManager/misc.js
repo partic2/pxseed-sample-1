@@ -1,4 +1,4 @@
-define("partic2/packageManager/misc", ["require", "exports", "partic2/jsutils1/base", "partic2/pxprpcClient/registry", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2", "partic2/tjshelper/tjsbuilder", "pxseedBuildScript/util"], function (require, exports, base_1, registry_1, webutils_1, jsutils2_1, tjsbuilder_1, util_1) {
+define(["require", "exports", "partic2/jsutils1/base", "partic2/pxprpcClient/registry", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2", "partic2/tjshelper/tjsbuilder", "pxseedBuildScript/util"], function (require, exports, base_1, registry_1, webutils_1, jsutils2_1, tjsbuilder_1, util_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__name__ = void 0;
@@ -208,3 +208,4 @@ define("partic2/packageManager/misc", ["require", "exports", "partic2/jsutils1/b
         tjs.spawn(args);
     }
 });
+//# sourceMappingURL=misc.js.map

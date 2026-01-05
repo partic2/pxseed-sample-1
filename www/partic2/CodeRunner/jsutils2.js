@@ -1,13 +1,14 @@
 define(["require", "exports", "partic2/jsutils1/base"], function (require, exports, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.Singleton = exports.ExtendStreamReader = exports.TaskLocalRef = void 0;
+    exports.OnConsoleData = exports.CFuncCallProbe = exports.DebounceCall = exports.Singleton = exports.ExtendStreamReader = exports.TaskLocalRef = void 0;
     exports.utf8conv = utf8conv;
     exports.u8hexconv = u8hexconv;
     exports.FlattenArray = FlattenArray;
     exports.FlattenArraySync = FlattenArraySync;
     exports.deepEqual = deepEqual;
     exports.setupAsyncHook = setupAsyncHook;
+    exports.ensureFunctionProbe = ensureFunctionProbe;
     Object.defineProperty(exports, "TaskLocalRef", { enumerable: true, get: function () { return base_1.TaskLocalRef; } });
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
     let utf8decoder = new TextDecoder();
@@ -219,6 +220,44 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
         }
         return true;
     }
+    class DebounceCall {
+        constructor(fn, delayMs) {
+            this.fn = fn;
+            this.delayMs = delayMs;
+            this.callId = 1;
+            this.result = new base_1.future();
+            this.mut = new base_1.mutex();
+        }
+        async call() {
+            if (this.callId == -1) {
+                //waiting fn return
+                return await this.result.get();
+            }
+            this.callId++;
+            let thisCallId = this.callId;
+            await (0, base_1.sleep)(this.delayMs);
+            if (thisCallId == this.callId) {
+                try {
+                    this.callId = -1;
+                    let r = await this.fn();
+                    this.result.setResult(r);
+                }
+                catch (e) {
+                    this.result.setException(e);
+                }
+                finally {
+                    this.callId = 1;
+                    let r2 = this.result;
+                    this.result = new base_1.future();
+                    return r2.get();
+                }
+            }
+            else {
+                return await this.result.get();
+            }
+        }
+    }
+    exports.DebounceCall = DebounceCall;
     function setupAsyncHook() {
         if (!('__onAwait' in Promise)) {
             let asyncStackDepth = 0;
@@ -249,6 +288,56 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
             };
         }
     }
+    class CFuncCallProbe {
+        constructor(originalFunction) {
+            this.originalFunction = originalFunction;
+            this.beforeFunctionEnter = new Set();
+        }
+        hooked() {
+            let that = this;
+            return function (...argv) {
+                for (let t1 of that.beforeFunctionEnter) {
+                    try {
+                        t1(argv, that, this);
+                    }
+                    catch (err) { }
+                    ;
+                }
+                return that.originalFunction.apply(this, argv);
+            };
+        }
+    }
+    exports.CFuncCallProbe = CFuncCallProbe;
+    let funcProbeProp = Symbol('funcProbeProp');
+    function ensureFunctionProbe(o, p) {
+        let func = o[p];
+        let p2;
+        if (funcProbeProp in func) {
+            p2 = func[funcProbeProp];
+            if (p2.funcCallProbe == undefined) {
+                p2.funcCallProbe = new CFuncCallProbe(func);
+                p2.funcCallProbe.name = p.toString();
+                o[p] = p2.funcCallProbe.hooked();
+                o[p][funcProbeProp] = p2;
+            }
+        }
+        else {
+            p2 = {
+                funcCallProbe: new CFuncCallProbe(func)
+            };
+            p2.funcCallProbe.name = p.toString();
+            func[funcProbeProp] = p2;
+            o[p] = p2.funcCallProbe.hooked();
+            o[p][funcProbeProp] = p2;
+        }
+        return p2.funcCallProbe;
+    }
+    exports.OnConsoleData = new Set();
+    ensureFunctionProbe(console, 'log').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('log', argv)));
+    ensureFunctionProbe(console, 'debug').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('debug', argv)));
+    ensureFunctionProbe(console, 'info').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('info', argv)));
+    ensureFunctionProbe(console, 'warn').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('warn', argv)));
+    ensureFunctionProbe(console, 'error').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('error', argv)));
     setupAsyncHook();
 });
 //# sourceMappingURL=jsutils2.js.map

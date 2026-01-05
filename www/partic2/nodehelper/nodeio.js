@@ -1,7 +1,7 @@
 define(["require", "exports", "partic2/jsutils1/base", "net", "partic2/jsutils1/webutils", "ws", "pxprpc/backend"], function (require, exports, base_1, net_1, webutils_1, ws_1, backend_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.NodeWritableDataSink = exports.NodeReadableDataSource = exports.NodeWsConnectionAdapter2 = exports.NodeWsIo = exports.PxprpcTcpServer = exports.PxprpcIoFromSocket = exports.wrappedStreams = void 0;
+    exports.NodeWritableDataSink = exports.NodeReadableDataSource = exports.NodeWsConnectionAdapter2 = exports.PxprpcTcpServer = exports.PxprpcIoFromSocket = exports.wrappedStreams = void 0;
     exports.wrapReadable = wrapReadable;
     exports.createIoPxseedJsUrl = createIoPxseedJsUrl;
     exports.wrappedStreams = Symbol('wrappedStreams');
@@ -189,60 +189,11 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "partic2/jsutils1/
         }
         throw new Error(`Unsupported type ${type}`);
     }
-    class NodeWsIo {
-        constructor(ws) {
-            this.ws = ws;
-            this.priv__cached = new base_1.ArrayWrap2([]);
-            this.closed = false;
-            ws.on('message', (data, isBin) => {
-                if (data instanceof ArrayBuffer) {
-                    this.priv__cached.queueSignalPush(new Uint8Array(data));
-                }
-                else if (data instanceof Buffer) {
-                    this.priv__cached.queueSignalPush(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-                }
-                else if (data instanceof Array) {
-                    this.priv__cached.queueSignalPush(new Uint8Array((0, base_1.ArrayBufferConcat)(data)));
-                }
-                else {
-                    throw new Error('Unknown data type');
-                }
-            });
-            ws.on('close', (code, reason) => {
-                this.closed = true;
-                this.priv__cached.cancelWaiting();
-            });
-        }
-        async receive() {
-            try {
-                let wsdata = await this.priv__cached.queueBlockShift();
-                return wsdata;
-            }
-            catch (e) {
-                if (e instanceof base_1.CanceledError && this.closed) {
-                    this.ws.close();
-                    throw new Error('closed.');
-                }
-                else {
-                    this.ws.close();
-                    throw e;
-                }
-            }
-        }
-        async send(data) {
-            this.ws.send((0, base_1.ArrayBufferConcat)(data));
-        }
-        close() {
-            this.ws.close();
-            this.closed = true;
-            this.priv__cached.cancelWaiting();
-        }
-    }
-    exports.NodeWsIo = NodeWsIo;
     class NodeWsConnectionAdapter2 {
         constructor(ws) {
             this.ws = ws;
             this.priv__cached = new base_1.ArrayWrap2();
+            this.closed = false;
             this.ws.on('message', (data, isbin) => {
                 let chunk;
                 if (data instanceof ArrayBuffer) {
@@ -259,6 +210,10 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "partic2/jsutils1/
                 }
                 this.priv__cached.queueSignalPush(chunk);
             });
+            ws.on('close', (code, reason) => {
+                this.closed = true;
+                this.priv__cached.cancelWaiting();
+            });
         }
         async send(obj) {
             if (obj instanceof Array) {
@@ -271,7 +226,20 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "partic2/jsutils1/
             }));
         }
         async receive() {
-            return await this.priv__cached.queueBlockShift();
+            try {
+                let wsdata = await this.priv__cached.queueBlockShift();
+                return wsdata;
+            }
+            catch (e) {
+                if (e instanceof base_1.CanceledError && this.closed) {
+                    this.ws.close();
+                    throw new Error('closed.');
+                }
+                else {
+                    this.ws.close();
+                    throw e;
+                }
+            }
         }
         close() {
             this.ws.close();

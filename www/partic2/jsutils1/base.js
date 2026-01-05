@@ -566,6 +566,7 @@ define(["require", "exports"], function (require, exports) {
     class Ref2 {
         constructor(__val) {
             this.__val = __val;
+            //tsc complain with it's type, So I use Function directly.
             this.watcher = new Set();
         }
         set(val) {

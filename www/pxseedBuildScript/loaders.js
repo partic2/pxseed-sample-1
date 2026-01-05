@@ -57,7 +57,7 @@ define(["require", "exports", "./util"], function (require, exports, util_1) {
             if (globalThis?.process?.versions?.node == undefined) {
                 //use non node typescript
                 if (!config.transpileOnly) {
-                    console.info('force use transpileOnly on non-node platform');
+                    util_1.console.info('force use transpileOnly on non-node platform');
                     config.transpileOnly = true;
                 }
                 const { getTypescriptModuleTjs } = await new Promise((resolve_1, reject_1) => { require(['partic2/packageManager/nodecompat'], resolve_1, reject_1); });
@@ -78,7 +78,7 @@ define(["require", "exports", "./util"], function (require, exports, util_1) {
                     let moduleName = dir.substring(exports.sourceDir.length + 1).replace(/\\/g, '/') + '/' + t1.replace(/.tsx?$/, '');
                     moduleName = moduleName.replace(/\/\/+/g, '/');
                     if (mtime > status.lastBuildTime) {
-                        console.info('typescript transpile ' + t1);
+                        util_1.console.info('typescript transpile ' + t1);
                         let transpiled = '';
                         if (t1.endsWith('.ts')) {
                             transpiled = ts.transpile(new TextDecoder().decode(await fs.readFile(filePath)), { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.AMD, esModuleInterop: false }, filePath, [], moduleName);
@@ -128,10 +128,10 @@ define(["require", "exports", "./util"], function (require, exports, util_1) {
                         latestMtime = mtime;
                 }
                 if (status.lastSuccessBuildTime > latestMtime) {
-                    console.info('typescript loader: No file modified since last build, skiped.');
+                    util_1.console.info('typescript loader: No file modified since last build, skiped.');
                     return;
                 }
-                let returnCode = await (0, util_1.runCommand)(`node ${tscPath} -p ${dir}`);
+                let returnCode = await util_1.__internal__.runCommand(`node ${tscPath} -p ${dir}`);
                 if (returnCode !== 0)
                     status.currentBuildError.push('tsc failed.');
             }
@@ -140,7 +140,7 @@ define(["require", "exports", "./util"], function (require, exports, util_1) {
             const { fs, path } = await (0, util_1.getNodeCompatApi)();
             if (globalThis?.process?.versions?.node == undefined) {
                 //TODO: use cdn https://cdnjs.cloudflare.com/ and wrap amd custom?
-                console.info('rollup are not supported yet on non-node platform');
+                util_1.console.info('rollup are not supported yet on non-node platform');
             }
             for (let i1 = 0; i1 < config.entryModules.length && i1 < 0xffff; i1++) {
                 let mod = config.entryModules[i1];
@@ -159,7 +159,7 @@ define(["require", "exports", "./util"], function (require, exports, util_1) {
                     let json = (await new Promise((resolve_6, reject_6) => { require(['@rollup/plugin-json'], resolve_6, reject_6); })).default;
                     let terser = (await new Promise((resolve_7, reject_7) => { require(['@rollup/plugin-terser'], resolve_7, reject_7); })).default;
                     let replacer = (await new Promise((resolve_8, reject_8) => { require(['@rollup/plugin-replace'], resolve_8, reject_8); })).default;
-                    console.info(`create bundle for ${mod}`);
+                    util_1.console.info(`create bundle for ${mod}`);
                     let plugins = [
                         nodeResolve({ modulePaths: [path.join(exports.outputDir, '..', 'npmdeps', 'node_modules')], browser: true, preferBuiltins: false }),
                         commonjs(),

@@ -38,12 +38,12 @@ define(["require", "exports", "partic2/pxseedMedia1/index1", "./domui", "preact"
                 return this.inputRef[name];
             }
             let rref = new domui_1.ReactRefEx();
-            rref.addEventListener('change', (ev) => {
-                if (ev.data.prev != null) {
-                    ev.data.prev.removeEventListener('change', this._onInputValueChange);
+            rref.watch((r, prev) => {
+                if (prev != null) {
+                    prev.removeEventListener('change', this._onInputValueChange);
                 }
-                if (ev.data.curr != null) {
-                    ev.data.curr.addEventListener('change', this._onInputValueChange);
+                if (r.get() != null) {
+                    r.get().addEventListener('change', this._onInputValueChange);
                 }
             });
             this.inputRef[name] = rref;

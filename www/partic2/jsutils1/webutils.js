@@ -20,7 +20,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     exports.GetJsEntry = GetJsEntry;
     exports.BuildUrlFromJsEntryModule = BuildUrlFromJsEntryModule;
     exports.getWWWRoot = getWWWRoot;
-    exports.setGetResourceManagerImpl = setGetResourceManagerImpl;
+    exports.setResourceManagerImpl = setResourceManagerImpl;
     exports.getResourceManager = getResourceManager;
     exports.useDeviceWidth = useDeviceWidth;
     exports.useCssFile = useCssFile;
@@ -569,12 +569,20 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         }
         return {
             getUrl(path2) {
+                let r = '';
                 if (path2.substring(0, 1) === '/') {
-                    return exports.path.join(getWWWRoot(), path2.substring(1));
+                    r = exports.path.join(getWWWRoot(), path2.substring(1));
                 }
                 else {
-                    return exports.path.join(getWWWRoot(), modNameOrLocalRequire, '..', path2);
+                    r = exports.path.join(getWWWRoot(), modNameOrLocalRequire, '..', path2);
                 }
+                if (r.startsWith('http')) {
+                    let urlArgs = base_1.requirejs.getConfig().urlArgs ?? '';
+                    if (urlArgs !== '') {
+                        r = r + '?' + urlArgs;
+                    }
+                }
+                return r;
             },
             async read(path2) {
                 let resp = await exports.defaultHttpClient.fetch(this.getUrl(path2));
@@ -584,7 +592,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             }
         };
     };
-    function setGetResourceManagerImpl(impl) {
+    function setResourceManagerImpl(impl) {
         getResourceManagerImpl = impl;
     }
     function getResourceManager(modNameOrLocalRequire) {
@@ -621,7 +629,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         }
     }
     exports.lifecycle = new _LifecycleEventHandler();
-    if ('document' in globalThis) {
+    if (globalThis.document != undefined) {
         globalThis.document.addEventListener('visibilitychange', (ev) => {
             if (document.hidden) {
                 exports.lifecycle.dispatchEvent(new Event('pause'));

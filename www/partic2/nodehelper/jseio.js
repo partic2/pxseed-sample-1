@@ -1,4 +1,4 @@
-define(["require", "exports", "pxprpc/extend", "fs/promises", "os", "fs-extra", "net", "path", "child_process", "partic2/nodehelper/nodeio", "path"], function (require, exports, extend_1, fs, os, fse, net, path_1, child_process_1, nodeio_1, path_2) {
+define(["require", "exports", "pxprpc/extend", "fs/promises", "os", "net", "path", "child_process", "partic2/nodehelper/nodeio", "path"], function (require, exports, extend_1, fs, os, net, path_1, child_process_1, nodeio_1, path_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.setup = setup;
@@ -61,7 +61,7 @@ define(["require", "exports", "pxprpc/extend", "fs/promises", "os", "fs-extra", 
         }).typedecl('ssi->o');
         extend_1.defaultFuncMap['JseHelper.JseIo.rmdir'] = new extend_1.RpcExtendServerCallable(async (path) => fs.rmdir(path)).typedecl('s->');
         extend_1.defaultFuncMap['JseHelper.JseIo.mkdir'] = new extend_1.RpcExtendServerCallable(async (path) => fs.mkdir(path, { recursive: true })).typedecl('s->');
-        extend_1.defaultFuncMap['JseHelper.JseIo.copyFile'] = new extend_1.RpcExtendServerCallable(async (path, newPath) => fse.copy(path, newPath, { overwrite: true })).typedecl('ss->');
+        extend_1.defaultFuncMap['JseHelper.JseIo.copyFile'] = new extend_1.RpcExtendServerCallable(async (path, newPath) => fs.cp(path, newPath, { recursive: true, force: true })).typedecl('ss->');
         extend_1.defaultFuncMap['JseHelper.JseIo.readdir'] = new extend_1.RpcExtendServerCallable(async (path) => {
             let ser = new extend_1.TableSerializer().setColumnsInfo(null, ['name', 'type', 'size', 'mtime']);
             for (let f of await fs.readdir(path)) {
@@ -78,7 +78,7 @@ define(["require", "exports", "pxprpc/extend", "fs/promises", "os", "fs-extra", 
             }
             return ser.build();
         }).typedecl('s->b');
-        extend_1.defaultFuncMap['JseHelper.JseIo.rm'] = new extend_1.RpcExtendServerCallable(async (path) => fse.remove(path)).typedecl('s->');
+        extend_1.defaultFuncMap['JseHelper.JseIo.rm'] = new extend_1.RpcExtendServerCallable(async (path) => fs.rm(path, { recursive: true, force: true })).typedecl('s->');
         extend_1.defaultFuncMap['JseHelper.JseIo.execCommand'] = new extend_1.RpcExtendServerCallable(async (command) => {
             let proc = (0, child_process_1.spawn)(command, {
                 stdio: 'pipe', shell: true

@@ -16,11 +16,11 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
         defaultContentDiv: (0, base_1.GenerateRandomString)(),
         defaultTitleStyle: (0, base_1.GenerateRandomString)(),
     };
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultWindowDiv, ['max-height:100vh', 'max-width:100vw', 'border:solid black 1px', 'box-sizing: border-box']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.borderlessWindowDiv, ['max-height:100vh', 'max-width:100vw']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultWindowDiv, ['border:solid black 1px', 'box-sizing: border-box']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.borderlessWindowDiv, []);
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultContentDiv, ['flex-grow:1', 'background-color:white', 'overflow:auto']);
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultTitleStyle, ['background-color:black', 'color:white']);
-    class WindowComponent extends React.Component {
+    class WindowComponent extends domui_1.ReactEventTarget {
         static getDerivedStateFromError(error) {
             return { errorOccured: error };
         }
@@ -30,9 +30,10 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
                 container: new domui_1.ReactRefEx(),
                 contentDiv: new domui_1.ReactRefEx()
             };
+            this._triggerResize = () => { this.forceUpdate(); this.dispatchEvent(new Event('resize')); };
             this.__wndMove = new transform_1.PointTrace({
                 onMove: (curr, start) => {
-                    this.setState({ layout: { ...this.state.layout, left: curr.x - start.x, top: curr.y - start.y } });
+                    this.setState({ layout: { ...this.state.layout, left: curr.x - start.x, top: curr.y - start.y } }, () => this.dispatchEvent(new Event('move')));
                 }
             });
             this.__onTitleMouseDownHandler = (evt) => {
@@ -47,7 +48,7 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
             };
             this.__wndResize = new transform_1.PointTrace({
                 onMove: (curr, start) => {
-                    this.setState({ layout: { ...this.state.layout, width: curr.x - start.x, height: curr.y - start.y } });
+                    this.setState({ layout: { ...this.state.layout, width: curr.x - start.x, height: curr.y - start.y } }, () => this.dispatchEvent(new Event('resize')));
                 }
             });
             this.__onResizeIconMouseDownHandler = (evt) => {
@@ -62,8 +63,13 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
             };
             this.beforeMaximizeSize = null;
             this.windowsList = null;
-            this.parentWindow = null;
             this.setState({ activateTime: -1, layout: this.props.initialLayout ?? { left: 0, top: 0 }, errorOccured: null });
+        }
+        componentDidMount() {
+            window.addEventListener('resize', this._triggerResize);
+        }
+        componentWillUnmount() {
+            window.removeEventListener('reisze', this._triggerResize);
         }
         async makeCenter() {
             await (async () => {
@@ -131,7 +137,7 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
         }
         renderTitle() {
             return React.createElement("div", { className: [domui_1.css.flexRow, exports.css.defaultTitleStyle].join(' '), style: { alignItems: 'center' } },
-                React.createElement("div", { style: { flexGrow: '1', cursor: 'move', userSelect: 'none' }, onMouseDown: this.__onTitleMouseDownHandler, onTouchStart: this.__onTitleTouchDownHandler }, (this.props.title ?? '').replace(/ /g, String.fromCharCode(160))),
+                React.createElement("div", { style: { flexGrow: '1', cursor: 'move', userSelect: 'none', overflowY: 'auto' }, onMouseDown: this.__onTitleMouseDownHandler, onTouchStart: this.__onTitleTouchDownHandler }, (this.props.title ?? '').replace(/ /g, String.fromCharCode(160))),
                 "\u00A0",
                 (this.props.titleBarButton ?? []).map(t1 => this.renderIcon(t1.icon, t1.onClick)),
                 this.renderIcon(this.props.maximize, () => this.onMaximizeClick()),
@@ -139,6 +145,7 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
         }
         async onCloseClick() {
             this.hide();
+            this.dispatchEvent(new Event('close'));
             this.props.onClose?.();
         }
         async onMaximizeClick() {
@@ -160,7 +167,9 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
                 position: 'absolute',
                 left: this.state.layout.left + 'px',
                 top: this.state.layout.top + 'px',
-                pointerEvents: 'auto'
+                pointerEvents: 'auto',
+                maxWidth: (window.innerWidth - this.state.layout.left) + 'px',
+                maxHeight: (window.innerHeight - this.state.layout.top) + 'px',
             };
             if (typeof this.state.layout.width === 'number') {
                 windowDivStyle.width = this.state.layout.width + 'px';
@@ -299,7 +308,7 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
         let result = new base_1.future();
         let windowRef = new domui_1.ReactRefEx();
         let floatWindow1 = React.createElement(WindowComponent, { key: (0, base_1.GenerateRandomString)(), ref: windowRef, title: title ?? i18n.caution, onClose: () => result.setResult(null) },
-            React.createElement("div", { style: { minWidth: Math.min((rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300) } },
+            React.createElement("div", { style: { minWidth: Math.min((rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
                 message,
                 React.createElement("div", { className: domui_1.css.flexRow },
                     React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult(null), value: i18n.ok }))));
@@ -312,7 +321,7 @@ define(["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "par
         let result = new base_1.future();
         let windowRef = new domui_1.ReactRefEx();
         let floatWindow1 = React.createElement(WindowComponent, { key: (0, base_1.GenerateRandomString)(), ref: windowRef, title: title ?? i18n.caution, onClose: () => result.setResult('cancel') },
-            React.createElement("div", { style: { minWidth: Math.min((rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300) } },
+            React.createElement("div", { style: { minWidth: Math.min((rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
                 message,
                 React.createElement("div", { className: domui_1.css.flexRow },
                     React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult('ok'), value: i18n.ok }),

@@ -1,36 +1,33 @@
-define(["require", "exports", "partic2/jsutils1/webutils", "partic2/pxprpcClient/registry", "preact", "./workspace", "partic2/pComponentUi/window", "./misclib", "partic2/CodeRunner/CodeContext", "partic2/CodeRunner/RemoteCodeContext", "partic2/pComponentUi/workspace"], function (require, exports, webutils_1, registry_1, React, workspace_1, window_1, misclib_1, CodeContext_1, RemoteCodeContext_1, workspace_2) {
+define(["require", "exports", "partic2/jsutils1/webutils", "partic2/pxprpcClient/registry", "preact", "partic2/pComponentUi/window", "./notebook", "partic2/pComponentUi/workspace", "./workspace"], function (require, exports, webutils_1, registry_1, React, window_1, notebook_1, workspace_1, workspace_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__name__ = void 0;
     exports.main = main;
     exports.__name__ = 'partic2/JsNotebook/index';
+    let { RpcChooser } = notebook_1.__internal__;
     class MainView extends React.Component {
         renderChooser() {
             return React.createElement("div", { style: { border: 'solid 1px black' } },
-                React.createElement(misclib_1.CodeContextChooser, { onChoose: async (rpc) => { this.setState({ rpc }); } }));
+                React.createElement(RpcChooser, { onChoose: async (rpc) => { this.openWorkspaceForRpc(rpc); } }));
         }
-        renderWorkerspace() {
-            let rpc = this.state.rpc;
-            if (rpc == 'local window' || (rpc instanceof CodeContext_1.LocalRunCodeContext)) {
-                return React.createElement(workspace_1.Workspace, { divStyle: { height: '100%' } });
+        openWorkspaceForRpc(rpc) {
+            if (rpc == 'local window') {
+                return (0, workspace_2.openWorkspaceWindowFor)('local window');
             }
             else if (rpc instanceof registry_1.ClientInfo) {
-                return React.createElement(workspace_1.Workspace, { divStyle: { height: '100%' }, rpc: rpc });
-            }
-            else if (rpc instanceof RemoteCodeContext_1.RemoteRunCodeContext) {
-                return React.createElement(workspace_1.Workspace, { divStyle: { height: '100%' }, rpc: (0, misclib_1.findRpcClientInfoFromClient)(rpc.client1) });
+                return (0, workspace_2.openWorkspaceWindowFor)(rpc);
             }
             else {
-                (0, window_1.alert)('Not support client');
+                (0, window_1.alert)('Unsupported client');
             }
         }
         render(props, state, context) {
-            return this.state.rpc == undefined ? this.renderChooser() : this.renderWorkerspace();
+            return this.renderChooser();
         }
     }
     function* main(command) {
         if (command == 'webui') {
-            (0, workspace_2.openNewWindow)(React.createElement(MainView, null), { title: 'JS Notebook' });
+            (0, workspace_1.openNewWindow)(React.createElement(MainView, null), { title: 'JS Notebook RPC Chooser' });
         }
     }
     ;
@@ -40,7 +37,7 @@ define(["require", "exports", "partic2/jsutils1/webutils", "partic2/pxprpcClient
             webutils_1.DynamicPageCSSManager.PutCss('body', ['margin:0px']);
             let rpc = (0, webutils_1.GetUrlQueryVariable)('__rpc');
             await registry_1.persistent.load();
-            (0, workspace_2.setBaseWindowView)(React.createElement(MainView, null));
+            (0, workspace_1.setBaseWindowView)(React.createElement(MainView, null));
         }
     })();
 });

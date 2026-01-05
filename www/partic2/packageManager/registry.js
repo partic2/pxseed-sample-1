@@ -1,4 +1,4 @@
-define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/webutils", "partic2/jsutils1/base", "pxseedBuildScript/util"], function (require, exports, buildlib_1, webutils_1, base_1, util_1) {
+define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/webutils", "partic2/jsutils1/base", "pxseedBuildScript/util", "partic2/CodeRunner/JsEnviron", "partic2/JsNotebook/workerinit", "partic2/CodeRunner/Inspector", "partic2/pxprpcClient/registry"], function (require, exports, buildlib_1, webutils_1, base_1, util_1, JsEnviron_1, workerinit_1, Inspector_1, registry_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__name__ = void 0;
@@ -26,6 +26,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
     exports.unloadPackageModules = unloadPackageModules;
     exports.exportPackagesInstallation = exportPackagesInstallation;
     exports.importPackagesInstallation = importPackagesInstallation;
+    exports.sendOnStartupEventForAllPackages = sendOnStartupEventForAllPackages;
     exports.__name__ = base_1.requirejs.getLocalRequireModule(require);
     let log = base_1.logger.getLogger(exports.__name__);
     async function getGitClientConfig() {
@@ -264,7 +265,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
         path2 = path2 ?? sourceDir;
         let children = await fs.readdir(path2, { withFileTypes: true });
         if (children.find(v => v.name == 'pxseed.config.json') != undefined) {
-            let result = await (0, util_1.readJson)(path.join(path2, 'pxseed.config.json'));
+            let result = await util_1.__internal__.readJson(path.join(path2, 'pxseed.config.json'));
             result.name = path2.substring(sourceDir.length + 1).replace(/\\/g, '/');
             await fs.writeFile(path.join(path2, 'pxseed.config.json'), new TextEncoder().encode(JSON.stringify(result, undefined, '  ')));
         }
@@ -329,7 +330,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
     };
     async function installLocalPackage(path2) {
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        let pxseedConfig = await (0, util_1.readJson)(path.join(path2, "pxseed.config.json"));
+        let pxseedConfig = await util_1.__internal__.readJson(path.join(path2, "pxseed.config.json"));
         let pkgname = pxseedConfig.name;
         let destDir = await getSourceDirForPackage(pkgname);
         await fs.mkdir(destDir, { recursive: true });
@@ -470,7 +471,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
     async function upgradePackage(pkgname) {
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
         let pkgdir = path.join(path.join(wwwroot, '..', 'source'), ...pkgname.split('/'));
-        let pxseedConfig = await (0, util_1.readJson)(path.join(pkgdir, 'pxseed.config.json'));
+        let pxseedConfig = await util_1.__internal__.readJson(path.join(pkgdir, 'pxseed.config.json'));
         let pmopt = getPMOptFromPcfg(pxseedConfig);
         if (pmopt?.onUpgrade != undefined) {
             await (await new Promise((resolve_6, reject_6) => { require([pmopt.onUpgrade.module], resolve_6, reject_6); }))[pmopt.onUpgrade.function](pkgname, pkgdir);
@@ -524,7 +525,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
             return;
         }
         if (children.find(v => v.name == 'pxseed.config.json') != undefined) {
-            let config = await (0, util_1.readJson)(path.join(dir, 'pxseed.config.json'));
+            let config = await util_1.__internal__.readJson(path.join(dir, 'pxseed.config.json'));
             let name = config.name;
             let { init, addRemote } = await new Promise((resolve_8, reject_8) => { require(['isomorphic-git'], resolve_8, reject_8); });
             ;
@@ -566,7 +567,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
         let configFile = path.join(await getSourceDirForPackage(pkgname), 'pxseed.config.json');
         try {
             await fs.access(configFile);
-            return await (0, util_1.readJson)(configFile);
+            return await util_1.__internal__.readJson(configFile);
         }
         catch (e) {
             return null;
@@ -576,7 +577,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
         let children = await fs.readdir(dir, { withFileTypes: true });
         if (children.find(t1 => t1.name == 'pxseed.config.json')) {
-            yield await (0, util_1.readJson)(path.join(dir, 'pxseed.config.json'));
+            yield await util_1.__internal__.readJson(path.join(dir, 'pxseed.config.json'));
         }
         else {
             for (let t1 of children) {
@@ -633,7 +634,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
         let sourceDir = path.join(wwwroot, '..', 'source');
         if (source.indexOf(':') >= 0) {
             if (source.startsWith('npm:')) {
-                let packageJson = await (0, util_1.readJson)(path.join(path.dirname(sourceDir), 'npmdeps', 'package.json'));
+                let packageJson = await util_1.__internal__.readJson(path.join(path.dirname(sourceDir), 'npmdeps', 'package.json'));
                 //TODO: npm version check
                 let t1 = source.substring(4);
                 let versionSep = t1.lastIndexOf('@');
@@ -646,8 +647,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
                     if (globalThis.process?.versions?.node == undefined) {
                         throw new Error('npm depdendencies are only support on node.js platform');
                     }
-                    const { runCommand } = await new Promise((resolve_9, reject_9) => { require(['pxseedBuildScript/util'], resolve_9, reject_9); });
-                    let returnCode = await runCommand(`npm i ${pkgName}`, { cwd: path.join(path.dirname(sourceDir), 'npmdeps') });
+                    let returnCode = await util_1.__internal__.runCommand(`npm i ${pkgName}`, { cwd: path.join(path.dirname(sourceDir), 'npmdeps') });
                     if (returnCode !== 0)
                         log.error('install npm package failed.');
                     //Should we abort?
@@ -702,7 +702,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
         }
         await fs.mkdir(pkgloc, { recursive: true });
         await fs.mkdir(path.join(pkgloc, 'assets'));
-        await (0, util_1.writeJson)(path.join(pkgloc, 'pxseed.config.json'), pxseedConfig);
+        await util_1.__internal__.writeJson(path.join(pkgloc, 'pxseed.config.json'), pxseedConfig);
         await fs.writeFile(path.join(pkgloc, '.gitignore'), `.*
 !.gitignore
 tsconfig.json
@@ -783,6 +783,33 @@ export function main(args:string){
                 log.warning(`importPackagesInstallation install package ${pkg} failed.` + e.toString());
             }
             ;
+        }
+    }
+    async function sendOnStartupEventForAllPackages() {
+        for await (let pkg of listPackages()) {
+            let pmopt = getPMOptFromPcfg(pkg);
+            if (pmopt != null) {
+                if (pmopt.onServerStartup != null) {
+                    try {
+                        (await new Promise((resolve_9, reject_9) => { require([pmopt.onServerStartup.module], resolve_9, reject_9); }))[pmopt.onServerStartup.function]();
+                    }
+                    catch (err) { }
+                    ;
+                }
+            }
+        }
+        await (0, JsEnviron_1.ensureDefaultFileSystem)();
+        let startupNotebook = (0, JsEnviron_1.getSimpleFileSysteNormalizedWWWRoot)() + '/' + webutils_1.path.join(exports.__name__, '..', 'notebook', 'startup.ijsnb');
+        if (await JsEnviron_1.defaultFileSystem.filetype(startupNotebook) == 'none') {
+            let nbd = new workerinit_1.NotebookFileData();
+            let ccld = new Inspector_1.CodeCellListData();
+            ccld.cellList.push({ cellInput: `//All cells in this notebook will be executed when server(and packageManager) started.`, cellOutput: [null, ''], key: (0, base_1.GenerateRandomString)() });
+            nbd.setCellsData(ccld);
+            nbd.rpc = registry_1.ServerHostWorker1RpcName;
+            await JsEnviron_1.defaultFileSystem.writeAll(startupNotebook, nbd.dump());
+        }
+        else {
+            await (0, workerinit_1.runNotebook)(startupNotebook, 'all cells');
         }
     }
 });

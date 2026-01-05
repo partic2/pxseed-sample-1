@@ -1,277 +1,236 @@
-define(["require", "exports", "partic2/pComponentUi/domui", "preact", "./filebrowser", "partic2/pComponentUi/workspace", "partic2/pxprpcClient/registry", "./notebook", "./fileviewer", "partic2/CodeRunner/JsEnviron", "partic2/pxprpcClient/ui", "partic2/jsutils1/base", "./stdioshell", "partic2/pComponentUi/window", "partic2/pComponentUi/transform", "partic2/CodeRunner/RemoteCodeContext", "partic2/CodeRunner/CodeContext", "partic2/pComponentUi/window", "./misclib", "partic2/jsutils1/webutils"], function (require, exports, domui_1, React, filebrowser_1, workspace_1, registry_1, notebook_1, fileviewer_1, JsEnviron_1, ui_1, base_1, stdioshell_1, window_1, transform_1, RemoteCodeContext_1, CodeContext_1, window_2, misclib_1, webutils_1) {
+define(["require", "exports", "partic2/pComponentUi/domui", "preact", "./filebrowser", "partic2/pComponentUi/workspace", "partic2/pxprpcClient/registry", "./notebook", "./fileviewer", "partic2/CodeRunner/JsEnviron", "partic2/tjshelper/tjsonjserpc", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2", "./workerinit", "partic2/pComponentUi/input", "partic2/pComponentUi/window", "partic2/jsutils1/base", "partic2/CodeRunner/Inspector", "./workerinit"], function (require, exports, domui_1, React, filebrowser_1, workspace_1, registry_1, notebook_1, fileviewer_1, JsEnviron_1, tjsonjserpc_1, webutils_1, jsutils2_1, workerinit_1, input_1, window_1, base_1, Inspector_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.defaultOpenWorkspaceWindowFor = exports.Workspace = void 0;
+    exports.openWorkspaceWithProfile = exports.WorkspaceContext = void 0;
     exports.setDefaultOpenWorkspaceWindowFor = setDefaultOpenWorkspaceWindowFor;
     exports.openWorkspaceWindowFor = openWorkspaceWindowFor;
     const __name__ = 'partic2/JsNotebook/workspace';
-    //treat TextFileHandler as the last default opener
-    let defaultFileTypeHandlers = [new notebook_1.IJSNBFileHandler(), new fileviewer_1.JsModuleHandler(),
-        new fileviewer_1.ImageFileHandler(), new stdioshell_1.StdioShellProfile1(),
-        new fileviewer_1.TextFileHandler(), new filebrowser_1.DummyDirectoryHandler()];
-    class CreateFileTab extends workspace_1.TabInfoBase {
-        async init(initval) {
-            super.init({ id: 'internal://workspace create file', title: 'create', ...initval });
-            return this;
-        }
-        async doCreate(h) {
-            let fs = this.ws.state.fs;
-            let path = this.ws.rref.fb.current.state.currPath;
-            let newPath = await h.create(path);
-            this.ws.onNewFileCreated(newPath);
-        }
-        renderPage() {
-            return React.createElement("div", null, this.ws.fileTypeHandlers.map(v => ('create' in v) ? [React.createElement("a", { onClick: () => this.doCreate(v), href: "javascript:;" }, v.title), React.createElement("br", null)] : []));
-        }
-    }
-    let tabAttrSym = Symbol('tabAttrSym');
-    class Workspace extends React.Component {
-        constructor(props, ctx) {
-            super(props, ctx);
-            this.rref = {
-                fb: React.createRef(),
-                tv: new domui_1.ReactRefEx(),
-                panel1: React.createRef(),
-                rpcRegistry: React.createRef()
+    class WorkspaceContext {
+        constructor(rpc) {
+            this.rpc = rpc;
+            //optional property.
+            this.fs = null;
+            this.wwwroot = null;
+            this.filehandler = new Array();
+            //startupProfile is store to save and recover the workspace status.
+            this.startupProfile = null;
+            this.saveStartupProfile = async () => { };
+            this.fileBrowser = filebrowser_1.__internal__.FileBrowser;
+            this.title = 'JS Notebook';
+            this.rootFileBrowser = {
+                windowHandler: undefined,
+                rref: new domui_1.ReactRefEx()
             };
-            this.fileTypeHandlers = (0, base_1.clone)(defaultFileTypeHandlers, 1);
-            this.inited = new base_1.future();
-            this.initOpenedFiles = [];
-            this.onPauseListener = async () => {
-                await this.saveProfile();
-            };
-            this.__panel12SpliterMove = new transform_1.PointTrace({
-                onMove: (curr, start) => {
-                    this.setState({ panel12SplitX: curr.x - start.x });
+            this.openedFileWindow = new Map();
+        }
+        pathNormailize(path) {
+            path = path.replace(/\\/g, '/');
+            if (!path.startsWith('/')) {
+                path = '/' + path;
+            }
+            return path;
+        }
+        async ensureInited() {
+            if (this.fs == null) {
+                if (this.rpc instanceof workerinit_1.__internal__.LoopbackRpcClient || this.rpc.url.startsWith('webworker:') || this.rpc.url.startsWith('serviceworker:')) {
+                    await (0, JsEnviron_1.ensureDefaultFileSystem)();
+                    this.fs = JsEnviron_1.defaultFileSystem;
+                    if (this.wwwroot == null)
+                        this.wwwroot = '/www';
                 }
-            });
-            this.fileTypeHandlers.forEach(v => v.setWorkspace(this));
-            this.setState({ initFileDir: '' });
-        }
-        async loadProfile() {
-            let moduleDataDir = (await this.fs.dataDir()) + '/www/' + __name__;
-            let profileFile = moduleDataDir + '/serverProfile.json';
-            let profile = { currPath: moduleDataDir + '/workspace/1', openedFiles: [moduleDataDir + '/workspace/1/notebook.ijsnb'] };
-            try {
-                (0, base_1.assert)(await this.fs?.filetype(profileFile) === 'file');
-                let data1 = await this.fs.readAll(profileFile);
-                if (data1 != null && data1.length > 0) {
-                    profile = { ...profile, ...JSON.parse(new TextDecoder().decode(data1)) };
+                else {
+                    let tjssfs1 = new JsEnviron_1.TjsSfs();
+                    let tjs = await (0, tjsonjserpc_1.tjsFrom)(await this.rpc.ensureConnected());
+                    tjssfs1.from(tjs);
+                    await tjssfs1.ensureInited();
+                    this.fs = tjssfs1;
                 }
             }
-            catch (e) {
-                (0, base_1.throwIfAbortError)(e);
-                await this.fs.mkdir(profile.currPath);
-                await this.fs.writeAll(profileFile, new TextEncoder().encode(JSON.stringify(profile)));
-                for (let t1 of profile.openedFiles) {
-                    if ((await this.fs.filetype(t1)) === 'none') {
-                        await this.fs.mkdir(webutils_1.path.dirname(t1));
-                        await this.fs.writeAll(t1, new TextEncoder().encode(JSON.stringify({
-                            "ver": 1,
-                            "path": t1,
-                            "cells": JSON.stringify({ 'cellList': [
-                                    { 'cellInput': '//_ENV is the default "global" context for Code Cell \n_ENV',
-                                        'cellOutput': ['', null],
-                                        'key': 'rnd12rjykngi1ufte7uq' },
-                                    { 'cellInput': '//Also globalThis are available \nglobalThis',
-                                        'cellOutput': ['', null],
-                                        'key': 'rnd1inpn4a83tgvabops' },
-                                    { 'cellInput': `
-//"import" is also available as expected
+            if (this.wwwroot == null) {
+                this.wwwroot = this.pathNormailize(await (0, registry_1.easyCallRemoteJsonFunction)(await this.rpc.ensureConnected(), 'partic2/jsutils1/webutils', 'getWWWRoot', []));
+            }
+            for (let t1 of this.filehandler) {
+                t1.context = this;
+            }
+            if (this.filehandler.length == 0) {
+                this.filehandler.push(new notebook_1.__internal__.IJSNBFileHandler(), new fileviewer_1.__internal__.ImageFileHandler(), new fileviewer_1.__internal__.ImageFileHandler(), new fileviewer_1.__internal__.TextFileHandler());
+            }
+        }
+        async useRemoteFileAsStartupProfileStore(path2) {
+            let profileFile = null;
+            try {
+                profileFile = await this.fs.readAll(path2);
+            }
+            catch (err) { }
+            ;
+            if (profileFile != null) {
+                try {
+                    this.startupProfile = JSON.parse((0, jsutils2_1.utf8conv)(profileFile));
+                    this.startupProfile.currPath = this.pathNormailize(this.startupProfile.currPath);
+                    this.startupProfile.openedFiles = this.startupProfile.openedFiles.map(t1 => this.pathNormailize(t1));
+                }
+                catch (err) {
+                    //bad profile file, create new.
+                }
+                ;
+            }
+            let saveStartupProfile = new jsutils2_1.DebounceCall(async () => {
+                await this.fs.writeAll(path2, (0, jsutils2_1.utf8conv)(JSON.stringify(this.startupProfile)));
+            }, 500);
+            this.saveStartupProfile = async () => { await saveStartupProfile.call(); };
+        }
+        async openNewWindowForFile(args) {
+            let found = this.openedFileWindow.get(args.filePath);
+            if (found != undefined) {
+                await found.windowHandler.activate();
+                return found;
+            }
+            else {
+                let wh = await (0, workspace_1.openNewWindow)(args.vnode, { parentWindow: this.rootFileBrowser.windowHandler, title: args.title, layoutHint: args.layoutHint });
+                (async () => {
+                    this.openedFileWindow.set(args.filePath, { windowHandler: wh });
+                    this.startupProfile.openedFiles = Array.from(this.openedFileWindow.keys());
+                    await this.saveStartupProfile();
+                    await wh.waitClose();
+                    this.openedFileWindow.delete(args.filePath);
+                    this.startupProfile.openedFiles = Array.from(this.openedFileWindow.keys());
+                    await this.saveStartupProfile();
+                })();
+                return { windowHandler: wh };
+            }
+        }
+        async start() {
+            await this.ensureInited();
+            let FileBrowser = this.fileBrowser;
+            this.rootFileBrowser.windowHandler = await (0, workspace_1.openNewWindow)(React.createElement(FileBrowser, { context: this, ref: this.rootFileBrowser.rref }), { title: this.title + ' File Browser', layoutHint: __name__ + '.FileBrowser' });
+            let fb = await this.rootFileBrowser.rref.waitValid();
+            if (this.startupProfile == null) {
+                await this.useRemoteFileAsStartupProfileStore(webutils_1.path.join(this.wwwroot, __name__, 'serverProfile.json'));
+            }
+            if (this.startupProfile == null) {
+                let currPath = webutils_1.path.join(this.wwwroot, __name__, 'workspace/1');
+                let t1 = webutils_1.path.join(currPath, 'notebook.ijsnb');
+                this.startupProfile = { currPath, openedFiles: [t1] };
+                if (await this.fs.filetype(t1) === 'none') {
+                    let ccld = new Inspector_1.CodeCellListData();
+                    ccld.cellList.push({ 'cellInput': '//_ENV is the default "global" context for Code Cell \n_ENV',
+                        'cellOutput': ['', null],
+                        'key': 'rnd12rjykngi1ufte7uq' }, { 'cellInput': '//Also globalThis are available \nglobalThis',
+                        'cellOutput': ['', null],
+                        'key': 'rnd1inpn4a83tgvabops' }, { 'cellInput': `//"import" is also available as expected
 import * as jsutils2  from 'partic2/CodeRunner/jsutils2'
 u8=jsutils2.u8hexconv(new Uint8Array([11,22,33]))
 console.info(u8)
 console.info(Array.from(jsutils2.u8hexconv(u8)))`,
-                                        'cellOutput': ['', null],
-                                        'key': 'rnd1gn3dzsjben57zmdc' }
-                                ],
-                                'consoleOutput': {} })
+                        'cellOutput': ['', null],
+                        'key': 'rnd1gn3dzsjben57zmdc' });
+                    await this.fs.writeAll(t1, (0, jsutils2_1.utf8conv)(JSON.stringify({
+                        "ver": 1,
+                        "path": t1,
+                        "cells": ccld.saveTo()
+                    })));
+                }
+                await this.saveStartupProfile();
+            }
+            await fb.DoFileOpen(this.startupProfile.currPath);
+            //Clone and clear, to avoid recursive open and save window.
+            let toOpen = [...this.startupProfile.openedFiles];
+            this.startupProfile.openedFiles.length = 0;
+            for (let t1 of toOpen) {
+                await fb.DoFileOpen(t1);
+            }
+        }
+    }
+    exports.WorkspaceContext = WorkspaceContext;
+    async function openJSNotebookFirstProfileWorkspace(opt) {
+        class NotebookOnlyFileBrowser extends filebrowser_1.__internal__.FileBrowser {
+            async DoNew() {
+                let form1 = new domui_1.ReactRefEx();
+                let dlg = await (0, window_1.prompt)(React.createElement("div", null,
+                    React.createElement(input_1.SimpleReactForm1, { ref: form1 }, form1 => React.createElement("div", null,
+                        React.createElement("div", null,
+                            "Directory:",
+                            React.createElement(input_1.ValueCheckBox, { ref: form1.getRefForInput('isDir') })),
+                        React.createElement("div", null,
+                            "name:",
+                            React.createElement("input", { type: "text", ref: form1.getRefForInput('name') }))))), 'New');
+                (await form1.waitValid()).value = { isDir: false, name: "untitled.ijsnb" };
+                if (await dlg.response.get() == 'ok') {
+                    let { isDir, name } = (await form1.waitValid()).value;
+                    if (isDir) {
+                        await this.props.context.fs.mkdir(webutils_1.path.join((this.state.currPath ?? ''), name));
+                    }
+                    else if (name.endsWith('.ijsnb')) {
+                        await this.props.context.fs.writeAll(webutils_1.path.join((this.state.currPath ?? ''), name), (0, jsutils2_1.utf8conv)(JSON.stringify({
+                            rpc: opt.defaultRpc, startupScript: opt.defaultStartupScript
                         })));
                     }
-                }
-            }
-            this.setState({ initFileDir: profile.currPath });
-            this.initOpenedFiles = profile.openedFiles;
-        }
-        async saveProfile() {
-            let moduleDataDir = (await this.fs.dataDir()) + '/www/' + __name__;
-            let openedFiles = [];
-            for (let tab of this.rref.tv.current.getTabs()) {
-                if (tabAttrSym in tab) {
-                    openedFiles.push(tab[tabAttrSym].filePath);
-                }
-            }
-            let profile = {
-                currPath: this.rref.fb.current?.state.currPath,
-                openedFiles
-            };
-            let profileFile = moduleDataDir + '/serverProfile.json';
-            await this.fs.writeAll(profileFile, new TextEncoder().encode(JSON.stringify(profile)));
-        }
-        componentDidMount() {
-            this.init().catch((e) => (0, window_2.alert)(e.toString()));
-            webutils_1.lifecycle.addEventListener('pause', this.onPauseListener);
-        }
-        componentWillUnmount() {
-            webutils_1.lifecycle.removeEventListener('pause', this.onPauseListener);
-        }
-        async init() {
-            if (this.inited.done) {
-                return;
-            }
-            if (this.props.fs == undefined) {
-                if (this.props.rpc != undefined) {
-                    await this.props.rpc.ensureConnected();
-                }
-                if (this.props.rpc == undefined) {
-                    let t1 = new JsEnviron_1.LocalWindowSFS();
-                    await t1.ensureInited();
-                    this.fs = t1;
-                    this.setState({ fs: t1 });
-                }
-                else {
-                    try {
-                        let fs1 = await (0, JsEnviron_1.getSimpleFileSystemFromPxprpc)(await this.props.rpc.ensureConnected());
-                        (0, base_1.assert)(fs1 != undefined);
-                        await fs1.ensureInited();
-                        this.fs = fs1;
-                        this.setState({ fs: fs1 });
+                    else {
+                        await this.props.context.fs.writeAll(webutils_1.path.join((this.state.currPath ?? ''), name), new Uint8Array(0));
                     }
-                    catch (e) {
-                        //fallback to localwindowsfs
-                        let t1 = new JsEnviron_1.LocalWindowSFS();
-                        await t1.ensureInited();
-                        this.fs = t1;
-                        this.setState({ fs: t1 });
-                    }
+                    await this.reloadFileInfo();
                 }
+                dlg.close();
+            }
+        }
+        let rpc1 = await (0, registry_1.getPersistentRegistered)(opt.defaultRpc ?? registry_1.ServerHostWorker1RpcName);
+        (0, base_1.assert)(rpc1 != null, 'rpc not found.');
+        let workspace = new WorkspaceContext(rpc1);
+        await workspace.ensureInited();
+        workspace.fileBrowser = NotebookOnlyFileBrowser;
+        if (opt.notebookDirectory != undefined) {
+            let nbdir = '';
+            if (typeof opt.notebookDirectory === 'function') {
+                nbdir = await opt.notebookDirectory(workspace);
             }
             else {
-                this.fs = this.props.fs;
-                this.setState({ fs: this.props.fs });
+                nbdir = workspace.wwwroot + '/' + opt.notebookDirectory;
             }
-            await this.loadProfile();
-            this.inited.setResult(true);
-            this.forceUpdate();
-            for (let t1 of this.initOpenedFiles) {
-                await this.doOpenFileRequest(t1);
+            let createProfile = true;
+            try {
+                let profileData = await workspace.fs.readAll(nbdir + '/profile.json');
+                (0, base_1.assert)(profileData != null);
+                JSON.parse((0, jsutils2_1.utf8conv)(profileData));
             }
-        }
-        async doOpenFileRequest(path) {
-            await this.inited.get();
-            let lowercasePath = path.toLowerCase();
-            for (let t1 of this.fileTypeHandlers) {
-                let matched = false;
-                if (typeof t1.extension === 'string') {
-                    if (lowercasePath.endsWith(t1.extension) && 'open' in t1)
-                        matched = true;
+            catch (err) {
+                let openedFiles = [];
+                if (opt.sampleCode != undefined && await workspace.fs.filetype(nbdir + '/sample.ijsnb') == 'none') {
+                    let nbfdata = new workerinit_1.NotebookFileData();
+                    nbfdata.rpc = rpc1;
+                    nbfdata.startupScript = opt.defaultStartupScript ?? '';
+                    let ccldata = new Inspector_1.CodeCellListData();
+                    ccldata.cellList.push(...opt.sampleCode.map(t1 => ({
+                        cellInput: t1,
+                        cellOutput: [null, null], key: (0, base_1.GenerateRandomString)()
+                    })));
+                    nbfdata.cells = ccldata.saveTo();
+                    await workspace.fs.writeAll(nbdir + '/sample.ijsnb', nbfdata.dump());
+                    openedFiles.push(nbdir + '/sample.ijsnb');
                 }
-                else {
-                    for (let t2 of t1.extension) {
-                        if (lowercasePath.endsWith(t2)) {
-                            matched = true;
-                            break;
-                        }
-                    }
-                }
-                if (matched) {
-                    let t2 = await t1.open(path);
-                    t2[tabAttrSym] = { filePath: path };
-                    (await this.rref.tv.waitValid()).addTab(t2);
-                    (await this.rref.tv.waitValid()).openTab(t2.id);
-                    break;
-                }
+                await workspace.fs.writeAll(nbdir + '/profile.json', (0, jsutils2_1.utf8conv)(JSON.stringify({
+                    currPath: nbdir, openedFiles
+                })));
             }
+            await workspace.useRemoteFileAsStartupProfileStore(nbdir + '/profile.json');
         }
-        async openNotebookFor(supportedContext, notebookFile) {
-            await this.inited.get();
-            let moduleDataDir = (await this.fs.dataDir()) + '/www/' + __name__;
-            if (notebookFile == undefined) {
-                notebookFile = moduleDataDir + '/workspace/1/notebook.ijsnb';
-            }
-            if ((await this.fs.filetype(notebookFile)) === 'none') {
-                await this.fs.mkdir(webutils_1.path.dirname(notebookFile));
-                await this.fs.writeAll(notebookFile, new TextEncoder().encode('{}'));
-            }
-            await this.doOpenFileRequest(notebookFile);
-            for (let tab of (await this.rref.tv.waitValid()).getTabs()) {
-                if (tab instanceof notebook_1.RunCodeTab && tab.path === notebookFile) {
-                    tab.ignoreRpcConfigOnLoading = true;
-                    await tab.inited.get();
-                    await tab.useCodeContext(supportedContext);
-                }
-            }
-        }
-        async onNewFileCreated(path) {
-            await this.rref.fb.current.reloadFileInfo();
-            await this.rref.fb.current.selectFiles([path]);
-            this.rref.fb.current.DoRenameTo();
-        }
-        async doCreateFileRequest(dir) {
-            await this.inited.get();
-            let t1 = await new CreateFileTab().init({ ws: this });
-            (await this.rref.tv.waitValid()).addTab(t1);
-            (await this.rref.tv.waitValid()).openTab(t1.id);
-        }
-        async openBookmarkTab() {
-            //TODO
-        }
-        render(props, state, context) {
-            if (!this.inited.done) {
-                return null;
-            }
-            return React.createElement("div", { className: [domui_1.css.flexRow, ...(this.props.divClass ?? [])].join(' '), style: { width: '100%', height: '100%', ...(this.props.divStyle ?? {}) } },
-                React.createElement(window_1.WindowComponent, { ref: this.rref.rpcRegistry, title: 'rpc registry' },
-                    React.createElement(ui_1.RegistryUI, null)),
-                React.createElement("div", { style: { flexBasis: (this.state.panel12SplitX ?? 302 - 2) + 'px', flexShrink: '0',
-                        height: '100%', overflowY: 'auto' }, ref: this.rref.panel1 },
-                    React.createElement("a", { href: "javascript:;", onClick: () => this.rref.rpcRegistry.current?.activate() }, "RpcRegistry"),
-                    React.createElement("span", null, "\u00A0\u00A0"),
-                    React.createElement("div", { style: { flexGrow: 1 } },
-                        React.createElement(filebrowser_1.FileBrowser, { ref: this.rref.fb, sfs: this.state.fs, initDir: this.state.initFileDir, workspace: this, onOpenRequest: (path) => this.doOpenFileRequest(path), onCreateRequest: (dir) => this.doCreateFileRequest(dir) }))),
-                React.createElement("div", { style: { flexBasis: '5px', flexShrink: '0', backgroundColor: 'grey', cursor: 'ew-resize' }, onMouseDown: (ev) => {
-                        let x = this.rref.panel1.current?.getBoundingClientRect().left;
-                        this.__panel12SpliterMove.start({ x: x ?? 0, y: ev.clientY }, true);
-                        ev.preventDefault();
-                    }, onTouchStart: (ev) => {
-                        let x = this.rref.panel1.current?.getBoundingClientRect().left;
-                        this.__panel12SpliterMove.start({ x: x ?? 0, y: ev.touches[0].clientY }, true);
-                        ev.preventDefault();
-                    } }),
-                React.createElement("div", { className: domui_1.css.flexColumn, style: { flexGrow: '1', minWidth: 0, flexShrink: '1' } },
-                    React.createElement(workspace_1.TabView, { ref: this.rref.tv })));
-        }
+        return workspace;
     }
-    exports.Workspace = Workspace;
-    let defaultOpenWorkspaceWindowFor = async function (supportedContext, title) {
-        let wsref = new domui_1.ReactRefEx();
-        let newWindowHandle = await (async () => {
-            if (supportedContext == 'local window' || (supportedContext instanceof CodeContext_1.LocalRunCodeContext)) {
-                return (0, workspace_1.openNewWindow)(React.createElement(Workspace, { ref: wsref, divStyle: { backgroundColor: 'white' } }), { title });
-            }
-            else if (supportedContext instanceof registry_1.ClientInfo) {
-                return (0, workspace_1.openNewWindow)(React.createElement(Workspace, { ref: wsref, rpc: supportedContext, divStyle: { backgroundColor: 'white' } }), { title });
-            }
-            else if (supportedContext instanceof RemoteCodeContext_1.RemoteRunCodeContext) {
-                let rpc = (0, misclib_1.findRpcClientInfoFromClient)(supportedContext.client1);
-                (0, base_1.assert)(rpc != null);
-                return (0, workspace_1.openNewWindow)(React.createElement(Workspace, { ref: wsref, rpc: rpc, divStyle: { backgroundColor: 'white' } }), { title });
-            }
-        })();
-        if (newWindowHandle != null) {
-            (await wsref.waitValid()).openNotebookFor(supportedContext);
-            newWindowHandle.waitClose().then(async () => {
-                let ws = await wsref.waitValid();
-                await ws.saveProfile();
-            });
+    let defaultOpenWorkspaceWindowFor = async function (supportedContext) {
+        if (supportedContext === 'local window') {
+            supportedContext = new workerinit_1.__internal__.LoopbackRpcClient('local window', 'loopback:local window');
         }
+        let workspace = new WorkspaceContext(supportedContext);
+        await workspace.ensureInited();
+        await workspace.start();
     };
-    exports.defaultOpenWorkspaceWindowFor = defaultOpenWorkspaceWindowFor;
     async function setDefaultOpenWorkspaceWindowFor(openNotebook) {
-        exports.defaultOpenWorkspaceWindowFor = openNotebook;
+        defaultOpenWorkspaceWindowFor = openNotebook;
     }
-    async function openWorkspaceWindowFor(supportedContext, title) {
-        (0, exports.defaultOpenWorkspaceWindowFor)(supportedContext, title);
+    async function openWorkspaceWindowFor(supportedContext) {
+        defaultOpenWorkspaceWindowFor(supportedContext);
     }
+    exports.openWorkspaceWithProfile = {
+        openJSNotebookFirstProfileWorkspace
+    };
 });
 //# sourceMappingURL=workspace.js.map

@@ -1,12 +1,10 @@
 define(["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
+    exports.__internal__ = exports.console = void 0;
     exports.getNodeCompatApi = getNodeCompatApi;
-    exports.runCommand = runCommand;
-    exports.readJson = readJson;
-    exports.writeJson = writeJson;
-    exports.runBuild = runBuild;
     exports.simpleGlob = simpleGlob;
+    exports.withConsole = withConsole;
     let cachedNodeCompatApi = null;
     async function getNodeCompatApi() {
         if (cachedNodeCompatApi != null) {
@@ -123,5 +121,18 @@ define(["require", "exports"], function (require, exports) {
         }
         return matchResult;
     }
+    exports.console = globalThis.console;
+    async function withConsole(c, fn) {
+        exports.console = c;
+        try {
+            await fn();
+        }
+        finally {
+            exports.console = globalThis.console;
+        }
+    }
+    exports.__internal__ = {
+        runCommand, readJson, writeJson, runBuild
+    };
 });
 //# sourceMappingURL=util.js.map

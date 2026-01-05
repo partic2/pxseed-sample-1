@@ -1,7 +1,7 @@
 define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutils1/webutils"], function (require, exports, React, base_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.FloatLayerComponent = exports.ReactRefEx = exports.RefChangeEvent = exports.floatLayerZIndexBase = exports.event = exports.css = exports.ReactEventTarget = exports.DomRootComponent = exports.DomDivComponent = exports.DomComponentGroup = exports.DomComponent = void 0;
+    exports.FloatLayerComponent = exports.ReactRefEx = exports.RefChangeEvent = exports.floatLayerZIndexBase = exports.event = exports.css = exports.ReactEventTarget = exports.__inited__ = exports.DomRootComponent = exports.DomDivComponent = exports.DomComponentGroup = exports.DomComponent = void 0;
     exports.ReactRender = ReactRender;
     exports.SetComponentFullScreen = SetComponentFullScreen;
     exports.RequestPrintWindow = RequestPrintWindow;
@@ -58,15 +58,15 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
     class DomDivComponent extends DomComponentGroup {
         constructor() {
             super();
-            this.domElem = document.createElement('div');
+            this.domElem = globalThis.document.createElement('div');
         }
     }
     exports.DomDivComponent = DomDivComponent;
     class CDomRootComponent extends DomComponentGroup {
         constructor() {
             super();
-            let domroot = document.createElement('div');
-            document.body.appendChild(domroot);
+            let domroot = globalThis.document.createElement('div');
+            globalThis.document.body.appendChild(domroot);
             this.domElem = domroot;
             this.mounted = true;
         }
@@ -78,13 +78,13 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         }
         async update() {
             if (!this.mounted) {
-                await this.appendToNode(document.body);
+                await this.appendToNode(globalThis.document.body);
             }
             await super.update();
         }
         addHiddenElement(e) {
             if (this.hiddenDiv == undefined) {
-                this.hiddenDiv = document.createElement('div');
+                this.hiddenDiv = globalThis.document.createElement('div');
                 this.hiddenDiv.style.display = 'none';
                 this.getDomElement().append(this.hiddenDiv);
             }
@@ -97,7 +97,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         }
         async addHiddenComponent(comp) {
             if (this.hiddenDiv == undefined) {
-                this.hiddenDiv = document.createElement('div');
+                this.hiddenDiv = globalThis.document.createElement('div');
                 this.hiddenDiv.style.display = 'none';
                 this.getDomElement().append(this.hiddenDiv);
             }
@@ -132,7 +132,17 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             return this.get().removeChild(comp);
         }
     }
-    exports.DomRootComponent = new DomRootComponentProxy(new CDomRootComponent());
+    exports.__inited__ = (async () => {
+        if (globalThis.document != undefined) {
+            exports.DomRootComponent = new DomRootComponentProxy(new CDomRootComponent());
+            //To fix preact BUG
+            if (!('ontouchstart' in HTMLElement)) {
+                globalThis.HTMLElement.prototype.ontouchstart = undefined;
+                globalThis.HTMLElement.prototype.ontouchmove = undefined;
+                globalThis.HTMLElement.prototype.ontouchend = undefined;
+            }
+        }
+    })();
     class ReactEventTarget extends React.Component {
         constructor() {
             super(...arguments);
@@ -208,39 +218,30 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         }
     }
     exports.RefChangeEvent = RefChangeEvent;
-    class ReactRefEx extends EventTarget {
+    class ReactRefEx extends base_1.Ref2 {
         constructor() {
-            super();
-            this.__current = null;
+            super(null);
             this.__forwardTo = [];
-            this.addEventListener('change', (evt) => {
+            this.watch((r, prev) => {
                 for (let t1 of this.__forwardTo) {
                     if (typeof t1 === 'function') {
-                        t1(evt.data.curr);
+                        t1(r.get());
                     }
                     else if (t1 != null) {
-                        t1.current = evt.data.curr;
+                        t1.current = r.get();
                     }
                 }
             });
         }
         set current(curr) {
-            let prev = this.__current;
-            this.__current = curr;
-            this.dispatchEvent(new RefChangeEvent({ prev, curr }));
+            this.set(curr);
         }
         get current() {
-            return this.__current;
+            return this.get();
         }
         forward(refs) {
             this.__forwardTo.push(...refs);
             return this;
-        }
-        addEventListener(type, callback, options) {
-            super.addEventListener(type, callback, options);
-        }
-        removeEventListener(type, callback, options) {
-            super.removeEventListener(type, callback, options);
         }
         async waitValid() {
             if (this.current != null) {
@@ -248,29 +249,31 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             }
             else {
                 return new Promise((resolve) => {
-                    const onRefChange = (ev) => {
-                        if (ev.data.curr != null) {
-                            this.removeEventListener('change', onRefChange);
-                            resolve(ev.data.curr);
+                    const onRefChange = (r) => {
+                        if (r.get() != null) {
+                            this.unwatch(onRefChange);
+                            resolve(r.get());
                         }
                     };
-                    this.addEventListener('change', onRefChange);
+                    this.watch(onRefChange);
                 });
             }
         }
         async waitInvalid() {
-            if (this.current == null) {
-                return;
+            if (this.current != null) {
+                return this.current;
             }
-            return new Promise((resolve) => {
-                const onRefChange = (ev) => {
-                    if (ev.data.curr == null) {
-                        this.removeEventListener('change', onRefChange);
-                        resolve(undefined);
-                    }
-                };
-                this.addEventListener('change', onRefChange);
-            });
+            else {
+                return new Promise((resolve) => {
+                    const onRefChange = (r) => {
+                        if (r.get() != null) {
+                            this.unwatch(onRefChange);
+                            resolve();
+                        }
+                    };
+                    this.watch(onRefChange);
+                });
+            }
         }
     }
     exports.ReactRefEx = ReactRefEx;
@@ -288,6 +291,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         }
     }
     exports.FloatLayerComponent = FloatLayerComponent;
+    //container accept Ref2<HTMLElement>|Ref2<DomComponentGroup>|HTMLElement|DomComponentGroup|'create', But tsc complain with it , So I use any now.
     function ReactRender(vnode, container) {
         if (container instanceof HTMLElement) {
             React.render(vnode, container);
@@ -299,7 +303,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             ReactRender(vnode, container.get());
         }
         else if (container == 'create') {
-            let div1 = document.createElement('div');
+            let div1 = globalThis.document.createElement('div');
             React.render(vnode, div1);
             return div1;
         }
@@ -308,16 +312,16 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         let ctl = {
             onExit: new base_1.future(),
             exit: function () { if (!this.onExit.done) {
-                document.exitFullscreen();
+                globalThis.document.exitFullscreen();
             } }
         };
-        if (!document.body.contains(comp.getDomElement())) {
+        if (!globalThis.document.body.contains(comp.getDomElement())) {
             exports.DomRootComponent.get().addHiddenComponent(comp);
         }
         await comp.getDomElement().requestFullscreen();
         exports.DomRootComponent.get().hiddenDiv.style.display = 'block';
         var fsCb = function (ev) {
-            if (document.fullscreenElement !== comp.getDomElement()) {
+            if (globalThis.document.fullscreenElement !== comp.getDomElement()) {
                 comp.getDomElement().removeEventListener('fullscreenchange', fsCb);
                 ctl.onExit.setResult(true);
                 exports.DomRootComponent.get().hiddenDiv.style.display = 'none';

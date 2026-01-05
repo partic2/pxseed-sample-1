@@ -1,105 +1,12 @@
 //import this module to Initialize pxseed environment on txiki.js platform.
-define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/jsutils1/webutils", "partic2/CodeRunner/Inspector", "partic2/pxprpcClient/registry"], function (require, exports, base_1, base_2, webutils_1, webutils_2, Inspector_1, registry_1) {
+define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/jsutils1/webutils", "partic2/nodehelper/kvdb"], function (require, exports, base_1, base_2, webutils_1, webutils_2, kvdb_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.PxprpcRtbIo = exports.FsBasedKvDbV1 = void 0;
+    exports.PxprpcRtbIo = void 0;
     exports.setupImpl = setupImpl;
     var __name__ = base_1.requirejs.getLocalRequireModule(require);
     //txiki.js has bugly eventTarget, patch it before upstream fix it.
     Object.defineProperty(Event.prototype, 'target', { get: function () { return this.currentTarget; } });
-    async function writeFile(path, data) {
-        let fh = await tjs.open(path, 'w');
-        try {
-            await fh.write(data);
-        }
-        finally {
-            fh.close();
-        }
-    }
-    class FsBasedKvDbV1 {
-        constructor() {
-            this.baseDir = '';
-        }
-        async init(baseDir) {
-            this.baseDir = baseDir;
-            try {
-                let data = await tjs.readFile(baseDir + '/config.json');
-                this.config = { fileList: {}, ...JSON.parse(new TextDecoder().decode(data)) };
-            }
-            catch (e) {
-                this.config = { fileList: {} };
-                await writeFile(baseDir + '/config.json', new TextEncoder().encode('{}'));
-            }
-        }
-        async setItem(key, val) {
-            if (!(key in this.config.fileList)) {
-                this.config.fileList[key] = { fileName: (0, base_2.GenerateRandomString)(), type: 'json' };
-            }
-            let { fileName } = this.config.fileList[key];
-            if (val instanceof ArrayBuffer) {
-                this.config.fileList[key].type = 'ArrayBuffer';
-                await writeFile(`${this.baseDir}/${fileName}`, new Uint8Array(val));
-            }
-            else if (val instanceof Uint8Array) {
-                this.config.fileList[key].type = 'Uint8Array';
-                await writeFile(`${this.baseDir}/${fileName}`, val);
-            }
-            else if (val instanceof Int8Array) {
-                this.config.fileList[key].type = 'Int8Array';
-                await writeFile(`${this.baseDir}/${fileName}`, new Uint8Array(val.buffer, val.byteOffset, val.length));
-            }
-            else {
-                let data = JSON.stringify((0, Inspector_1.toSerializableObject)(val, { maxDepth: 0x7fffffff, enumerateMode: 'for in', maxKeyCount: 0x7fffffff }));
-                await writeFile(`${this.baseDir}/${fileName}`, new TextEncoder().encode(data));
-            }
-            await writeFile(this.baseDir + '/config.json', new TextEncoder().encode(JSON.stringify(this.config)));
-        }
-        async getItem(key) {
-            if (!(key in this.config.fileList)) {
-                return undefined;
-            }
-            let { fileName, type } = this.config.fileList[key];
-            try {
-                if (type === 'ArrayBuffer') {
-                    return (await tjs.readFile(`${this.baseDir}/${fileName}`)).buffer;
-                }
-                else if (type === 'Uint8Array') {
-                    return new Uint8Array((await tjs.readFile(`${this.baseDir}/${fileName}`)).buffer);
-                }
-                else if (type === 'Int8Array') {
-                    return new Int8Array((await tjs.readFile(`${this.baseDir}/${fileName}`)).buffer);
-                }
-                else if (type === 'json') {
-                    let data = await tjs.readFile(`${this.baseDir}/${fileName}`);
-                    let r = (0, Inspector_1.fromSerializableObject)(JSON.parse(new TextDecoder().decode(data)), {});
-                    return r;
-                }
-            }
-            catch (e) {
-                delete this.config.fileList[key];
-                return undefined;
-            }
-        }
-        getAllKeys(onKey, onErr) {
-            for (let file in this.config.fileList) {
-                let next = onKey(file);
-                if (next.stop === true) {
-                    break;
-                }
-            }
-            onKey(null);
-        }
-        async delete(key) {
-            let { fileName } = this.config.fileList[key];
-            await tjs.remove(this.baseDir + '/' + fileName);
-            delete this.config.fileList[key];
-            await writeFile(this.baseDir + '/config.json', new TextEncoder().encode(JSON.stringify(this.config)));
-        }
-        async close() {
-            await writeFile(this.baseDir + '/config.json', new TextEncoder().encode(JSON.stringify(this.config)));
-        }
-    }
-    exports.FsBasedKvDbV1 = FsBasedKvDbV1;
     let workerEntryUrl = function () {
         try {
             return (0, webutils_1.getWWWRoot)() + '/txikirun.js';
@@ -187,29 +94,8 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
             this.runScript('globalThis.close()');
         }
     }
-    let cachePath = webutils_1.path.join((0, webutils_1.getWWWRoot)(), __name__, '..');
     function setupImpl() {
-        (0, webutils_1.setKvStoreBackend)(async (dbname) => {
-            await tjs.makeDir(webutils_1.path.join(cachePath, 'data'), { recursive: true });
-            let dbMap = {};
-            let filename = (0, base_2.GenerateRandomString)();
-            try {
-                dbMap = JSON.parse(new TextDecoder().decode(await tjs.readFile(webutils_1.path.join(cachePath, 'data', 'meta-dbMap'))));
-            }
-            catch (e) { }
-            ;
-            if (dbname in dbMap) {
-                filename = dbMap[dbname];
-            }
-            else {
-                dbMap[dbname] = filename;
-            }
-            await writeFile(webutils_1.path.join(cachePath, 'data', 'meta-dbMap'), new TextEncoder().encode(JSON.stringify(dbMap)));
-            let db = new FsBasedKvDbV1();
-            await tjs.makeDir(webutils_1.path.join(cachePath, 'data', filename), { recursive: true });
-            await db.init(webutils_1.path.join(cachePath, 'data', filename));
-            return db;
-        });
+        (0, kvdb_1.setupImpl)();
         (0, webutils_1.setWorkerThreadImplementation)(WebWorkerThread);
         if (globalThis.open == undefined) {
             globalThis.open = (async (url, target) => {
@@ -230,22 +116,8 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
                     }
                     jscode = new TextDecoder().decode(await tjs.readFile(path));
                 }
-                if (target == '_self') {
-                    new Function(jscode)();
-                }
-                else {
-                    if (target == '_blank' || target == undefined) {
-                        target = (0, base_2.GenerateRandomString)();
-                    }
-                    let worker = new registry_1.RpcWorker(target);
-                    let workerClient = await worker.ensureClient();
-                    let workerFuncs = await (0, registry_1.getAttachedRemoteRigstryFunction)(workerClient);
-                    await workerFuncs.jsExec(`new Function(${JSON.stringify(jscode)})();`, null);
-                }
+                new Function(jscode)();
             });
-        }
-        if (!registry_1.rpcWorkerInitModule.includes(__name__)) {
-            registry_1.rpcWorkerInitModule.push(__name__);
         }
     }
     class PxprpcRtbIo {

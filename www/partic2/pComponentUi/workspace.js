@@ -1,9 +1,10 @@
-define(["require", "exports", "preact", "./domui", "./window", "partic2/jsutils1/base", "./window", "partic2/pxseedMedia1/index1"], function (require, exports, React, domui_1, window_1, base_1, window_2, index1_1) {
+define(["require", "exports", "preact", "./domui", "./window", "partic2/jsutils1/base", "./window", "partic2/pxseedMedia1/index1", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2"], function (require, exports, React, domui_1, window_1, base_1, window_2, index1_1, webutils_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.TabView = exports.TabInfoBase = exports.openNewWindow = exports.WorkspaceWindowContext = exports.NewWindowHandleLists = void 0;
+    exports.openNewWindow = exports.WorkspaceWindowContext = exports.NewWindowHandleLists = void 0;
     exports.setBaseWindowView = setBaseWindowView;
     exports.setOpenNewWindowImpl = setOpenNewWindowImpl;
+    let __name__ = base_1.requirejs.getLocalRequireModule(require);
     class CNewWindowHandleLists extends EventTarget {
         constructor() {
             super(...arguments);
@@ -11,6 +12,7 @@ define(["require", "exports", "preact", "./domui", "./window", "partic2/jsutils1
         }
     }
     exports.NewWindowHandleLists = new CNewWindowHandleLists();
+    let config1 = {};
     exports.WorkspaceWindowContext = React.createContext({});
     let openNewWindow = async function (contentVNode, options) {
         options = options ?? {};
@@ -42,17 +44,76 @@ define(["require", "exports", "preact", "./domui", "./window", "partic2/jsutils1
             async isHidden() {
                 return (await this.windowRef.waitValid()).isHidden();
             },
+            async saveWindowPosition() {
+                config1 = await (0, webutils_1.GetPersistentConfig)(__name__);
+                config1.savedWindowLayout[options.layoutHint] = { time: (0, base_1.GetCurrentTime)().getTime(), ...(await windowRef.waitValid()).state.layout };
+                await (0, webutils_1.SavePersistentConfig)(__name__);
+            },
+            async forgetWindowPosition() {
+                config1 = await (0, webutils_1.GetPersistentConfig)(__name__);
+                delete config1.savedWindowLayout[options.layoutHint];
+                await (0, webutils_1.SavePersistentConfig)(__name__);
+            },
             windowRef, windowVNode: null,
             children: new Set()
         };
-        //TODO: Find a good initial window place.
-        let windowVNode = React.createElement(window_2.WindowComponent, { ref: windowRef, onClose: () => {
+        config1 = await (0, webutils_1.GetPersistentConfig)(__name__);
+        if (config1.savedWindowLayout == undefined) {
+            config1.savedWindowLayout = {};
+        }
+        ;
+        let layout1 = null;
+        if (options.layoutHint != undefined && config1.savedWindowLayout[options.layoutHint] != undefined) {
+            layout1 = (0, base_1.partial)(config1.savedWindowLayout[options.layoutHint], ['left', 'top', 'width', 'height']);
+            config1.savedWindowLayout[options.layoutHint].time = (0, base_1.GetCurrentTime)().getTime();
+            await (0, webutils_1.SavePersistentConfig)(__name__);
+        }
+        let allEnt = Array.from(Object.entries(config1.savedWindowLayout));
+        if (allEnt.length > 100) {
+            allEnt.sort((a, b) => (a[1].time ?? 0) - (b[1].time ?? 0));
+            for (let t1 = 0; allEnt.length - 100; t1++) {
+                delete config1.savedWindowLayout[allEnt[t1][0]];
+            }
+            await (0, webutils_1.SavePersistentConfig)(__name__);
+        }
+        if (layout1 == null) {
+            layout1 = { top: 0, left: 0 };
+            for (let t1 = 0; t1 < window.innerHeight / 2; t1 += 20) {
+                let crowded = false;
+                for (let t2 of exports.NewWindowHandleLists.value) {
+                    if (t2.windowRef.current != null) {
+                        let top = t2.windowRef.current.state.layout.top;
+                        if (top >= t1 - 10 && top < t1 + 10) {
+                            crowded = true;
+                            break;
+                        }
+                    }
+                }
+                if (!crowded) {
+                    layout1.top = t1;
+                    layout1.left = t1 / 2;
+                    break;
+                }
+            }
+        }
+        let onWindowLayooutChange = null;
+        let windowVNode = React.createElement(window_2.WindowComponent, { ref: windowRef, onClose: async () => {
+                for (let t1 of exports.NewWindowHandleLists.value) {
+                    if (t1.parentWindow === handle) {
+                        t1.close();
+                    }
+                }
                 closeFuture.setResult(true);
                 (0, window_2.removeFloatWindow)(windowVNode);
                 let at = exports.NewWindowHandleLists.value.indexOf(handle);
                 if (at >= 0)
                     exports.NewWindowHandleLists.value.splice(at, 1);
                 exports.NewWindowHandleLists.dispatchEvent(new Event('change'));
+                if (onWindowLayooutChange != null) {
+                    let window1 = await windowRef.waitValid();
+                    window1.removeEventListener('move', onWindowLayooutChange);
+                    window1.removeEventListener('resize', onWindowLayooutChange);
+                }
             }, onComponentDidUpdate: () => {
                 exports.NewWindowHandleLists.dispatchEvent(new Event('change'));
             }, titleBarButton: [{
@@ -67,6 +128,16 @@ define(["require", "exports", "preact", "./domui", "./window", "partic2/jsutils1
             options.parentWindow.children.add(handle);
         }
         exports.NewWindowHandleLists.dispatchEvent(new Event('change'));
+        let window1 = await windowRef.waitValid();
+        window1.setState({ layout: { ...layout1 } });
+        if (options.layoutHint != undefined) {
+            let saveLayout = new jsutils2_1.DebounceCall(handle.saveWindowPosition, 3000);
+            onWindowLayooutChange = () => {
+                saveLayout.call();
+            };
+            window1.addEventListener('move', onWindowLayooutChange);
+            window1.addEventListener('resize', onWindowLayooutChange);
+        }
         return handle;
     };
     exports.openNewWindow = openNewWindow;
@@ -83,131 +154,5 @@ define(["require", "exports", "preact", "./domui", "./window", "partic2/jsutils1
     function setOpenNewWindowImpl(impl) {
         exports.openNewWindow = impl;
     }
-    class TabInfoBase {
-        constructor() {
-            this.id = '';
-            this.title = '';
-            this.container = new base_1.Ref2(null);
-        }
-        renderPage() {
-            throw new Error('Not Implemented');
-        }
-        async onClose() {
-            return true;
-        }
-        async init(initval) {
-            for (let k in initval) {
-                this[k] = initval[k];
-            }
-            return this;
-        }
-        async requestPageViewUpdate() {
-            let tabView = this.container.get();
-            if (tabView != null) {
-                return new Promise(r => tabView.forceUpdate(r));
-            }
-            else {
-                return new Promise(r => r());
-            }
-        }
-    }
-    exports.TabInfoBase = TabInfoBase;
-    var eventProcessed = Symbol('eventProcessed');
-    class TabView extends React.Component {
-        addTab(tabInfo) {
-            let foundIndex = this.state.tabs.findIndex(v => v.id == tabInfo.id);
-            if (foundIndex < 0) {
-                tabInfo.container.set(this);
-                this.state.tabs.push(tabInfo);
-            }
-            else {
-                tabInfo.container.set(this);
-                this.state.tabs.splice(foundIndex, 1, tabInfo);
-            }
-            this.forceUpdate();
-        }
-        getTabs() {
-            return this.state.tabs;
-        }
-        openTab(id) {
-            if (this.state.tabs.find(v => v.id == id) != undefined) {
-                this.setState({ currTab: id }, () => {
-                    this.props.onTabActive?.(id);
-                });
-            }
-        }
-        async closeTab(id) {
-            let t1 = this.state.tabs.findIndex((v) => v.id == id);
-            if (t1 >= 0) {
-                let toClose = this.state.tabs[t1];
-                if (toClose.onClose) {
-                    let confirm = await toClose.onClose();
-                    if (!confirm) {
-                        //abort
-                        return;
-                    }
-                }
-                this.state.tabs.splice(t1, 1);
-                if (toClose.id === this.state.currTab) {
-                    if (t1 >= this.state.tabs.length) {
-                        t1 = this.state.tabs.length - 1;
-                    }
-                    if (t1 >= 0) {
-                        this.setState({ currTab: this.state.tabs[t1].id });
-                    }
-                    else {
-                        this.setState({ currTab: '' });
-                    }
-                }
-                else {
-                    this.forceUpdate();
-                }
-            }
-        }
-        onTabClick(ev, tab) {
-            if (ev[eventProcessed]) {
-                return;
-            }
-            this.openTab(tab.id);
-        }
-        renderTabs() {
-            return this.state.tabs.map(v => React.createElement("div", { className: [
-                    domui_1.css.selectable, domui_1.css.simpleCard,
-                    this.state.currTab == v.id ? domui_1.css.selected : ''
-                ].join(' '), onClick: (ev) => this.onTabClick(ev, v) },
-                v.title,
-                "\u00A0",
-                React.createElement("a", { href: "javascript:;", onClick: (ev) => {
-                        ev[eventProcessed] = true;
-                        this.closeTab(v.id);
-                    } }, "X")));
-        }
-        getCurrentTab() {
-            return this.state.tabs.find(v => v.id === this.state.currTab);
-        }
-        constructor(props, ctx) {
-            super(props, ctx);
-            this.rref = {
-                tabContainer: React.createRef()
-            };
-            this.setState({ currTab: '', tabs: [] });
-        }
-        render(props, state, context) {
-            return React.createElement("div", { className: domui_1.css.flexColumn, style: { height: '100%' } },
-                React.createElement("div", { className: domui_1.css.flexRow }, this.renderTabs()),
-                this.state.tabs.map(tab => {
-                    if (tab.id === this.state.currTab) {
-                        return React.createElement("div", { key: 'tabid:' + tab.id, style: { flexGrow: 1, display: 'flex', minHeight: 0, overflow: 'auto' }, ref: this.rref.tabContainer }, tab.renderPage());
-                    }
-                    else {
-                        return React.createElement("div", { key: 'tabid:' + tab.id, style: { display: 'none' } }, tab.renderPage());
-                    }
-                }));
-        }
-        componentDidUpdate(previousProps, previousState, snapshot) {
-            this.getCurrentTab()?.onRendered?.();
-        }
-    }
-    exports.TabView = TabView;
 });
 //# sourceMappingURL=workspace.js.map

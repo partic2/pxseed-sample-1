@@ -26,7 +26,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                 codeInput: new domui_1.ReactRefEx(),
                 container: new domui_1.ReactRefEx()
             };
-            this.requestCodeComplete = new Inspector_1.DelayOnceCall(async () => {
+            this.requestCodeComplete = new jsutils2_1.DebounceCall(async () => {
                 this.setState({
                     codeCompleteCandidate: await this.props.codeContext.codeComplete(this.getCellInput(), this.rref.codeInput.current.getTextCaretOffset())
                 }, () => {
@@ -35,11 +35,12 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                         this.renderCodeComplete()));
                 });
             }, 200);
-            this.requestUpdateTooltips = new Inspector_1.DelayOnceCall(async () => {
+            this.requestUpdateTooltips = new jsutils2_1.DebounceCall(async () => {
                 this.props.onTooltips?.(React.createElement("div", null,
                     this.state.extraTooltips ? React.createElement("div", { dangerouslySetInnerHTML: { __html: this.state.extraTooltips } }) : null,
                     this.renderCodeComplete()));
             }, 100);
+            this.__focusedCheck = false;
             this.setState({ codeCompleteCandidate: null, focusin: false, extraTooltips: null });
         }
         async runCode() {
@@ -76,6 +77,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                     if (ev.ctrlKey) {
                         //prevent trigger input('\n').Is there better way?
                         this.rref.codeInput.current?.insertText('\n');
+                        this.props.onInputChange?.(this);
                     }
                     else {
                         let fullText = (await this.rref.codeInput.waitValid()).getPlainText();
@@ -117,6 +119,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                 this.requestCodeComplete.call();
             }
             this.requestUpdateTooltips.call();
+            this.props.onInputChange?.(this);
         }
         getCellInput() {
             let t1 = this.rref.codeInput.current.getPlainText();
@@ -136,34 +139,36 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             let delCount = caret - cc.replaceRange[0];
             this.rref.codeInput.current.deleteText(delCount);
             this.rref.codeInput.current.insertText(cc.candidate);
+            this.props.onInputChange?.(this);
         }
         renderCodeComplete() {
             if (this.state.codeCompleteCandidate != null) {
-                return React.createElement("div", { style: { display: 'flex', flexDirection: 'column', maxHeight: '300px' } }, this.state.codeCompleteCandidate.map(v => {
+                return React.createElement("div", { style: { display: 'flex', flexDirection: 'column', maxHeight: '300px' }, tabIndex: 0, onFocusIn: () => this.__focusedCheck = true }, this.state.codeCompleteCandidate.map(v => {
                     return React.createElement("div", null,
-                        React.createElement("a", { href: "javascript:;", onClick: () => this.insertCodeComplete(v) }, v.candidate));
+                        React.createElement("a", { href: "javascript:;", onClick: () => {
+                                this.insertCodeComplete(v);
+                                this.props.onTooltips?.(null);
+                                this.setState({ codeCompleteCandidate: [] });
+                            } }, v.candidate));
                 }));
             }
         }
-        async doOnFocusChange(focusin) {
+        async doOnFocusChange(focusin, ev) {
             if (this.props.onFocusChange != undefined) {
                 this.props.onFocusChange(focusin);
             }
             if (focusin) {
-                //avoid click event failed.
-                await (0, base_1.sleep)(100);
                 this.setState({ focusin: true });
+                this.__focusedCheck = true;
             }
             else {
                 //wait to check focus really move out
-                await (0, base_1.sleep)(500);
-                if (document.activeElement == null ||
-                    (this.rref.container.current != null &&
-                        (document.activeElement.compareDocumentPosition(this.rref.container.current) & Node.DOCUMENT_POSITION_CONTAINS) === 0)) {
-                    this.setState({ focusin: false });
+                this.__focusedCheck = false;
+                await (0, base_1.sleep)(100);
+                if (!this.__focusedCheck) {
+                    this.setState({ focusin: false, codeCompleteCandidate: [] });
+                    this.props.onTooltips?.(null);
                 }
-                this.setState({ codeCompleteCandidate: [] });
-                this.props.onTooltips?.(null);
             }
         }
         async onBtnRun() {
@@ -199,10 +204,20 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
         }
         render(props, state, context) {
             this.prepareRender();
-            return React.createElement("div", { style: { display: 'flex', flexDirection: 'column', position: 'relative' }, ref: this.rref.container, onFocusOut: () => this.doOnFocusChange(false), onFocusIn: () => { this.doOnFocusChange(true); } },
-                React.createElement(texteditor_1.TextEditor, { ref: this.rref.codeInput, divAttr: { onKeyDown: (ev) => this.onCellKeyDown(ev) }, onInput: (target, inputData) => this.onCellInput(target, inputData), divClass: [exports.css.inputCell] }),
+            return React.createElement("div", { style: { display: 'flex', flexDirection: 'column', position: 'relative', ...this.props.divStyle }, ref: this.rref.container, ...this.props.divAttr, onFocusIn: (ev) => {
+                    this.props.divAttr?.onFocusIn?.(ev);
+                    if (!ev.defaultPrevented) {
+                        this.doOnFocusChange(true, ev);
+                    }
+                }, onFocusOut: (ev) => {
+                    this.props.divAttr?.onFocusOut?.(ev);
+                    if (!ev.defaultPrevented) {
+                        this.doOnFocusChange(false, ev);
+                    }
+                } },
+                React.createElement(texteditor_1.TextEditor, { ref: this.rref.codeInput, divAttr: { onKeyDown: (ev) => this.onCellKeyDown(ev) }, onInput: (target, inputData) => this.onCellInput(target, inputData), divClass: [exports.css.inputCell, ...(this.props.inputClass ?? [])] }),
                 this.state.focusin ? React.createElement("div", { style: { position: 'relative', display: 'flex', justifyContent: 'end' } },
-                    React.createElement("div", { style: { position: 'absolute', backgroundColor: 'white' } },
+                    React.createElement("div", { style: { position: 'absolute', backgroundColor: 'white', maxWidth: '50%', wordBreak: 'break-all' } },
                         React.createElement("div", null, this.renderActionButton()))) : null,
                 this.props.onTooltips ? null : React.createElement("div", null,
                     this.state.extraTooltips ? React.createElement("div", { dangerouslySetInnerHTML: { __html: this.state.extraTooltips } }) : null,
@@ -240,7 +255,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
     class DefaultCodeCellList extends React.Component {
         constructor(prop, ctx) {
             super(prop, ctx);
-            this.priv__initCellValue = null;
+            this.__initCellValue = null;
             this.lastRunCellKey = '';
             this.__currentCodeContext = null;
             this.rref = {
@@ -314,7 +329,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             this.forceUpdate();
         }
         resetState() {
-            this.priv__initCellValue = null;
+            this.__initCellValue = null;
             this.lastRunCellKey = '';
             this.setState({
                 list: [{ ref: new domui_1.ReactRefEx(), key: (0, base_1.GenerateRandomString)() }],
@@ -349,7 +364,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                         left = left + maxWidth - 150;
                         maxWidth = 150;
                     }
-                    this.setState({ cellTooltips: { left, top, maxWidth, maxHeight, content: node } });
+                    this.setState({ cellTooltips: { left, top, maxWidth, maxHeight, content: node, cellKey: cell.key } });
                 }
             }
         }
@@ -369,6 +384,10 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             this.beforeRender();
             return (this.state.codeContext != null && this.state.error == null) ? React.createElement("div", { style: { width: '100%', overflowX: 'auto', position: 'relative' }, ref: this.rref.container },
                 (0, jsutils2_1.FlattenArraySync)(this.state.list.map((v, index1) => {
+                    let cellCssStyle = {};
+                    if (this.state.lastFocusCellKey === v.key) {
+                        cellCssStyle.zIndex = 100;
+                    }
                     let r = [React.createElement(CodeCell, { ref: v.ref, key: v.key, codeContext: this.state.codeContext, customBtns: [
                                 { label: 'New', cb: () => this.newCell(v.key) },
                                 { label: 'Del', cb: () => this.deleteCell(v.key) }
@@ -380,7 +399,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                                 if (focusin) {
                                     this.setState({ lastFocusCellKey: v.key });
                                 }
-                            }, onTooltips: (node) => this.onCellTooltips(node, v), ...this.props.cellProps })];
+                            }, onTooltips: (node) => this.onCellTooltips(node, v), divStyle: cellCssStyle, ...this.props.cellProps })];
                     if (v.key in this.state.consoleOutput) {
                         r.push(React.createElement("div", { style: { wordBreak: 'break-all' }, dangerouslySetInnerHTML: { __html: (0, utils_1.text2html)(this.state.consoleOutput[v.key].content) } }));
                     }
@@ -393,51 +412,41 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                     React.createElement("a", { href: "javascript:;", onClick: () => this.resetState() }, "Reset"));
         }
         componentDidUpdate() {
-            if (this.priv__initCellValue !== null && this.state.codeContext != null) {
-                this.priv__initCellValue.forEach((val, index) => {
+            if (this.__initCellValue !== null && this.state.codeContext != null) {
+                this.__initCellValue.forEach((val, index) => {
                     this.state.list[index].ref.current.setCellInput(val.input);
                     val.output[0] = (0, Inspector_1.fromSerializableObject)(val.output[0], { fetcher: new Inspector_1.CodeContextRemoteObjectFetcher(this.state.codeContext), accessPath: [val.output[1] ?? ''] });
                     this.state.list[index].ref.current.setCellOutput(...val.output);
                 });
-                this.priv__initCellValue = null;
+                this.__initCellValue = null;
             }
         }
         saveTo() {
-            let saved = {
-                cellList: this.state.list.map((cell, index) => ({
-                    cellInput: cell.ref.current.getCellInput(),
-                    cellOutput: cell.ref.current.getCellOutput(),
-                    key: cell.key
-                })),
-                consoleOutput: this.state.consoleOutput
-            };
-            return JSON.stringify((0, Inspector_1.toSerializableObject)(saved, {}));
-        }
-        async validLoadFromData(data) {
-            let loaded = JSON.parse((0, Inspector_1.fromSerializableObject)(data, {}));
-            for (let t1 of loaded.cellList) {
-                (0, base_1.assert)(typeof (t1.cellInput) === 'string');
-                (0, base_1.assert)(t1.cellOutput.length == 2);
-                (0, base_1.assert)(typeof (t1.cellOutput[1]) === 'string' || t1.cellOutput[1] === null);
-                (0, base_1.assert)(typeof (t1.key) === 'string');
-            }
-            return loaded;
+            let cellData = new Inspector_1.CodeCellListData();
+            cellData.cellList = this.state.list.map((cell, index) => ({
+                cellInput: cell.ref.current.getCellInput(),
+                cellOutput: cell.ref.current.getCellOutput(),
+                key: cell.key
+            }));
+            cellData.consoleOutput = this.state.consoleOutput;
+            return cellData.saveTo();
         }
         async loadFrom(data) {
             try {
-                let loaded = await this.validLoadFromData(data);
-                let cellList = loaded.cellList;
-                while (this.state.list.length < cellList.length) {
+                let cellData = new Inspector_1.CodeCellListData();
+                cellData.loadFrom(data);
+                ;
+                while (this.state.list.length < cellData.cellList.length) {
                     this.state.list.push({ ref: new domui_1.ReactRefEx(), key: (0, base_1.GenerateRandomString)() });
                 }
                 let consoleOutput = {};
-                for (let k1 in loaded.consoleOutput) {
-                    let index = cellList.findIndex(v => v.key === k1);
+                for (let k1 in cellData.consoleOutput) {
+                    let index = cellData.cellList.findIndex(v => v.key === k1);
                     if (index >= 0) {
-                        consoleOutput[this.state.list[index].key] = loaded.consoleOutput[k1];
+                        consoleOutput[this.state.list[index].key] = cellData.consoleOutput[k1];
                     }
                 }
-                this.priv__initCellValue = cellList.map(v => ({ input: v.cellInput, output: v.cellOutput }));
+                this.__initCellValue = cellData.cellList.map(v => ({ input: v.cellInput, output: v.cellOutput }));
                 this.setState({ consoleOutput });
                 this.forceUpdate();
             }

@@ -169,7 +169,7 @@ define(["require", "exports", "partic2/pxprpcClient/registry", "./rpcregistry"],
     async function ensureDefaultInvoker() {
         if (exports.defaultInvoker == null) {
             exports.defaultInvoker = new Invoker();
-            exports.defaultInvoker.useClient(await (0, rpcregistry_1.getRpc4XplatjJavaServer)());
+            exports.defaultInvoker.useClient(await (0, rpcregistry_1.getRpc4RuntimeBridgeJava0)());
         }
     }
 });

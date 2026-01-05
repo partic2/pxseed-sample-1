@@ -1,7 +1,7 @@
-define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./Inspector", "partic2/pxprpcClient/registry", "./pxseedLoader", "./jsutils2"], function (require, exports, acorn_walk_1, acorn, base_1, jsutils1, Inspector_1, registry_1, pxseedLoader_1, jsutils2_1) {
+define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./Inspector", "./pxseedLoader", "./jsutils2"], function (require, exports, acorn_walk_1, acorn, base_1, jsutils1, Inspector_1, pxseedLoader_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.registry = exports.jsExecLib = exports.LocalRunCodeContext = exports.CodeContextEvent = exports.CodeContextEventTarget = exports.TaskLocalEnv = void 0;
+    exports.jsExecLib = exports.LocalRunCodeContext = exports.CodeContextEvent = exports.CodeContextEventTarget = exports.TaskLocalEnv = void 0;
     exports.enableDebugger = enableDebugger;
     acorn.defaultOptions.allowAwaitOutsideFunction = true;
     acorn.defaultOptions.ecmaVersion = 'latest';
@@ -11,9 +11,22 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
     exports.TaskLocalEnv = new jsutils2_1.TaskLocalRef({ __noenv: true });
     (0, pxseedLoader_1.setupAsyncHook)();
     class CodeContextEventTarget extends EventTarget {
+        constructor() {
+            super(...arguments);
+            //Used by RemoteCodeContext, to delegate event. 
+            this._cachedEventQueue = new jsutils1.ArrayWrap2();
+            this._eventQueueExpiredTime = 1000;
+        }
         dispatchEvent(event) {
-            this.onAnyEvent?.(event);
+            this._cachedEventQueue.queueSignalPush({ time: jsutils1.GetCurrentTime().getTime(), event });
+            setTimeout(() => this._cachedEventQueue.arr().shift(), this._eventQueueExpiredTime);
             return super.dispatchEvent(event);
+        }
+        addEventListener(type, callback, options) {
+            super.addEventListener(type, callback, options);
+        }
+        removeEventListener(type, callback, options) {
+            super.removeEventListener(type, callback);
         }
     }
     exports.CodeContextEventTarget = CodeContextEventTarget;
@@ -30,38 +43,6 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
         }
     }
     exports.CodeContextEvent = CodeContextEvent;
-    let FuncCallEventType = jsutils1.GenerateRandomString();
-    class FuncCallEvent extends Event {
-        constructor() {
-            super(...arguments);
-            this.originalFunction = null;
-            this.argv = [];
-        }
-    }
-    class CFuncCallProbe extends EventTarget {
-        constructor(originalFunction) {
-            super();
-            this.originalFunction = originalFunction;
-        }
-        hooked() {
-            let that = this;
-            return function (...argv) {
-                let e = new FuncCallEvent(FuncCallEventType);
-                e.argv = argv;
-                e.originalFunction = that.originalFunction;
-                e.probe = that;
-                try {
-                    that.dispatchEvent(e);
-                }
-                catch (err) {
-                    //Mute any error, to avoid recursive call.
-                }
-                ;
-                return that.originalFunction.apply(this, argv);
-            };
-        }
-    }
-    let CodeContextProp = Symbol('CodeContextProp');
     async function enableDebugger() {
         try {
             if (globalThis?.process?.versions?.node != undefined) {
@@ -70,29 +51,6 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
         }
         catch (err) { }
         ;
-    }
-    function ensureFunctionProbe(o, p) {
-        let func = o[p];
-        let p2;
-        if (CodeContextProp in func) {
-            p2 = func[CodeContextProp];
-            if (p2.funcCallProbe == undefined) {
-                p2.funcCallProbe = new CFuncCallProbe(func);
-                p2.funcCallProbe.name = p.toString();
-                o[p] = p2.funcCallProbe.hooked();
-                o[p][CodeContextProp] = p2;
-            }
-        }
-        else {
-            p2 = {
-                funcCallProbe: new CFuncCallProbe(func)
-            };
-            p2.funcCallProbe.name = p.toString();
-            func[CodeContextProp] = p2;
-            o[p] = p2.funcCallProbe.hooked();
-            o[p][CodeContextProp] = p2;
-        }
-        return p2.funcCallProbe;
     }
     class LocalRunCodeContext {
         constructor() {
@@ -104,25 +62,28 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                 //this CodeContext
                 __priv_codeContext: undefined,
                 //import implemention
-                __priv_import: async function (module) {
-                    let imp = this.__priv_codeContext.importHandler(module);
+                __priv_import: (module) => {
+                    let imp = this.importHandler(module);
                     return imp;
                 },
                 //some utils provide by codeContext
                 __priv_jsExecLib: exports.jsExecLib,
                 //custom source processor for 'runCode' _ENV.__priv_processSource, run before builtin processor.
                 __priv_processSource: [],
-                servePipe: this.servePipe.bind(this),
                 event: this.event,
+                CodeContextEvent,
+                Task: jsutils1.Task,
+                TaskLocalRef: jsutils2_1.TaskLocalRef,
+                TaskLocalEnv: exports.TaskLocalEnv,
                 //Will be close when LocalRunCodeContext is closing.
                 autoClosable: {},
-                enableDebugger
+                close: () => {
+                    this.close();
+                }
             };
-            this.onConsoleLogListener = (e) => {
-                let e2 = e;
-                let name = e2.probe?.name ?? '';
+            this.onConsoleLogListener = (level, argv) => {
                 let outputTexts = [];
-                for (let t1 of e2.argv) {
+                for (let t1 of argv) {
                     if (typeof t1 == 'object') {
                         outputTexts.push(JSON.stringify((0, Inspector_1.toSerializableObject)(t1, {})));
                     }
@@ -132,21 +93,16 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                 }
                 let evt = new CodeContextEvent('console.data', {
                     data: {
-                        level: name,
+                        level,
                         message: outputTexts.join(' ')
                     }
                 });
                 this.event.dispatchEvent(evt);
             };
-            this.servingPipe = new Map();
             this.completionHandlers = [
                 ...Inspector_1.defaultCompletionHandlers
             ];
-            ensureFunctionProbe(console, 'log').addEventListener(FuncCallEventType, this.onConsoleLogListener);
-            ensureFunctionProbe(console, 'debug').addEventListener(FuncCallEventType, this.onConsoleLogListener);
-            ensureFunctionProbe(console, 'info').addEventListener(FuncCallEventType, this.onConsoleLogListener);
-            ensureFunctionProbe(console, 'warn').addEventListener(FuncCallEventType, this.onConsoleLogListener);
-            ensureFunctionProbe(console, 'error').addEventListener(FuncCallEventType, this.onConsoleLogListener);
+            jsutils2_1.OnConsoleData.add(this.onConsoleLogListener);
             this.localScope.__priv_codeContext = this;
             this.localScope._ENV = this.localScope;
             this.localScope.console = { ...console };
@@ -166,30 +122,8 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                 }
             });
         }
-        async connectPipe(name) {
-            let pipe1 = this.servingPipe.get(name);
-            if (pipe1 == null) {
-                return null;
-            }
-            else {
-                this.servingPipe.delete(name);
-                return pipe1[0];
-            }
-        }
-        async servePipe(name) {
-            let pipe1 = (0, registry_1.createIoPipe)();
-            this.servingPipe.set(name, pipe1);
-            return pipe1[1];
-        }
-        async queryTooltip(code, caret) {
-            return '';
-        }
         close() {
-            ensureFunctionProbe(console, 'log').removeEventListener(FuncCallEventType, this.onConsoleLogListener);
-            ensureFunctionProbe(console, 'debug').removeEventListener(FuncCallEventType, this.onConsoleLogListener);
-            ensureFunctionProbe(console, 'info').removeEventListener(FuncCallEventType, this.onConsoleLogListener);
-            ensureFunctionProbe(console, 'warn').removeEventListener(FuncCallEventType, this.onConsoleLogListener);
-            ensureFunctionProbe(console, 'error').removeEventListener(FuncCallEventType, this.onConsoleLogListener);
+            jsutils2_1.OnConsoleData.delete(this.onConsoleLogListener);
             this.event.dispatchEvent(new CodeContextEvent('close'));
             for (let [k1, v1] of Object.entries(this.localScope.autoClosable)) {
                 if (v1.close != undefined) {
@@ -250,7 +184,7 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                     foundDecl.push(...declNames);
                     let declaratorStart = node.declarations[0].start;
                     let declaratorEnd = node.declarations.at(-1).end;
-                    replacePlan.plan.push({ start: node.start, end: declaratorStart, newString: '(' });
+                    replacePlan.plan.push({ start: node.start, end: declaratorStart, newString: ';(' });
                     replacePlan.plan.push({ start: declaratorEnd, end: declaratorEnd, newString: ')' });
                 },
                 FunctionDeclaration(node, state, ancestors) {
@@ -376,6 +310,7 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
     exports.LocalRunCodeContext = LocalRunCodeContext;
     exports.jsExecLib = {
         jsutils1, LocalRunCodeContext, toSerializableObject: Inspector_1.toSerializableObject, fromSerializableObject: Inspector_1.fromSerializableObject, importModule: (name) => new Promise((resolve_2, reject_2) => { require([name], resolve_2, reject_2); }),
+        enableDebugger,
         iteratorNext: async (iterator, count) => {
             let arr = [];
             for (let t1 = 0; t1 < count; t1++) {
@@ -385,36 +320,6 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                 arr.push(itr.value);
             }
             return arr;
-        }
-    };
-    exports.registry = {
-        contexts: {},
-        set(name, context) {
-            if (context == null) {
-                delete this.contexts[name];
-            }
-            else {
-                this.contexts[name] = context;
-            }
-            this.__change.setResult(null);
-        },
-        get(name) {
-            return this.contexts[name] ?? null;
-        },
-        list() {
-            let t1 = [];
-            for (let t2 in this.contexts) {
-                t1.push(t2);
-            }
-            return t1;
-        },
-        __change: new jsutils1.future(),
-        async waitChange() {
-            let fut = this.__change;
-            await fut.get();
-            if (fut == this.__change) {
-                this.__change = new jsutils1.future();
-            }
         }
     };
 });
