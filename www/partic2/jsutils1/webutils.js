@@ -1,13 +1,10 @@
 define(["require", "exports", "./base"], function (require, exports, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.globalInputState = exports.GlobalInputStateTracer = exports.lifecycle = exports.path = exports.defaultHttpClient = exports.HttpClient = exports.DynamicPageCSSManager = exports.CDynamicPageCSSManager = exports.CKeyValueDb = exports.config = exports.__name__ = void 0;
-    exports.DomStringListToArray = DomStringListToArray;
-    exports.ConvertFormDataToObject = ConvertFormDataToObject;
+    exports.globalInputState = exports.GlobalInputStateTracer = exports.lifecycle = exports.path = exports.defaultHttpClient = exports.HttpClient = exports.WebWorkerThread = exports.FunctionCallOverMessagePort = exports.WorkerThreadMessageMark = exports.DynamicPageCSSManager = exports.CDynamicPageCSSManager = exports.CKeyValueDb = exports.config = exports.__name__ = void 0;
     exports.GetUrlQueryVariable = GetUrlQueryVariable;
     exports.GetUrlQueryVariable2 = GetUrlQueryVariable2;
     exports.AddUrlQueryVariable = AddUrlQueryVariable;
-    exports.GetFullPathFromRelativePath = GetFullPathFromRelativePath;
     exports.RequestDownload = RequestDownload;
     exports.selectFile = selectFile;
     exports.AddStyleSheetNode = AddStyleSheetNode;
@@ -19,10 +16,11 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     exports.SavePersistentConfig = SavePersistentConfig;
     exports.CreateWorkerThread = CreateWorkerThread;
     exports.setWorkerThreadImplementation = setWorkerThreadImplementation;
-    exports.webFetch = webFetch;
+    exports.setDefaultHttpClient = setDefaultHttpClient;
     exports.GetJsEntry = GetJsEntry;
     exports.BuildUrlFromJsEntryModule = BuildUrlFromJsEntryModule;
     exports.getWWWRoot = getWWWRoot;
+    exports.setResourceManagerImpl = setResourceManagerImpl;
     exports.getResourceManager = getResourceManager;
     exports.useDeviceWidth = useDeviceWidth;
     exports.useCssFile = useCssFile;
@@ -135,7 +133,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             });
         }
         //do NOT use AsyncIterator. indexedDb will close cursor automatically if no further request in one TICK.
-        getAllKeys(onKey, onErr) {
+        async getAllKeys(onKey, onErr) {
             var trans = this.db.beginTranscation();
             var store = trans.objectStore('KeyValueMap');
             var req = store.openKeyCursor();
@@ -173,7 +171,8 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         }
     }
     class CKeyValueDb {
-        async use(impl) {
+        constructor(dbName, impl) {
+            this.dbName = dbName;
             this.impl = impl;
         }
         //NOTE: only number,string,boolean,Uint8Array,Int8Array,ArrayBuffer,Array or Object with only above member are promised can store as value.
@@ -190,12 +189,8 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             return this.impl.delete(key);
         }
         close() {
+            delete kvdbmap[this.dbName];
             return this.impl.close();
-        }
-        async useIndexedDb(dbName) {
-            let impl = new IndexedDbAdapter4Kvdb();
-            await impl.init(dbName);
-            await this.use(impl);
         }
         async getAllKeysArray() {
             let keys = [];
@@ -208,7 +203,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
                         resolve(keys);
                     }
                     return {};
-                });
+                }, (err) => reject(err));
             });
         }
         async *getAllItems() {
@@ -218,13 +213,6 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         }
     }
     exports.CKeyValueDb = CKeyValueDb;
-    function ConvertFormDataToObject(data) {
-        var r = {};
-        data.forEach((val, key, parent) => {
-            r[key] = val;
-        });
-        return r;
-    }
     function GetUrlQueryVariable(name) {
         return GetUrlQueryVariable2(location.toString(), name);
     }
@@ -258,22 +246,19 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         }
         return url;
     }
-    function GetFullPathFromRelativePath(relPath) {
-        var dir = location.pathname.substring(location.pathname.lastIndexOf('/'));
-        return dir + relPath;
-    }
-    var priv__CachedDownloadLink = null;
     function RequestDownload(buff, fileName) {
-        if (priv__CachedDownloadLink == null) {
-            priv__CachedDownloadLink = document.createElement('a');
-            priv__CachedDownloadLink.style.display = 'none';
-            document.body.appendChild(priv__CachedDownloadLink);
-        }
-        priv__CachedDownloadLink.setAttribute('download', fileName);
+        let downloadAnchor = document.createElement('a');
+        downloadAnchor.style.display = 'none';
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.setAttribute('download', fileName);
         let url = URL.createObjectURL(new Blob([buff]));
-        priv__CachedDownloadLink.href = url;
-        priv__CachedDownloadLink.click();
-        (async () => { await (0, base_1.sleep)(5000, null); URL.revokeObjectURL(url); });
+        downloadAnchor.href = url;
+        downloadAnchor.click();
+        (async () => {
+            await (0, base_1.sleep)(5000, null);
+            URL.revokeObjectURL(url);
+            document.body.removeChild(downloadAnchor);
+        })();
     }
     async function selectFile() {
         let fileInput = document.createElement('input');
@@ -342,13 +327,12 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     var kvdbmap = {};
     var kvdbinitmutex = new base_1.mutex();
     var kvStoreBackend = async (dbname) => {
-        let db = new CKeyValueDb();
-        await db.useIndexedDb(dbname);
-        return db.impl;
+        let impl = new IndexedDbAdapter4Kvdb();
+        await impl.init(dbname);
+        return impl;
     };
     async function kvStore(dbname) {
-        await kvdbinitmutex.lock();
-        try {
+        return kvdbinitmutex.exec(async () => {
             if (dbname == undefined) {
                 dbname = exports.config.defaultStorePrefix + '/kv-1';
             }
@@ -368,14 +352,10 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             }
             if (!(dbname in kvdbmap)) {
                 let impl = await kvStoreBackend(dbname);
-                kvdbmap[dbname] = new CKeyValueDb();
-                await kvdbmap[dbname].use(impl);
+                kvdbmap[dbname] = new CKeyValueDb(dbname, impl);
             }
             return kvdbmap[dbname];
-        }
-        finally {
-            await kvdbinitmutex.unlock();
-        }
+        });
     }
     function setKvStoreBackend(backend) {
         kvStoreBackend = backend;
@@ -406,13 +386,17 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     var cachedPersistentConfig = {};
     async function GetPersistentConfig(modname) {
         if (cachedPersistentConfig[modname] == undefined) {
-            let kvs = await kvStore();
-            cachedPersistentConfig[modname] = await kvs.getItem(modname + '/config');
-        }
-        if (cachedPersistentConfig[modname] == undefined) {
             cachedPersistentConfig[modname] = {};
         }
-        return cachedPersistentConfig[modname];
+        let kvs = await kvStore();
+        let cfg = await kvs.getItem(modname + '/config');
+        let ccfg = cachedPersistentConfig[modname];
+        for (let t1 in ccfg) {
+            delete ccfg[t1];
+        }
+        ;
+        Object.assign(ccfg, cfg);
+        return ccfg;
     }
     async function SavePersistentConfig(modname) {
         if (cachedPersistentConfig[modname] != undefined) {
@@ -421,7 +405,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         }
     }
     //WorkerThread feature require a custom AMD loader https://github.com/partic2/partic2-iamdee
-    const WorkerThreadMessageMark = '__messageMark_WorkerThread';
+    exports.WorkerThreadMessageMark = '__messageMark_WorkerThread';
     /*workerentry.js MUST put into the same origin to access storage api on web ,
     Due to same-origin-policy. That mean, dataurl is unavailable.
     Worker can be override, So do NOT abort this module init(throw error).*/
@@ -433,86 +417,83 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         ;
         return '';
     }();
+    class FunctionCallOverMessagePort {
+        constructor(port) {
+            this.port = port;
+            this.callRequest = {};
+            this.onMessage = (msg) => {
+                if (typeof msg.data === 'object') {
+                    if (msg.data[exports.WorkerThreadMessageMark] === 'return') {
+                        let { id, res, err } = msg.data;
+                        if (this.callRequest[id] != undefined) {
+                            if (err != undefined) {
+                                this.callRequest[id].setException(err);
+                            }
+                            else {
+                                this.callRequest[id].setResult(res);
+                            }
+                            delete this.callRequest[id];
+                        }
+                    }
+                    else if (msg.data[exports.WorkerThreadMessageMark] === 'call') {
+                        let { id, module, func, args } = msg.data;
+                        new Promise((resolve_1, reject_1) => { require([module], resolve_1, reject_1); }).then((mod) => mod[func](...args, this)).then((res) => { (msg.source ?? this.port).postMessage({ [exports.WorkerThreadMessageMark]: 'return', id, res }); }, (err) => { (msg.source ?? this.port).postMessage({ [exports.WorkerThreadMessageMark]: 'return', id, err }); });
+                    }
+                }
+            };
+            this.port.addEventListener('message', this.onMessage);
+        }
+        ;
+        async call(module, func, args) {
+            let id = (0, base_1.GenerateRandomString)();
+            let fut = new base_1.future();
+            this.callRequest[id] = fut;
+            this.port.postMessage({ [exports.WorkerThreadMessageMark]: 'call', id, module, func, args });
+            return fut.get();
+        }
+    }
+    exports.FunctionCallOverMessagePort = FunctionCallOverMessagePort;
     class WebWorkerThread {
         constructor(workerId) {
             this.workerId = '';
             this.waitReady = new base_1.future();
-            this.processingScript = {};
+            this.onExit = new Set();
+            this._forwardLifecycle = (msg) => {
+                this.call('partic2/jsutils1/workerentry', 'dispatchWorkerLifecycle', [msg.type]);
+            };
             this.workerId = workerId ?? (0, base_1.GenerateRandomString)();
         }
         ;
+        async _createWorker() {
+            return new Worker(workerEntryUrl);
+        }
         async start() {
-            this.port = new Worker(workerEntryUrl);
-            this.port = this.port;
-            this.port.addEventListener('message', (msg) => {
-                if (typeof msg.data === 'object' && msg.data[WorkerThreadMessageMark]) {
-                    let { type, scriptId } = msg.data;
-                    switch (type) {
-                        case 'run':
-                            this.onHostRunScript(msg.data.script);
-                            break;
-                        case 'onScriptResolve':
-                            this.onScriptResult(msg.data.result, scriptId);
-                            break;
-                        case 'onScriptReject':
-                            this.onScriptReject(msg.data.reason, scriptId);
-                            break;
-                        case 'ready':
-                            this.waitReady.setResult(0);
-                            break;
+            this.port = await this._createWorker();
+            let cb = (msg) => {
+                if (typeof msg.data === 'object') {
+                    if (msg.data[exports.WorkerThreadMessageMark] === 'ready') {
+                        this.waitReady.setResult(0);
+                    }
+                    else if (msg.data[exports.WorkerThreadMessageMark] === 'closing') {
+                        this.onExit.forEach(cb => cb());
                     }
                 }
-            });
+            };
+            this.port.addEventListener('message', cb);
             await this.waitReady.get();
-            await this.runScript(`this.__workerId='${this.workerId}'`);
-            exports.lifecycle.addEventListener('pause', () => {
-                this.runScript(`require(['${exports.__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('pause'));
-            })`);
-            });
-            exports.lifecycle.addEventListener('resume', () => {
-                this.runScript(`require(['${exports.__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('resume'));
-            })`);
-            });
-            exports.lifecycle.addEventListener('exit', () => {
-                this.runScript(`require(['${exports.__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('exit'));
-            })`);
-            });
+            this.funcCall = new FunctionCallOverMessagePort(this.port);
+            await this.call('partic2/jsutils1/workerentry', 'setWorkerInfo', [this.workerId]);
+            exports.lifecycle.addEventListener('exit', this._forwardLifecycle);
+            this.onExit.add(() => exports.lifecycle.removeEventListener('exit', this._forwardLifecycle));
         }
-        onHostRunScript(script) {
-            (new Function('workerThread', script))(this);
-        }
-        async runScript(script, getResult) {
-            let scriptId = '';
-            if (getResult === true) {
-                scriptId = (0, base_1.GenerateRandomString)();
-                this.processingScript[scriptId] = new base_1.future();
-            }
-            this.port?.postMessage({ [WorkerThreadMessageMark]: true, type: 'run', script, scriptId });
-            if (getResult === true) {
-                return await this.processingScript[scriptId].get();
-            }
-        }
-        onScriptResult(result, scriptId) {
-            if (scriptId !== undefined && scriptId in this.processingScript) {
-                let fut = this.processingScript[scriptId];
-                delete this.processingScript[scriptId];
-                fut.setResult(result);
-            }
-        }
-        onScriptReject(reason, scriptId) {
-            if (scriptId !== undefined && scriptId in this.processingScript) {
-                let fut = this.processingScript[scriptId];
-                delete this.processingScript[scriptId];
-                fut.setException(new Error(reason));
-            }
+        async call(module, funcName, args) {
+            return await this.funcCall.call(module, funcName, args);
         }
         requestExit() {
-            this.runScript('globalThis.close()');
+            this.call('partic2/jsutils1/workerentry', 'requestExit', []);
         }
     }
+    exports.WebWorkerThread = WebWorkerThread;
     var defaultWorkerThreadImpl = WebWorkerThread;
     function CreateWorkerThread(workerId) {
         return new defaultWorkerThreadImpl(workerId);
@@ -544,12 +525,13 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     }
     exports.HttpClient = HttpClient;
     exports.defaultHttpClient = new HttpClient();
-    async function webFetch(url, init) {
-        return await exports.defaultHttpClient.fetch(url, init);
+    function setDefaultHttpClient(client) {
+        exports.defaultHttpClient = client;
     }
     function GetJsEntry() {
         return __pxseedInit._entry;
     }
+    //Mainly for http url process, So don't modify 'sep' on windows.
     exports.path = {
         sep: '/',
         join(...args) {
@@ -570,8 +552,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             return parts.join(this.sep);
         },
         dirname(PathLike) {
-            let delim = PathLike.lastIndexOf(this.sep);
-            return PathLike.substring(0, delim);
+            return this.join(PathLike, '..');
         }
     };
     function BuildUrlFromJsEntryModule(entryModule, urlarg) {
@@ -580,15 +561,40 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     function getWWWRoot() {
         return base_1.requirejs.getConfig().baseUrl;
     }
-    function getResourceManager(modNameOrLocalRequire) {
+    let getResourceManagerImpl = (modNameOrLocalRequire) => {
         if (typeof modNameOrLocalRequire === 'function') {
             modNameOrLocalRequire = base_1.requirejs.getLocalRequireModule(modNameOrLocalRequire);
         }
         return {
             getUrl(path2) {
-                return exports.path.join(getWWWRoot(), modNameOrLocalRequire + '/..', path2);
+                let r = '';
+                if (path2.substring(0, 1) === '/') {
+                    r = exports.path.join(getWWWRoot(), path2.substring(1));
+                }
+                else {
+                    r = exports.path.join(getWWWRoot(), modNameOrLocalRequire, '..', path2);
+                }
+                if (r.startsWith('http')) {
+                    let urlArgs = base_1.requirejs.getConfig().urlArgs ?? '';
+                    if (urlArgs !== '') {
+                        r = r + '?' + urlArgs;
+                    }
+                }
+                return r;
+            },
+            async read(path2) {
+                let resp = await exports.defaultHttpClient.fetch(this.getUrl(path2));
+                (0, base_1.assert)(resp.ok, 'fetch failed with error HTTP error:' + resp.status + ' ' + resp.statusText);
+                (0, base_1.assert)(resp.body != null);
+                return resp.body;
             }
         };
+    };
+    function setResourceManagerImpl(impl) {
+        getResourceManagerImpl = impl;
+    }
+    function getResourceManager(modNameOrLocalRequire) {
+        return getResourceManagerImpl(modNameOrLocalRequire);
     }
     function useDeviceWidth() {
         let headmeta = document.createElement('meta');
@@ -603,13 +609,17 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         linkTag.href = cssUrl;
         document.head.appendChild(linkTag);
     }
+    let iconLinkTag = null;
     function usePageIcon(iconUrl, iconType) {
+        if (iconLinkTag != null) {
+            document.head.removeChild(iconLinkTag);
+        }
         iconType = iconType ?? 'image/x-icon';
-        let linkTag = document.createElement('link');
-        linkTag.rel = 'icon';
-        linkTag.type = iconType;
-        linkTag.href = iconUrl;
-        document.head.appendChild(linkTag);
+        iconLinkTag = document.createElement('link');
+        iconLinkTag.rel = 'icon';
+        iconLinkTag.type = iconType;
+        iconLinkTag.href = iconUrl;
+        document.head.appendChild(iconLinkTag);
     }
     class _LifecycleEventHandler extends EventTarget {
         addEventListener(type, callback, options) {
@@ -617,7 +627,7 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         }
     }
     exports.lifecycle = new _LifecycleEventHandler();
-    if ('document' in globalThis) {
+    if (globalThis.document != undefined) {
         globalThis.document.addEventListener('visibilitychange', (ev) => {
             if (document.hidden) {
                 exports.lifecycle.dispatchEvent(new Event('pause'));
@@ -636,11 +646,14 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             this.pressingKey = new Set();
             this.mouseState = { x: 0, y: 0, left: false, right: false, center: false };
             this.touchsPosition = new Array();
+            this.onStateChange = new Set();
             this.keyDownHandler = (ev) => {
                 this.pressingKey.add(ev.key);
+                this.onStateChange.forEach((cb) => cb());
             };
             this.keyUpHandler = (ev) => {
                 this.pressingKey.delete(ev.key);
+                this.onStateChange.forEach((cb) => cb());
             };
             this.mouseHandler = (ev) => {
                 this.mouseState.x = ev.clientX;
@@ -648,6 +661,8 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
                 this.mouseState.left = (ev.buttons & 1) != 0;
                 this.mouseState.right = (ev.buttons & 2) != 0;
                 this.mouseState.center = (ev.buttons & 3) != 0;
+                this.onStateChange.forEach((cb) => cb());
+                ;
             };
             this.touchHandler = (ev) => {
                 ev.touches.item(0);
@@ -656,11 +671,13 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
                     let t2 = ev.touches.item(t1);
                     this.touchsPosition.push({ x: t2.clientX, y: t2.clientY, id: t2.identifier });
                 }
+                this.onStateChange.forEach((cb) => cb());
             };
             this.enabled = false;
         }
         enable() {
-            if (!this.enabled) {
+            if (!this.enabled && globalThis.window != undefined) {
+                let { window } = globalThis;
                 this.enabled = true;
                 window.addEventListener('keydown', this.keyDownHandler);
                 window.addEventListener('keyup', this.keyUpHandler);

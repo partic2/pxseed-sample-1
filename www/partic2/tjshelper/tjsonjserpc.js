@@ -168,8 +168,7 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
         * @param mode File mode bits applied if the file is created. Defaults to `0o666`.
         */
         async function open(path, flags, mode) {
-            //not support yet
-            mode = 0;
+            mode = mode ?? 0o666;
             return new FileHandle(await jseio.open(path, flags, mode), path);
         }
         /**
@@ -204,8 +203,8 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
         * @param newPath Target path.
         * @param flags Specify the mode for copying the file.
         */
-        async function copyfile(path, newPath, flags) {
-            jseio.copyFile(path, newPath);
+        async function copyFile(path, newPath, flags) {
+            await jseio.copyFile(path, newPath);
         }
         /**
         * Open the directory at the given path in order to navigate its content.
@@ -436,7 +435,7 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
             }
         }
         let tjsi = {
-            realpath, unlink, rename, mkstemp, stat, open, rmdir, copyfile, mkdir, readdir, readFile, rm, spawn, homedir, platform,
+            realpath, unlink, rename, mkstemp, stat, open, rmdir, copyFile, mkdir, readdir, readFile, rm, spawn, homedir, platform,
             realPath: realpath,
             remove: rm,
             homeDir: dataDir,
@@ -456,8 +455,8 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
             }
             tjsObject = globalThis.tjs;
         }
-        let jseio = await (0, JseHelper__JseIo_1.getDefault)();
-        (0, base_1.copy)(await tjsFrom(jseio), tjsObject, 1);
+        await (0, JseHelper__JseIo_1.ensureDefaultInvoker)();
+        (0, base_1.copy)(await tjsFrom(JseHelper__JseIo_1.defaultInvoker), tjsObject, 1);
     }
 });
 //# sourceMappingURL=tjsonjserpc.js.map

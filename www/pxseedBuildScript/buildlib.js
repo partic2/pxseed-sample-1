@@ -12,38 +12,45 @@ define(["require", "exports", "./loaders", "./util"], function (require, exports
         lastSuccessBuildTime: 1,
         lastBuildError: [],
         currentBuildError: [],
-        subpackages: []
+        subpackages: [],
+        loadersData: {},
     };
     function makeDefaultStatus() {
-        return { ...PxseedStatusDefault, lastBuildError: [], currentBuildError: [], subpackages: [] };
+        return { ...PxseedStatusDefault, lastBuildError: [], currentBuildError: [], subpackages: [], loadersData: {} };
     }
     async function processDirectory(dir) {
         await loaders_1.inited;
+        let startTime = new Date().getTime();
         const { fs, path } = await (0, util_1.getNodeCompatApi)();
-        console.log(`enter ${dir}`);
+        util_1.console.info(`enter ${dir}`);
         let children = await fs.readdir(dir, { withFileTypes: true });
         let hasPxseedConfig = false;
         if (children.find(v => v.name == 'pxseed.config.json')) {
             hasPxseedConfig = true;
-            console.log('pxseed.config.json found');
+            util_1.console.info('pxseed.config.json found');
         }
         if (!hasPxseedConfig) {
             for (let child of children) {
                 if (child.isDirectory()) {
-                    await processDirectory(path.join(dir, child.name));
+                    try {
+                        await processDirectory(path.join(dir, child.name));
+                    }
+                    catch (err) {
+                        util_1.console.warn('recursive pxseed process failed.' + err.toString() + '\n' + err.stack);
+                    }
+                    ;
                 }
             }
         }
         else {
-            let pxseedConfig = await (0, util_1.readJson)(path.join(dir, 'pxseed.config.json'));
-            let pstat;
-            if (children.find(v => v.name == '.pxseed.status.json')) {
-                pstat = await (0, util_1.readJson)(path.join(dir, '.pxseed.status.json'));
-                pstat = { ...makeDefaultStatus(), ...pstat };
+            let pxseedConfig = await util_1.__internal__.readJson(path.join(dir, 'pxseed.config.json'));
+            let pstat = { ...makeDefaultStatus() };
+            try {
+                if (children.find(v => v.name == '.pxseed.status.json')) {
+                    Object.assign(pstat, await util_1.__internal__.readJson(path.join(dir, '.pxseed.status.json')));
+                }
             }
-            else {
-                pstat = { ...makeDefaultStatus() };
-            }
+            catch (err) { }
             let loaders = pxseedConfig.loaders;
             for (let loaderConfig of loaders) {
                 try {
@@ -86,17 +93,17 @@ define(["require", "exports", "./loaders", "./util"], function (require, exports
                 //Don't save ".subpackages" to file.
                 pstat.subpackages = [];
             }
-            pstat.lastBuildTime = new Date().getTime();
+            pstat.lastBuildTime = startTime;
             pstat.lastBuildError = pstat.currentBuildError;
             if (pstat.lastBuildError.length == 0) {
                 pstat.lastSuccessBuildTime = pstat.lastBuildTime;
             }
             else {
-                console.info('build failed.');
-                console.info(pstat.lastBuildError);
+                util_1.console.info('build failed.');
+                util_1.console.info(pstat.lastBuildError);
             }
             pstat.currentBuildError = [];
-            await (0, util_1.writeJson)(path.join(dir, '.pxseed.status.json'), pstat);
+            await util_1.__internal__.writeJson(path.join(dir, '.pxseed.status.json'), pstat);
         }
     }
     async function cleanBuildStatus(dir) {
@@ -108,6 +115,13 @@ define(["require", "exports", "./loaders", "./util"], function (require, exports
                 await cleanBuildStatus(path.join(dir, t1.name));
             }
             else if (t1.name == '.pxseed.status.json') {
+                try {
+                    let pstat = { ...makeDefaultStatus(), ...await util_1.__internal__.readJson(path.join(dir, t1.name)) };
+                    //How to clean unused file?
+                }
+                catch (err) {
+                    util_1.console.warn(err.toString(), err.stack);
+                }
                 await fs.rm(path.join(dir, t1.name));
             }
         }

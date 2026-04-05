@@ -1,9 +1,8 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "worker_threads", "partic2/jsutils1/webutils", "path"], function (require, exports, base_1, webutils_1, worker_threads_1, webutils_2, path_1) {
+define(["require", "exports", "partic2/jsutils1/webutils", "worker_threads", "path"], function (require, exports, webutils_1, worker_threads_1, path_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.MessagePortForNodeWorker = void 0;
     exports.setupImpl = setupImpl;
-    const WorkerThreadMessageMark = '__messageMark_WorkerThread';
     class NodeMessageEvent {
         constructor() {
             this.lastEventId = '';
@@ -70,85 +69,10 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
     }
     exports.MessagePortForNodeWorker = MessagePortForNodeWorker;
-    class NodeWorkerThread {
-        constructor(workerId) {
-            this.workerId = '';
-            this.waitReady = new base_1.future();
-            this.processingScript = {};
-            this.workerId = workerId ?? (0, base_1.GenerateRandomString)();
-        }
-        async start() {
-            //Program started with noderun.js
+    class NodeWorkerThread extends webutils_1.WebWorkerThread {
+        async _createWorker() {
             this.nodeWorker = new worker_threads_1.Worker(path_1.default.join((0, webutils_1.getWWWRoot)(), 'noderun.js'), { workerData: { entryModule: 'partic2/nodehelper/workerentry' } });
-            this.nodeWorker.on('message', (msgdata) => {
-                let msg = { data: msgdata };
-                if (typeof msg.data === 'object' && msg.data[WorkerThreadMessageMark]) {
-                    let { type, scriptId } = msg.data;
-                    switch (type) {
-                        case 'run':
-                            this.onHostRunScript(msg.data.script);
-                            break;
-                        case 'onScriptResolve':
-                            this.onScriptResult(msg.data.result, scriptId);
-                            break;
-                        case 'onScriptReject':
-                            this.onScriptReject(msg.data.reason, scriptId);
-                            break;
-                        case 'ready':
-                            this.waitReady.setResult(0);
-                            break;
-                    }
-                }
-            });
-            await this.waitReady.get();
-            await this.runScript(`global.__workerId='${this.workerId}'`);
-            webutils_1.lifecycle.addEventListener('pause', () => {
-                this.runScript(`require(['${webutils_2.__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('pause'));
-            })`);
-            });
-            webutils_1.lifecycle.addEventListener('resume', () => {
-                this.runScript(`require(['${webutils_2.__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('resume'));
-            })`);
-            });
-            webutils_1.lifecycle.addEventListener('exit', () => {
-                this.runScript(`require(['${webutils_2.__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('exit'));
-            })`);
-            });
-            this.port = new MessagePortForNodeWorker(this.nodeWorker);
-        }
-        onHostRunScript(script) {
-            (new Function('workerThread', script))(this);
-        }
-        async runScript(script, getResult) {
-            let scriptId = '';
-            if (getResult === true) {
-                scriptId = (0, base_1.GenerateRandomString)();
-                this.processingScript[scriptId] = new base_1.future();
-            }
-            this.nodeWorker?.postMessage({ [WorkerThreadMessageMark]: true, type: 'run', script, scriptId });
-            if (getResult === true) {
-                return await this.processingScript[scriptId].get();
-            }
-        }
-        onScriptResult(result, scriptId) {
-            if (scriptId !== undefined && scriptId in this.processingScript) {
-                let fut = this.processingScript[scriptId];
-                delete this.processingScript[scriptId];
-                fut.setResult(result);
-            }
-        }
-        onScriptReject(reason, scriptId) {
-            if (scriptId !== undefined && scriptId in this.processingScript) {
-                let fut = this.processingScript[scriptId];
-                delete this.processingScript[scriptId];
-                fut.setException(new Error(reason));
-            }
-        }
-        requestExit() {
-            this.runScript('globalThis.close()');
+            return new MessagePortForNodeWorker(this.nodeWorker);
         }
     }
     var implSetuped = false;

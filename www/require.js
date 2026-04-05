@@ -13,7 +13,7 @@
     };
     function panic(message) {
         if (!config1.IAMDEE_PRODUCTION_BUILD) {
-            throw Error(message);
+            throw Error('[IAMDEE ERROR]:' + message);
         }
     }
     var HTMLTagScriptLoader = /** @class */ (function () {
@@ -27,7 +27,7 @@
             el.async = true;
             el.src = url;
             el.onerror = function (err) {
-                done(new Error(err.toString()));
+                done(new Error('HTML script node load failed.'));
             };
             el.onload = function () {
                 done(null);
@@ -132,16 +132,9 @@
         if (!currentModule) {
             return panic("Trying to resolve non-existing module");
         }
-        if (currentModule.moduleState == 3 /* ModuleState.INITIALIZED */ ||
-            currentModule.moduleState == 4 /* ModuleState.ERROR */) {
+        if (currentModule.moduleState == 3 /* INITIALIZED */ ||
+            currentModule.moduleState == 4 /* ERROR */) {
             return panic("Can not double resolve module " + currentModule.moduleState);
-        }
-        // This makes sure script errors are reported
-        // to console and any custom onerror handlers
-        if (module.moduleState == 4 /* ModuleState.ERROR */) {
-            setTimeout(function () {
-                throw module.moduleError;
-            });
         }
         moduleMap[id] = module;
         currentModule.callbacks.map(function (cb) {
@@ -166,18 +159,18 @@
             loadModule(id, src, callback);
         }
         else {
-            if (module.moduleState == 3 /* ModuleState.INITIALIZED */ ||
-                module.moduleState == 4 /* ModuleState.ERROR */) {
+            if (module.moduleState == 3 /* INITIALIZED */ ||
+                module.moduleState == 4 /* ERROR */) {
                 callback(module);
             }
-            else if (module.moduleState == 1 /* ModuleState.NETWORK_LOADING */) {
+            else if (module.moduleState == 1 /* NETWORK_LOADING */) {
                 module.callbacks.push(callback);
             }
-            else if (module.moduleState == 0 /* ModuleState.DEFINED */) {
+            else if (module.moduleState == 0 /* DEFINED */) {
                 module.callbacks.push(callback);
                 module.forceInit();
             }
-            else if (module.moduleState == 2 /* ModuleState.WAITING_FOR_DEPENDENCIES */) {
+            else if (module.moduleState == 2 /* WAITING_FOR_DEPENDENCIES */) {
                 module.callbacks.push(callback);
             }
         }
@@ -202,8 +195,8 @@
         var require = function (moduleIdOrDependencyPathList, onSuccess, onError) {
             if (isModuleId(moduleIdOrDependencyPathList)) {
                 var module = moduleMap[moduleIdOrDependencyPathList];
-                if (!module || module.moduleState !== 3 /* ModuleState.INITIALIZED */) {
-                    throw Error("#3 " + moduleIdOrDependencyPathList);
+                if (!module || module.moduleState !== 3 /* INITIALIZED */) {
+                    throw Error("[IAMDEE ERROR]:dependecies not resolved yet. require module: " + moduleIdOrDependencyPathList);
                 }
                 return module.exports;
             }
@@ -213,7 +206,7 @@
                 var cjsModule = { exports: {} };
                 var module = moduleMap[moduleId];
                 if (module) {
-                    if (module.moduleState == 2 /* ModuleState.WAITING_FOR_DEPENDENCIES */) {
+                    if (module.moduleState == 2 /* WAITING_FOR_DEPENDENCIES */) {
                         cjsModule = module;
                     }
                     else {
@@ -221,15 +214,15 @@
                     }
                 }
                 moduleMap["require"] = {
-                    moduleState: 3 /* ModuleState.INITIALIZED */,
+                    moduleState: 3 /* INITIALIZED */,
                     exports: require
                 };
                 moduleMap["exports"] = {
-                    moduleState: 3 /* ModuleState.INITIALIZED */,
+                    moduleState: 3 /* INITIALIZED */,
                     exports: cjsModule.exports
                 };
                 moduleMap["module"] = {
-                    moduleState: 3 /* ModuleState.INITIALIZED */,
+                    moduleState: 3 /* INITIALIZED */,
                     exports: cjsModule
                 };
             }
@@ -242,12 +235,12 @@
                             if (!module) {
                                 return panic("Mismatch in reported and actually loaded modules");
                             }
-                            if (module.moduleState == 1 /* ModuleState.NETWORK_LOADING */ ||
-                                module.moduleState == 0 /* ModuleState.DEFINED */) {
+                            if (module.moduleState == 1 /* NETWORK_LOADING */ ||
+                                module.moduleState == 0 /* DEFINED */) {
                                 return panic("Unexpected module state when resolving dependencies");
                             }
-                            if (module.moduleState == 4 /* ModuleState.ERROR */) {
-                                throw Error("#4 " + id);
+                            if (module.moduleState == 4 /* ERROR */) {
+                                throw new Error('[IAMDEE ERROR]: resolve module failed. module:' + id + ', reason:' + module.moduleError.toString());
                             }
                             return module.exports;
                         });
@@ -277,7 +270,7 @@
             var r = {};
             for (var k in moduleMap) {
                 var mod = moduleMap[k];
-                if (mod.moduleState === 3 /* ModuleState.INITIALIZED */) {
+                if (mod.moduleState === 3 /* INITIALIZED */) {
                     r[k] = mod.exports;
                 }
             }
@@ -287,7 +280,7 @@
             var r = {};
             for (var k in moduleMap) {
                 var mod = moduleMap[k];
-                if (mod.moduleState === 4 /* ModuleState.ERROR */) {
+                if (mod.moduleState === 4 /* ERROR */) {
                     r[k] = { error: mod.moduleError };
                 }
             }
@@ -298,7 +291,7 @@
     }
     function loadModule(id, src, callback) {
         moduleMap[id] = {
-            moduleState: 1 /* ModuleState.NETWORK_LOADING */,
+            moduleState: 1 /* NETWORK_LOADING */,
             callbacks: [callback]
         };
         var nextLoader = 0;
@@ -309,9 +302,9 @@
                 nextLoader++;
                 loader.loadModule(id, src, function (err) {
                     if (err == null) {
-                        if (moduleMap[id].moduleState === 1 /* ModuleState.NETWORK_LOADING */) {
+                        if (moduleMap[id].moduleState === 1 /* NETWORK_LOADING */) {
                             resolveModule(id, {
-                                moduleState: 3 /* ModuleState.INITIALIZED */,
+                                moduleState: 3 /* INITIALIZED */,
                                 exports: undefined
                             });
                         }
@@ -324,8 +317,8 @@
             }
             else {
                 resolveModule(id, {
-                    moduleState: 4 /* ModuleState.ERROR */,
-                    moduleError: Error("#5 " + loaderError.map(function (v) { return v.toString(); }).join(','))
+                    moduleState: 4 /* ERROR */,
+                    moduleError: new Error("[IAMDEE ERROR]:Module not found." + loaderError.map(function (v) { return v.toString(); }).join(','))
                 });
             }
         }
@@ -341,11 +334,11 @@
         }
         var existingModule = moduleMap[id];
         var definedModule = {
-            moduleState: 0 /* ModuleState.DEFINED */,
+            moduleState: 0 /* DEFINED */,
             callbacks: [],
             forceInit: function () {
                 var waitingModule = {
-                    moduleState: 2 /* ModuleState.WAITING_FOR_DEPENDENCIES */,
+                    moduleState: 2 /* WAITING_FOR_DEPENDENCIES */,
                     callbacks: definedModule.callbacks,
                     exports: {}
                 };
@@ -361,12 +354,12 @@
                         : factory;
                     var exports = result === undefined ? waitingModule.exports : result;
                     resolveModule(id, {
-                        moduleState: 3 /* ModuleState.INITIALIZED */,
+                        moduleState: 3 /* INITIALIZED */,
                         exports: exports
                     });
                 }, function (error) {
                     resolveModule(id, {
-                        moduleState: 4 /* ModuleState.ERROR */,
+                        moduleState: 4 /* ERROR */,
                         moduleError: error
                     });
                 });
@@ -374,7 +367,7 @@
         };
         moduleMap[id] = definedModule;
         if (existingModule) {
-            if (existingModule.moduleState != 1 /* ModuleState.NETWORK_LOADING */) {
+            if (existingModule.moduleState != 1 /* NETWORK_LOADING */) {
                 return panic("Trying to define a module that is in a wrong state");
             }
             definedModule.callbacks = existingModule.callbacks;
@@ -396,7 +389,7 @@
                     break;
             }
             if (!expectedModuleId) {
-                throw Error("#1");
+                throw Error("[IAMDEE ERROR]:Module id is required.");
             }
             if (isAnonymousDefineWithDependencies(args)) {
                 doDefine(expectedModuleId, args[0], args[1]);

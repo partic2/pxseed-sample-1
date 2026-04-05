@@ -11,10 +11,10 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
         }
         pushHistory() {
             let currText = this.getPlainText();
-            if (currText == this.undoHistory.at(this.undoHistoryCurrent))
+            if (currText == this.undoHistory.at(this.undoHistoryCurrent)?.text)
                 return;
             if (this.undoHistoryCurrent >= this.undoHistory.length - 1) {
-                this.undoHistory.push(currText);
+                this.undoHistory.push({ text: currText, caret: this.getTextCaretOffset() });
                 if (this.undoHistory.length > 10) {
                     this.undoHistory.unshift();
                 }
@@ -22,7 +22,7 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             }
             else {
                 this.undoHistoryCurrent++;
-                this.undoHistory[this.undoHistoryCurrent] = currText;
+                this.undoHistory[this.undoHistoryCurrent] = { text: currText, caret: this.getTextCaretOffset() };
             }
         }
         textUndo() {
@@ -31,22 +31,26 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             }
             this.pushHistory();
             this.undoHistoryCurrent--;
-            let last = this.undoHistory[this.undoHistoryCurrent];
+            let last = this.undoHistory.at(this.undoHistoryCurrent);
             this.undoHistoryCurrent--;
-            this.setPlainText(last);
-            this.setTextCaretOffset('end');
+            this.setPlainText(last.text);
+            this.setTextCaretOffset(last.caret);
         }
         textRedo() {
             let currText = this.getPlainText();
             for (; this.undoHistoryCurrent + 1 < this.undoHistory.length; this.undoHistoryCurrent++) {
                 let last = this.undoHistory[this.undoHistoryCurrent + 1];
-                if (currText != last) {
-                    this.setPlainText(last);
+                if (currText != last.text) {
+                    this.setPlainText(last.text);
+                    this.setTextCaretOffset(last.caret);
                     break;
                 }
             }
         }
         onInputHandler(ev) {
+            this.props.divAttr?.onInput?.(ev);
+            if (ev.defaultPrevented)
+                return;
             let ch = ev.data;
             if (ev.inputType == 'insertParagraph' || (ev.inputType == 'insertText' && ch == null)) {
                 ch = '\n';
@@ -56,10 +60,15 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             }
             this.props.onInput?.(this, { char: ch, text: ev.dataTransfer?.getData('text/plain') ?? null, type: ev.inputType });
         }
-        onPasteHandler(text) {
+        onPasteHandler(ev) {
+            this.props.divAttr?.onPaste?.(ev);
+            if (ev.defaultPrevented)
+                return;
+            let text = ev.clipboardData.getData('text/plain');
             this.pushHistory();
             this.insertText(text);
-            this.rref.div1.current.addEventListener('click', () => { });
+            this.props.onInput?.(this, { char: null, text: text, type: 'paste' });
+            ev.preventDefault();
         }
         onKeyDownHandler(ev) {
             if (this.props.divAttr?.onKeyDown != undefined) {
@@ -68,7 +77,7 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             if (ev.defaultPrevented) {
                 return;
             }
-            if (ev.key.toLowerCase() == 'z' && ev.ctrlKey) {
+            if (ev.code == 'KeyZ' && ev.ctrlKey) {
                 ev.preventDefault();
                 if (ev.shiftKey) {
                     this.textRedo();
@@ -79,14 +88,14 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             }
         }
         render(props, state, context) {
-            return React.createElement("div", { contentEditable: true, ref: this.rref.div1, onInput: (ev) => this.onInputHandler(ev), style: { wordBreak: 'break-all', overflowWrap: 'word-break', ...this.props.divStyle }, className: (this.props.divClass ?? []).join(' '), onPaste: (ev) => { this.onPasteHandler(ev.clipboardData.getData('text/plain')); ev.preventDefault(); }, onBlur: (ev) => this.onBlurHandler(ev), onFocus: (ev) => this.onFocusHandler(ev), ...this.props.divAttr, onKeyDown: (ev) => this.onKeyDownHandler(ev) }, " ");
+            return React.createElement("div", { contentEditable: true, ref: this.rref.div1, style: { wordBreak: 'break-all', overflowWrap: 'word-break', whiteSpace: 'pre-wrap', position: 'relative', ...this.props.divStyle }, className: (this.props.divClass ?? []).join(' '), ...this.props.divAttr, onPaste: (ev) => { this.onPasteHandler(ev); }, onInput: (ev) => this.onInputHandler(ev), onBlur: (ev) => this.onBlurHandler(ev), onFocus: (ev) => this.onFocusHandler(ev), onKeyDown: (ev) => this.onKeyDownHandler(ev) });
         }
         insertText(text) {
             let { anchor, focus } = this.getTextCaretSelectedRange();
             let fullText = this.getPlainText();
             let min1 = Math.min(anchor, focus);
             let max1 = Math.max(anchor, focus);
-            this.rref.div1.current.innerHTML = (0, utils_1.text2html)(fullText.substring(0, min1) + text + fullText.substring(max1));
+            this.setPlainText(fullText.substring(0, min1) + text + fullText.substring(max1));
             this.setTextCaretOffset(min1 + text.length);
         }
         deleteText(count) {
@@ -97,18 +106,30 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             this.setTextCaretOffset(Math.max(0, offset - count));
         }
         onBlurHandler(ev) {
-            //save selection for execCommand
-            let sel = window.getSelection();
-            if (sel != null) {
-                this.savedSelection = (0, base_1.partial)(sel, ['anchorNode', 'anchorOffset', 'focusNode', 'focusOffset']);
-            }
             this.props.divAttr?.onBlur?.bind(ev.currentTarget)?.(ev.currentTarget);
             this.props?.onBlur?.(this);
         }
         onFocusHandler(ev) {
-            this.savedSelection = undefined;
             this.props.divAttr?.onFocus?.bind(ev.currentTarget)?.(ev.currentTarget);
             this.props.onFocus?.(this);
+        }
+        saveSelection() {
+            let sel = window.getSelection();
+            if (sel != null && this.rref.div1.current != null && this.rref.div1.current.contains(document.activeElement) &&
+                this.rref.div1.current.contains(sel.anchorNode) && this.rref.div1.current.contains(sel.focusNode)) {
+                this.savedSelection = (0, base_1.partial)(sel, ['anchorNode', 'anchorOffset', 'focusNode', 'focusOffset']);
+            }
+            else {
+                this.savedSelection = undefined;
+            }
+        }
+        restoreSelection() {
+            let sel = window.getSelection();
+            if (sel != null && this.savedSelection != undefined && this.rref.div1.current != null && this.rref.div1.current.contains(document.activeElement)) {
+                sel.setPosition(this.savedSelection.anchorNode, this.savedSelection.anchorOffset);
+                sel.collapse(this.savedSelection.focusNode, this.savedSelection.focusOffset);
+            }
+            this.savedSelection = undefined;
         }
         getHtml() {
             return this.rref.div1.current?.innerHTML;
@@ -124,7 +145,13 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             return (0, utils_1.docNode2text)(this.rref.div1.current).concat();
         }
         setPlainText(text) {
-            this.setHtml((0, utils_1.text2html)(text));
+            if (text == '') {
+                //firefox prefer this.
+                this.setHtml('');
+            }
+            else {
+                this.setHtml((0, utils_1.text2html)(text));
+            }
         }
         getTextCaretOffset() {
             let sel = document.getSelection();
@@ -144,6 +171,35 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
             let anchorPos = textParts.textOffsetFromNode(sel.anchorNode, sel.anchorOffset);
             return { anchor: anchorPos, focus: focusPos };
         }
+        getCoordinateByTextOffset(textOffset) {
+            let textParts = (0, utils_1.docNode2text)(this.rref.div1.current);
+            let pos1 = textParts.nodeFromTextOffset(textOffset);
+            if (pos1.node != null) {
+                let parentNode = pos1.node.parentNode;
+                if (parentNode == null) {
+                    return null;
+                }
+                if (pos1.node instanceof Text) {
+                    let fulltext = pos1.node.data;
+                    this.saveSelection();
+                    let textPart1 = document.createTextNode(fulltext.substring(0, pos1.offset));
+                    parentNode.insertBefore(textPart1, pos1.node);
+                    let markSpan = document.createElement('span');
+                    parentNode.insertBefore(markSpan, pos1.node);
+                    pos1.node.data = fulltext.substring(pos1.offset);
+                    let result = { top: markSpan.offsetTop, bottom: markSpan.offsetTop + markSpan.offsetHeight, left: markSpan.offsetLeft };
+                    parentNode.removeChild(markSpan);
+                    parentNode.removeChild(textPart1);
+                    pos1.node.data = fulltext;
+                    this.restoreSelection();
+                    return result;
+                }
+                else if (pos1.node instanceof HTMLElement) {
+                    return { top: pos1.node.offsetTop, bottom: pos1.node.offsetTop + pos1.node.offsetHeight, left: pos1.node.offsetLeft };
+                }
+            }
+            return null;
+        }
         setTextCaretOffset(offset) {
             let sel = window.getSelection();
             let textParts = (0, utils_1.docNode2text)(this.rref.div1.current);
@@ -151,7 +207,9 @@ define(["require", "exports", "partic2/jsutils1/base", "preact", "./utils", "./d
                 return;
             if (typeof offset === 'number') {
                 let pos = textParts.nodeFromTextOffset(offset);
-                sel.setPosition(pos.node, pos.offset);
+                if (pos.node != null) {
+                    sel.setPosition(pos.node, pos.offset);
+                }
             }
             else if (offset == 'start') {
                 let rng1 = new Range();

@@ -1,35 +1,42 @@
 define(["require", "exports", "./base", "./webutils"], function (require, exports, base_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.onfetchHandlers = exports.ServiceWorkerId = exports.serviceWorkerServeRoot = void 0;
+    exports.onfetchHandlers = exports.__internal__ = exports.proxyMessageEventTarget = exports.ServiceWorkerId = exports.serviceWorkerServeRoot = void 0;
+    exports.setWorkerInfo = setWorkerInfo;
+    exports.requestExit = requestExit;
     exports.cacheFetch = cacheFetch;
     exports.getDefaultCache = getDefaultCache;
     exports.loadServiceWorkerModule = loadServiceWorkerModule;
     const __name__ = 'partic2/jsutils1/serviceworker';
     exports.serviceWorkerServeRoot = (0, webutils_1.getWWWRoot)() + `/${__name__}/`;
     exports.ServiceWorkerId = 'service worker 1';
-    (function () {
-        const WorkerThreadMessageMark = '__messageMark_WorkerThread';
-        self.globalThis = self;
-        __pxseedInit.onmessage = function (msg) {
-            if (typeof msg.data === 'object' && msg.data[WorkerThreadMessageMark]) {
-                let type = msg.data.type;
-                let scriptId = msg.data.scriptId;
-                switch (type) {
-                    case 'run':
-                        new Function('resolve', 'reject', msg.data.script)((result) => {
-                            (msg.source ?? globalThis).postMessage({ [WorkerThreadMessageMark]: true, type: 'onScriptResolve', result, scriptId });
-                        }, (reason) => {
-                            (msg.source ?? globalThis).postMessage({ [WorkerThreadMessageMark]: true, type: 'onScriptRejecte', reason, scriptId });
-                        });
-                        break;
-                }
-            }
-        };
-        if ('postMessage' in globalThis) {
-            globalThis.postMessage({ [WorkerThreadMessageMark]: true, type: 'ready' });
+    exports.proxyMessageEventTarget = new EventTarget();
+    class MessageEventWithSource extends MessageEvent {
+        get source() {
+            return this._source;
         }
-    })();
+        constructor(type, eventInit) {
+            super(type, eventInit);
+        }
+    }
+    __pxseedInit.onmessage = function (msg) {
+        let ev = new MessageEventWithSource(msg.type, { data: msg.data });
+        ev._source = msg.source;
+        exports.proxyMessageEventTarget.dispatchEvent(ev);
+    };
+    let spawnerFunctionCall = new webutils_1.FunctionCallOverMessagePort({
+        postMessage: () => { },
+        addEventListener: exports.proxyMessageEventTarget.addEventListener.bind(exports.proxyMessageEventTarget),
+        removeEventListener: exports.proxyMessageEventTarget.addEventListener.bind(removeEventListener),
+    });
+    async function setWorkerInfo(id) {
+        globalThis.__workerId = id;
+        return id;
+    }
+    exports.__internal__ = { spawnerFunctionCall };
+    async function requestExit() {
+        globalThis.close();
+    }
     async function kvStoreOnFetch(dbName, varName, queryStat) {
         let db = await (0, webutils_1.kvStore)(dbName);
         let data = await db.getItem(varName);

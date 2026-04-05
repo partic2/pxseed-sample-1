@@ -12,6 +12,7 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
     exports.reloadServiceWorkerAndCache = reloadServiceWorkerAndCache;
     exports.getServiceWorkerStartupModule = getServiceWorkerStartupModule;
     exports.asyncInit = asyncInit;
+    exports.SimpleGETCacheReloadConfig = SimpleGETCacheReloadConfig;
     const __name__ = base_1.requirejs.getLocalRequireModule(require);
     /*workerentry.js MUST put into the same origin to access storage api on web ,
     Due to same-origin-policy. That mean, dataurl is unavailable.
@@ -31,7 +32,11 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
     class ServiceWorkerThread {
         constructor(workerId) {
             this.workerId = '';
-            this.processingScript = {};
+            this.waitReady = new base_1.future();
+            this.onExit = new Set();
+            this._forwardLifecycle = (msg) => {
+                this.call('partic2/jsutils1/workerentry', 'dispatchWorkerLifecycle', [msg.type]);
+            };
             this.workerId = workerId ?? (0, base_1.GenerateRandomString)();
         }
         ;
@@ -56,64 +61,27 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
                     serviceWorker.postMessage(data, opt);
                 }
             };
-            this.port.addEventListener('message', (msg) => {
-                if (typeof msg.data === 'object' && msg.data[WorkerThreadMessageMark]) {
-                    let { type, scriptId } = msg.data;
-                    switch (type) {
-                        case 'run':
-                            this.onHostRunScript(msg.data.script);
-                            break;
-                        case 'onScriptResolve':
-                            this.onScriptResult(msg.data.result, scriptId);
-                            break;
-                        case 'onScriptReject':
-                            this.onScriptReject(msg.data.reason, scriptId);
-                            break;
+            let cb = (msg) => {
+                if (typeof msg.data === 'object') {
+                    if (msg.data[WorkerThreadMessageMark] === 'closing') {
+                        this.onExit.forEach(cb => cb());
                     }
                 }
-            });
-            let workerReady = false;
-            for (let t1 = 0; t1 < 50 && !workerReady; t1++) {
-                await Promise.race([
-                    this.runScript(`resolve('ok')`, true).then(() => workerReady = true),
-                    (0, base_1.sleep)(200, 'pending')
-                ]);
+            };
+            this.port.addEventListener('message', cb);
+            this.funcCall = new webutils_1.FunctionCallOverMessagePort(this.port);
+            for (let t1 = 0; t1 < 50 && !this.waitReady.done; t1++) {
+                this.call('partic2/jsutils1/serviceworker', 'setWorkerInfo', [this.workerId]).then(() => this.waitReady.setResult(0));
+                await Promise.race([this.waitReady.get(), (0, base_1.sleep)(200)]);
             }
-            if (!workerReady) {
+            if (!this.waitReady.done)
                 throw new Error('Timeout waiting for service worker ready.');
-            }
-            await this.runScript(`this.__workerId='${this.workerId}'`);
         }
-        onHostRunScript(script) {
-            (new Function('workerThread', script))(this);
-        }
-        async runScript(script, getResult) {
-            let scriptId = '';
-            if (getResult === true) {
-                scriptId = (0, base_1.GenerateRandomString)();
-                this.processingScript[scriptId] = new base_1.future();
-            }
-            this.port?.postMessage({ [WorkerThreadMessageMark]: true, type: 'run', script, scriptId });
-            if (getResult === true) {
-                return await this.processingScript[scriptId].get();
-            }
-        }
-        onScriptResult(result, scriptId) {
-            if (scriptId !== undefined && scriptId in this.processingScript) {
-                let fut = this.processingScript[scriptId];
-                delete this.processingScript[scriptId];
-                fut.setResult(result);
-            }
-        }
-        onScriptReject(reason, scriptId) {
-            if (scriptId !== undefined && scriptId in this.processingScript) {
-                let fut = this.processingScript[scriptId];
-                delete this.processingScript[scriptId];
-                fut.setException(new Error(reason));
-            }
+        async call(module, funcName, args) {
+            return await this.funcCall.call(module, funcName, args);
         }
         requestExit() {
-            this.runScript('globalThis.close()');
+            this.call('partic2/jsutils1/serviceworker', 'requestExit', []);
         }
     }
     let serviceWorkerThread1;
@@ -159,9 +127,7 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
         startupModules.add(s);
         swconfig.startupModules = Array.from(startupModules);
         await (0, webutils_1.SavePersistentConfig)(serviceworkerName);
-        worker.runScript(`require(['${serviceworkerName}'],function(sw){
-        sw.loadServiceWorkerModule('${s}')
-    })`);
+        worker.call(serviceworkerName, 'loadServiceWorkerModule', [s]);
     }
     async function unregisterServiceWorkerStartupModule(s) {
         swconfig = await (0, webutils_1.GetPersistentConfig)(serviceworkerName);
@@ -287,9 +253,7 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
             }
             else {
                 let sw = await ensureServiceWorkerInstalled();
-                sw.runScript(`require(['${__name__}'],function(thismod){
-                thismod.SimpleGETCache.reloadConfig().then(resolve)
-            })`);
+                sw.call(__name__, 'SimpleGETCacheReloadConfig', []);
             }
         },
         //path is relative the wwwroot
@@ -317,5 +281,8 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
             await caches.delete(cacheName);
         }
     };
+    async function SimpleGETCacheReloadConfig() {
+        return await exports.SimpleGETCache.reloadConfig();
+    }
 });
 //# sourceMappingURL=webutilssw.js.map

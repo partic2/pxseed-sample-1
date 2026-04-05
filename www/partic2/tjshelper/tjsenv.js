@@ -1,105 +1,12 @@
 //import this module to Initialize pxseed environment on txiki.js platform.
-define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/CodeRunner/Inspector", "partic2/pxprpcClient/registry"], function (require, exports, base_1, base_2, webutils_1, Inspector_1, registry_1) {
+define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", "pxprpc/base", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/nodehelper/kvdb", "partic2/pxprpcBinding/utils"], function (require, exports, base_1, jsutils1base, base_2, base_3, webutils_1, kvdb_1, utils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.PxprpcRtbIo = exports.FsBasedKvDbV1 = void 0;
+    exports.__inited__ = exports.TjsTlsClient = exports.txikijsPxprpc = exports.PxprpcRtbIo = void 0;
     exports.setupImpl = setupImpl;
     var __name__ = base_1.requirejs.getLocalRequireModule(require);
     //txiki.js has bugly eventTarget, patch it before upstream fix it.
     Object.defineProperty(Event.prototype, 'target', { get: function () { return this.currentTarget; } });
-    async function writeFile(path, data) {
-        let fh = await tjs.open(path, 'w');
-        try {
-            await fh.write(data);
-        }
-        finally {
-            fh.close();
-        }
-    }
-    class FsBasedKvDbV1 {
-        constructor() {
-            this.baseDir = '';
-        }
-        async init(baseDir) {
-            this.baseDir = baseDir;
-            try {
-                let data = await tjs.readFile(baseDir + '/config.json');
-                this.config = { fileList: {}, ...JSON.parse(new TextDecoder().decode(data)) };
-            }
-            catch (e) {
-                this.config = { fileList: {} };
-                await writeFile(baseDir + '/config.json', new TextEncoder().encode('{}'));
-            }
-        }
-        async setItem(key, val) {
-            if (!(key in this.config.fileList)) {
-                this.config.fileList[key] = { fileName: (0, base_2.GenerateRandomString)(), type: 'json' };
-            }
-            let { fileName } = this.config.fileList[key];
-            if (val instanceof ArrayBuffer) {
-                this.config.fileList[key].type = 'ArrayBuffer';
-                await writeFile(`${this.baseDir}/${fileName}`, new Uint8Array(val));
-            }
-            else if (val instanceof Uint8Array) {
-                this.config.fileList[key].type = 'Uint8Array';
-                await writeFile(`${this.baseDir}/${fileName}`, val);
-            }
-            else if (val instanceof Int8Array) {
-                this.config.fileList[key].type = 'Int8Array';
-                await writeFile(`${this.baseDir}/${fileName}`, new Uint8Array(val.buffer, val.byteOffset, val.length));
-            }
-            else {
-                let data = JSON.stringify((0, Inspector_1.toSerializableObject)(val, { maxDepth: 0x7fffffff, enumerateMode: 'for in', maxKeyCount: 0x7fffffff }));
-                await writeFile(`${this.baseDir}/${fileName}`, new TextEncoder().encode(data));
-            }
-            await writeFile(this.baseDir + '/config.json', new TextEncoder().encode(JSON.stringify(this.config)));
-        }
-        async getItem(key) {
-            if (!(key in this.config.fileList)) {
-                return undefined;
-            }
-            let { fileName, type } = this.config.fileList[key];
-            try {
-                if (type === 'ArrayBuffer') {
-                    return (await tjs.readFile(`${this.baseDir}/${fileName}`)).buffer;
-                }
-                else if (type === 'Uint8Array') {
-                    return new Uint8Array((await tjs.readFile(`${this.baseDir}/${fileName}`)).buffer);
-                }
-                else if (type === 'Int8Array') {
-                    return new Int8Array((await tjs.readFile(`${this.baseDir}/${fileName}`)).buffer);
-                }
-                else if (type === 'json') {
-                    let data = await tjs.readFile(`${this.baseDir}/${fileName}`);
-                    let r = (0, Inspector_1.fromSerializableObject)(JSON.parse(new TextDecoder().decode(data)), {});
-                    return r;
-                }
-            }
-            catch (e) {
-                delete this.config.fileList[key];
-                return undefined;
-            }
-        }
-        getAllKeys(onKey, onErr) {
-            for (let file in this.config.fileList) {
-                let next = onKey(file);
-                if (next.stop === true) {
-                    break;
-                }
-            }
-            onKey(null);
-        }
-        async delete(key) {
-            let { fileName } = this.config.fileList[key];
-            await tjs.remove(this.baseDir + '/' + fileName);
-            delete this.config.fileList[key];
-            await writeFile(this.baseDir + '/config.json', new TextEncoder().encode(JSON.stringify(this.config)));
-        }
-        async close() {
-            await writeFile(this.baseDir + '/config.json', new TextEncoder().encode(JSON.stringify(this.config)));
-        }
-    }
-    exports.FsBasedKvDbV1 = FsBasedKvDbV1;
     let workerEntryUrl = function () {
         try {
             return (0, webutils_1.getWWWRoot)() + '/txikirun.js';
@@ -108,152 +15,145 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
         ;
         return '';
     }();
-    const WorkerThreadMessageMark = '__messageMark_WorkerThread';
-    class WebWorkerThread {
-        constructor(workerId) {
-            this.workerId = '';
-            this.waitReady = new base_1.future();
-            this.processingScript = {};
-            this.workerId = workerId ?? (0, base_2.GenerateRandomString)();
-        }
-        ;
-        async start() {
-            this.tjsWorker = new Worker(workerEntryUrl);
-            this.port = this.tjsWorker;
-            this.port.addEventListener('message', (msg) => {
-                if (typeof msg.data === 'object' && msg.data[WorkerThreadMessageMark]) {
-                    let { type, scriptId } = msg.data;
-                    switch (type) {
-                        case 'run':
-                            this.onHostRunScript(msg.data.script);
-                            break;
-                        case 'onScriptResolve':
-                            this.onScriptResult(msg.data.result, scriptId);
-                            break;
-                        case 'onScriptReject':
-                            this.onScriptReject(msg.data.reason, scriptId);
-                            break;
-                        case 'ready':
-                            this.waitReady.setResult(0);
-                            break;
-                    }
-                }
-            });
-            await this.waitReady.get();
-            await this.runScript(`this.__workerId='${this.workerId}'`);
-            webutils_1.lifecycle.addEventListener('pause', () => {
-                this.runScript(`require(['${__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('pause'));
-            })`);
-            });
-            webutils_1.lifecycle.addEventListener('resume', () => {
-                this.runScript(`require(['${__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('resume'));
-            })`);
-            });
-            webutils_1.lifecycle.addEventListener('exit', () => {
-                this.runScript(`require(['${__name__}'],function(webutils){
-                webutils.lifecycle.dispatchEvent(new Event('exit'));
-            })`);
-            });
-        }
-        onHostRunScript(script) {
-            (new Function('workerThread', script))(this);
-        }
-        async runScript(script, getResult) {
-            let scriptId = '';
-            if (getResult === true) {
-                scriptId = (0, base_2.GenerateRandomString)();
-                this.processingScript[scriptId] = new base_1.future();
-            }
-            this.port?.postMessage({ [WorkerThreadMessageMark]: true, type: 'run', script, scriptId });
-            if (getResult === true) {
-                return await this.processingScript[scriptId].get();
-            }
-        }
-        onScriptResult(result, scriptId) {
-            if (scriptId !== undefined && scriptId in this.processingScript) {
-                let fut = this.processingScript[scriptId];
-                delete this.processingScript[scriptId];
-                fut.setResult(result);
-            }
-        }
-        onScriptReject(reason, scriptId) {
-            if (scriptId !== undefined && scriptId in this.processingScript) {
-                let fut = this.processingScript[scriptId];
-                delete this.processingScript[scriptId];
-                fut.setException(new Error(reason));
-            }
-        }
-        requestExit() {
-            this.runScript('globalThis.close()');
+    class TjsDefaultWebWorkerThread extends webutils_1.WebWorkerThread {
+        async _createWorker() {
+            return new Worker(workerEntryUrl);
         }
     }
-    let cachePath = webutils_1.path.join((0, webutils_1.getWWWRoot)(), __name__, '..');
-    function setupImpl() {
-        (0, webutils_1.setKvStoreBackend)(async (dbname) => {
-            await tjs.makeDir(webutils_1.path.join(cachePath, 'data'), { recursive: true });
-            let dbMap = {};
-            let filename = (0, base_2.GenerateRandomString)();
-            try {
-                dbMap = JSON.parse(new TextDecoder().decode(await tjs.readFile(webutils_1.path.join(cachePath, 'data', 'meta-dbMap'))));
+    class CTxikijsPxprpcBinding {
+        //Safe to call multitimes.
+        async init() {
+            if (this.rpc == undefined) {
+                let { getRpc4RuntimeBridge0 } = await new Promise((resolve_1, reject_1) => { require(["partic2/pxprpcBinding/rpcregistry"], resolve_1, reject_1); });
+                this.rpc = await getRpc4RuntimeBridge0();
             }
-            catch (e) { }
-            ;
-            if (dbname in dbMap) {
-                filename = dbMap[dbname];
-            }
-            else {
-                dbMap[dbname] = filename;
-            }
-            await writeFile(webutils_1.path.join(cachePath, 'data', 'meta-dbMap'), new TextEncoder().encode(JSON.stringify(dbMap)));
-            let db = new FsBasedKvDbV1();
-            await tjs.makeDir(webutils_1.path.join(cachePath, 'data', filename), { recursive: true });
-            await db.init(webutils_1.path.join(cachePath, 'data', filename));
-            return db;
-        });
-        (0, webutils_1.setWorkerThreadImplementation)(WebWorkerThread);
-        if (globalThis.open == undefined) {
-            globalThis.open = (async (url, target) => {
-                let jscode = '';
-                if (url.startsWith('http://') || url.startsWith('https://')) {
-                    let resp = await fetch(url);
-                    if (resp.ok) {
-                        jscode = await resp.text();
+        }
+        async NewRuntime() {
+            let param = new base_2.Serializer().prepareSerializing(8);
+            param.putInt(0);
+            return await (await (0, utils_1.getRpcFunctionOn)(this.rpc, 'pxprpc_txikijs.NewRuntime', 'b->o')).call(param.build());
+        }
+        async RunJs(rt, jsCode) {
+            await (await (0, utils_1.getRpcFunctionOn)(this.rpc, 'pxprpc_txikijs.RunJs', 'os->')).call(rt, jsCode);
+        }
+    }
+    class PRtbWorkerMessagePort extends EventTarget {
+        constructor(wt) {
+            super();
+            this.wt = wt;
+        }
+        ;
+        postMessage(message) {
+            this.wt.conn.send([tjs.engine.serialize(message)]);
+        }
+    }
+    //Pxprpc runtime bridge based worker
+    class PRtbWorkerThread extends webutils_1.WebWorkerThread {
+        constructor() {
+            super(...arguments);
+            this.running = true;
+        }
+        static async serveAsWorkerParent() {
+            let rtb = await new Promise((resolve_2, reject_2) => { require(['partic2/pxprpcBinding/pxprpc_rtbridge'], resolve_2, reject_2); });
+            await rtb.ensureDefaultInvoker();
+            PRtbWorkerThread.pipeServer = await rtb.defaultInvoker.pipe_serve(PRtbWorkerThread.thisPipeServerId);
+            while (true) {
+                let newConn = await rtb.defaultInvoker.pipe_accept(PRtbWorkerThread.pipeServer);
+                let childWorkerId = new TextDecoder().decode(await rtb.defaultInvoker.io_receive(newConn));
+                let connIo = {
+                    conn: newConn,
+                    send: async function (data) {
+                        await rtb.defaultInvoker.io_send(this.conn, new Uint8Array((0, base_1.ArrayBufferConcat)(data)));
+                    },
+                    receive: async function () {
+                        return await rtb.defaultInvoker.io_receive(this.conn);
+                    },
+                    close: function () {
+                        this.conn.free().catch(() => { });
                     }
-                    else {
-                        throw new Error(await resp.text());
-                    }
-                }
-                else if (url.startsWith('file://')) {
-                    let path = url.substring(7);
-                    if (tjs.system.platform == 'windows') {
-                        path = path.substring(1);
-                    }
-                    jscode = new TextDecoder().decode(await tjs.readFile(path));
-                }
-                if (target == '_self') {
-                    new Function(jscode)();
+                };
+                let cb = this.childrenWorkerConnected[childWorkerId];
+                if (typeof cb === 'function') {
+                    cb(connIo);
                 }
                 else {
-                    if (target == '_blank' || target == undefined) {
-                        target = (0, base_2.GenerateRandomString)();
-                    }
-                    let worker = new registry_1.RpcWorker(target);
-                    let workerClient = await worker.ensureClient();
-                    let workerFuncs = await (0, registry_1.getAttachedRemoteRigstryFunction)(workerClient);
-                    await workerFuncs.jsExec(`new Function(${JSON.stringify(jscode)})();`, null);
+                    connIo.close();
                 }
-            });
+            }
         }
-        if (!registry_1.rpcWorkerInitModule.includes(__name__)) {
-            registry_1.rpcWorkerInitModule.push(__name__);
+        async _createWorker() {
+            if (PRtbWorkerThread.pipeServer === null) {
+                PRtbWorkerThread.serveAsWorkerParent();
+                await (0, base_1.WaitUntil)(() => PRtbWorkerThread.pipeServer !== null, 16, 2000);
+            }
+            await exports.txikijsPxprpc.init();
+            let rt1 = await exports.txikijsPxprpc.NewRuntime();
+            if (PRtbWorkerThread.childrenWorkerConnected[this.workerId] == undefined) {
+                let childConnected = new Promise((resolve) => {
+                    PRtbWorkerThread.childrenWorkerConnected[this.workerId] = resolve;
+                });
+                let jsCode = `(async ()=>{
+                globalThis.__workerId='${this.workerId}';
+                globalThis.__PRTBParentPipeServerId='${PRtbWorkerThread.thisPipeServerId}';
+                let {main}=await import(String.raw\`${(0, webutils_1.getWWWRoot)().replace(/\\/g, '/')}/txikirun.js\`);
+                main('partic2/tjshelper/workerentry')
+            })()`;
+                exports.txikijsPxprpc.RunJs(rt1, jsCode);
+                this.conn = await childConnected;
+                (async () => {
+                    while (this.running) {
+                        let msg = await this.conn.receive();
+                        let data = tjs.engine.deserialize(msg);
+                        this.port.dispatchEvent(new MessageEvent('message', { data }));
+                    }
+                })();
+                return new PRtbWorkerMessagePort(this);
+            }
+            else {
+                throw new Error('Worker with same name is created.');
+            }
         }
+    }
+    PRtbWorkerThread.thisPipeServerId = '/pxprpc/txikijs/worker/' + (0, base_3.GenerateRandomString)();
+    PRtbWorkerThread.pipeServer = null;
+    PRtbWorkerThread.childrenWorkerConnected = {};
+    async function setupImpl() {
+        (0, kvdb_1.setupImpl)();
+        if (globalThis.__pxprpc4tjs__ == undefined) {
+            (0, webutils_1.setWorkerThreadImplementation)(TjsDefaultWebWorkerThread);
+        }
+        else {
+            (0, webutils_1.setWorkerThreadImplementation)(PRtbWorkerThread);
+        }
+        if (globalThis.close == undefined) {
+            globalThis.close = () => {
+                globalThis[Symbol.for('tjs.internal.core')]?.tjsClose?.();
+            };
+        }
+        if (tjs.engine.bufferToBase64 != undefined) {
+            jsutils1base.ArrayBufferToBase64 = function (buffer) {
+                let bytes;
+                if (buffer instanceof ArrayBuffer) {
+                    bytes = new Uint8Array(buffer);
+                }
+                else {
+                    bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+                }
+                return new TextDecoder().decode(tjs.engine.bufferToBase64(bytes));
+            };
+            jsutils1base.Base64ToArrayBuffer = function (base64) {
+                let b64buf = new TextEncoder().encode(base64);
+                return tjs.engine.base64ToBuffer(b64buf).buffer;
+            };
+        }
+        let { polyfill } = await new Promise((resolve_3, reject_3) => { require(['partic2/tjshelper/tjsutil'], resolve_3, reject_3); });
+        globalThis.fetch = polyfill.fetch;
+        globalThis.WebSocket = polyfill.WebSocket;
     }
     class PxprpcRtbIo {
         static async connect(pipeServer) {
             let conn = __pxprpc4tjs__.pipeConnect(pipeServer);
-            if (conn == BigInt(0)) {
+            if (conn === 0n) {
                 return null;
             }
             else {
@@ -265,6 +165,8 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
         }
         ;
         receive() {
+            if (this.pipeAddr === 0n)
+                throw new Error('Not connected');
             return new Promise((resolve, reject) => {
                 __pxprpc4tjs__.ioReceive(this.pipeAddr, (buf) => {
                     if (typeof buf === 'string') {
@@ -278,6 +180,8 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
         }
         async send(data) {
             let res;
+            if (this.pipeAddr === 0n)
+                throw new Error('Not connected');
             if (data.length == 1 && data[0].byteOffset == 0 && data[0].length == data[0].buffer.byteLength) {
                 res = __pxprpc4tjs__.ioSend(this.pipeAddr, data[0].buffer);
             }
@@ -289,17 +193,64 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
             }
         }
         close() {
-            __pxprpc4tjs__.ioClose(this.pipeAddr);
+            if (this.pipeAddr !== 0n) {
+                __pxprpc4tjs__.ioClose(this.pipeAddr);
+                this.pipeAddr = 0n;
+            }
         }
     }
     exports.PxprpcRtbIo = PxprpcRtbIo;
-    if (globalThis.tjs == undefined) {
-        console.warn('This module is only used to initialize pxseed environment on txiki.js,' +
-            ' and has no effect on other platform.' +
-            'Also avoid to import this module on other platform.');
+    let tjstlscleanup = new FinalizationRegistry((index) => {
+        if (index.get() >= 0)
+            __pxprpc4tjs__.freeObjStore(index.get());
+    });
+    exports.txikijsPxprpc = new CTxikijsPxprpcBinding();
+    class TjsTlsClient {
+        constructor(servername) {
+            this.index = new jsutils1base.Ref2(-1);
+            jsutils1base.assert(__pxprpc4tjs__.embedtlsSslFunc2026 != undefined);
+            jsutils1base.assert(__pxprpc4tjs__.embedtlsSslFunc2026(0) >= 6);
+            this.index.set(__pxprpc4tjs__.embedtlsSslFunc2026(1, servername ?? ''));
+            tjstlscleanup.register(this, this.index);
+        }
+        async readCipherSendBuffer(buf) {
+            jsutils1base.assert(this.index.get() >= 0);
+            let r = __pxprpc4tjs__.embedtlsSslFunc2026(2, this.index.get(), buf);
+            return r;
+        }
+        async writeCipherRecvBuffer(buf) {
+            jsutils1base.assert(this.index.get() >= 0);
+            let r = __pxprpc4tjs__.embedtlsSslFunc2026(3, this.index.get(), buf);
+            return r;
+        }
+        async writePlain(buf) {
+            let r = __pxprpc4tjs__.embedtlsSslFunc2026(4, this.index.get(), buf);
+            if (r < 0)
+                new Error('embedtls error:' + r);
+            return r;
+        }
+        async readPlain(buf) {
+            let r = __pxprpc4tjs__.embedtlsSslFunc2026(5, this.index.get(), buf);
+            if (r < 0)
+                new Error('embedtls error:' + r);
+            return r;
+        }
+        async close() {
+            let index = this.index.get();
+            this.index.set(-1);
+            __pxprpc4tjs__.freeObjStore(index);
+        }
     }
-    else {
-        setupImpl();
-    }
+    exports.TjsTlsClient = TjsTlsClient;
+    exports.__inited__ = (async () => {
+        if (globalThis.tjs == undefined) {
+            console.warn('This module is only used to initialize pxseed environment on txiki.js,' +
+                ' and has no effect on other platform.' +
+                'Also avoid to import this module on other platform.');
+        }
+        else {
+            await setupImpl();
+        }
+    })();
 });
 //# sourceMappingURL=tjsenv.js.map

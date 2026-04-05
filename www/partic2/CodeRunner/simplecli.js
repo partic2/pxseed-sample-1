@@ -46,14 +46,22 @@ await __t1(_ENV);
             try {
                 let result = await this.codeContext.runCode(jscode, '_');
                 if (result.err != null) {
-                    await this.stderr.write(encode(JSON.stringify(result, undefined, 2)));
+                    let remoteObj = await (0, Inspector_1.inspectCodeContextVariable)(this.remoteObjectFetcher, ['_'], remoteObjectFetchConfig);
+                    await this.stderr.write(encode(JSON.stringify(remoteObj, (key, val) => {
+                        if (typeof val == 'bigint') {
+                            return `BigInt('${val}')`;
+                        }
+                        else {
+                            return val;
+                        }
+                    }, 2)));
                 }
-                else if (result.stringResult != null) {
-                    await this.stderr.write(encode(result.stringResult));
+                else if (result.stringResult != null && result.err == null) {
+                    await this.stdout.write(encode(result.stringResult));
                 }
                 else {
                     let remoteObj = await (0, Inspector_1.inspectCodeContextVariable)(this.remoteObjectFetcher, ['_'], remoteObjectFetchConfig);
-                    await this.stderr.write(encode(JSON.stringify(remoteObj, (key, val) => {
+                    await this.stdout.write(encode(JSON.stringify(remoteObj, (key, val) => {
                         if (typeof val == 'bigint') {
                             return `BigInt('${val}')`;
                         }

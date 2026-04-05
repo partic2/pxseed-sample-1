@@ -1,39 +1,46 @@
 define(["require", "exports", "partic2/jsutils1/base"], function (require, exports, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.Singleton = exports.ExtendStreamReader = exports.TaskLocalRef = void 0;
+    exports.OnConsoleData = exports.CFuncCallProbe = exports.ThrottleCall = exports.DebounceCall = exports.Singleton = exports.ExtendStreamReader = exports.TaskLocalRef = void 0;
+    exports.utf8conv = utf8conv;
+    exports.u8hexconv = u8hexconv;
+    exports.FlattenArray = FlattenArray;
+    exports.FlattenArraySync = FlattenArraySync;
     exports.deepEqual = deepEqual;
     exports.setupAsyncHook = setupAsyncHook;
+    exports.ensureFunctionProbe = ensureFunctionProbe;
+    Object.defineProperty(exports, "TaskLocalRef", { enumerable: true, get: function () { return base_1.TaskLocalRef; } });
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
-    class TaskLocalRef extends base_1.Ref2 {
-        constructor(defaultVal) {
-            super(defaultVal);
-            this.taskLocalVarName = __name__ + '.var-' + (0, base_1.GenerateRandomString)();
-            let loc = base_1.Task.locals();
-            if (loc != undefined) {
-                loc[this.taskLocalVarName] = defaultVal;
-            }
+    let utf8decoder = new TextDecoder();
+    let utf8encoder = new TextEncoder();
+    function utf8conv(input) {
+        if (typeof input === 'string') {
+            return utf8encoder.encode(input);
         }
-        get() {
-            let loc = base_1.Task.locals();
-            if (loc != undefined) {
-                return loc[this.taskLocalVarName] ?? this.__val;
-            }
-            else {
-                return super.get();
-            }
-        }
-        set(val) {
-            let loc = base_1.Task.locals();
-            if (loc != undefined) {
-                loc[this.taskLocalVarName] = val;
-            }
-            else {
-                this.__val = val;
-            }
+        else {
+            return utf8decoder.decode(input);
         }
     }
-    exports.TaskLocalRef = TaskLocalRef;
+    function u8hexconv(input) {
+        if (typeof input === 'string') {
+            let hex = input;
+            hex = hex.replace(/[^0-9a-fA-F]/g, '');
+            let bytes = new Uint8Array(hex.length >> 1);
+            for (let t1 = 0; t1 < hex.length; t1 += 2) {
+                bytes[t1 >> 1] = parseInt(hex.substring(t1, t1 + 2), 16);
+            }
+            return bytes;
+        }
+        else {
+            let b = input;
+            let hex = '';
+            for (let t1 of b) {
+                let ch = t1.toString(16);
+                hex += ch.length == 2 ? ch : '0' + ch;
+            }
+            return hex;
+        }
+    }
     class ExtendStreamReader {
         constructor(wrapped) {
             this.wrapped = wrapped;
@@ -84,23 +91,28 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
             if (typeof mark === 'number') {
                 mark = new Uint8Array([mark]);
             }
-            //Slow but simple
             let concated = null;
-            for (let t1 = 0; t1 < 0x7fffff; t1++) {
+            let t1 = 0;
+            for (let readTryCount = 0; readTryCount < 0x10000000; readTryCount++) {
                 let chunk = await this.read();
                 if (!chunk.done) {
                     if (concated == null) {
                         concated = chunk.value;
                     }
                     else {
+                        //slow but simple
                         concated = new Uint8Array((0, base_1.ArrayBufferConcat)([concated, chunk.value]));
                     }
                     let markMatched = false;
-                    let t2 = concated.length - mark.length;
-                    for (; t2 >= 0; t2--) {
+                    let t2 = 0;
+                    let t3 = concated.length - mark.length;
+                    for (t2 = t1; t2 <= t3; t2++) {
+                        t2 = concated.indexOf(mark[0], t2);
+                        if (t2 < 0)
+                            break;
                         markMatched = true;
-                        for (let t3 = 0; t3 < mark.length; t3++) {
-                            if (concated[t2 + t3] !== mark[t3]) {
+                        for (let t4 = 1; t4 < mark.length; t4++) {
+                            if (concated[t2 + t4] !== mark[t4]) {
                                 markMatched = false;
                                 break;
                             }
@@ -114,8 +126,13 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
                         }
                         return new Uint8Array(concated.buffer, concated.byteOffset, t2 + mark.length);
                     }
+                    else {
+                        t1 = t3 + 1;
+                    }
                 }
                 else {
+                    if (concated != null)
+                        this.unshiftBuffer(concated);
                     throw new Error('No mark found before EOF occured');
                 }
             }
@@ -137,22 +154,82 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
                     writePos.set(writeAt + readBytes);
                 return readBytes;
             }
-            return null;
+            throw new Error('stream closed');
+        }
+        async readForNBytes(count) {
+            let b = new Uint8Array(count);
+            let pos = new base_1.Ref2(0);
+            for (let t1 = 0; t1 < 0x7fffff; t1++) {
+                await this.readInto(b, pos);
+                if (pos.get() == b.byteLength)
+                    break;
+            }
+            return b;
+        }
+        async readAll() {
+            let chunks = new Array();
+            for (let t1 = 0; t1 < 0x7fffff; t1++) {
+                let chunk = await this.read();
+                if (!chunk.done) {
+                    chunks.push(chunk.value);
+                }
+                else {
+                    break;
+                }
+            }
+            return new Uint8Array((0, base_1.ArrayBufferConcat)(chunks));
         }
     }
     exports.ExtendStreamReader = ExtendStreamReader;
+    async function FlattenArray(source) {
+        let parts = [];
+        for (let t1 of source) {
+            if (t1 instanceof Promise) {
+                parts.push(await t1);
+            }
+            else if (t1 == null) {
+            }
+            else if (typeof (t1) === 'object' && (Symbol.iterator in t1)) {
+                parts.push(...await FlattenArray(t1));
+            }
+            else {
+                parts.push(t1);
+            }
+        }
+        return parts;
+    }
+    //Promise will be ignored
+    function FlattenArraySync(source) {
+        let parts = [];
+        for (let t1 of source) {
+            if (t1 instanceof Promise) {
+            }
+            else if (t1 == null) {
+            }
+            else if (typeof (t1) === 'object' && (Symbol.iterator in t1)) {
+                parts.push(...FlattenArraySync(t1));
+            }
+            else {
+                parts.push(t1);
+            }
+        }
+        return parts;
+    }
     class Singleton extends base_1.future {
         constructor(init) {
             super();
             this.init = init;
-            this.i = null;
+            this.initing = false;
         }
         async get() {
-            if (!this.done) {
+            if (!this.done && !this.initing) {
+                this.initing = true;
                 this.init().then((result) => {
                     this.setResult(result);
+                    this.initing = false;
                 }, (err) => {
                     this.setException(err);
+                    this.initing = false;
                 });
             }
             return super.get();
@@ -176,43 +253,173 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
         }
         return true;
     }
+    class DebounceCall {
+        constructor(fn, delayMs) {
+            this.fn = fn;
+            this.delayMs = delayMs;
+            this.callId = 1;
+            this.result = new base_1.future();
+            this.mut = new base_1.mutex();
+            this.canceled = false;
+        }
+        async call(...args) {
+            if (this.callId == -1) {
+                //waiting fn return
+                return await this.result.get();
+            }
+            this.callId++;
+            let thisCallId = this.callId;
+            await (0, base_1.sleep)(this.delayMs);
+            if (this.canceled)
+                return;
+            if (thisCallId == this.callId) {
+                try {
+                    this.callId = -1;
+                    let r = await this.fn(...args);
+                    this.result.setResult(r);
+                }
+                catch (e) {
+                    this.result.setException(e);
+                }
+                finally {
+                    this.callId = 1;
+                    let r2 = this.result;
+                    this.result = new base_1.future();
+                    return r2.get();
+                }
+            }
+            else {
+                return await this.result.get();
+            }
+        }
+        cancel() {
+            this.result.setResult(undefined);
+            this.callId = 1;
+            this.result = new base_1.future();
+        }
+    }
+    exports.DebounceCall = DebounceCall;
+    class ThrottleCall {
+        constructor(fn, minIntervalMs) {
+            this.fn = fn;
+            this.minIntervalMs = minIntervalMs;
+            this.lastCallTime = 0;
+            this.nextCallArgs = null;
+            this.result = null;
+        }
+        async call(...args) {
+            this.nextCallArgs = args;
+            if (this.result != null) {
+                return await this.result.get();
+            }
+            this.result = new base_1.future();
+            let res = this.result;
+            let now = (0, base_1.GetCurrentTime)().getTime();
+            if (now < this.lastCallTime + this.minIntervalMs) {
+                await (0, base_1.sleep)(this.lastCallTime + this.minIntervalMs - now);
+            }
+            try {
+                let r = await this.fn(...this.nextCallArgs);
+                res.setResult(r);
+            }
+            catch (e) {
+                res.setException(e);
+            }
+            finally {
+                now = (0, base_1.GetCurrentTime)().getTime();
+                this.lastCallTime = now;
+                this.nextCallArgs = null;
+                this.result = null;
+            }
+            return await res.get();
+        }
+    }
+    exports.ThrottleCall = ThrottleCall;
     function setupAsyncHook() {
         if (!('__onAwait' in Promise)) {
-            let asyncStack = [];
+            let asyncStackDepth = 0;
+            let depth0Task = null;
             Promise.__onAsyncEnter = () => {
-                asyncStack.push({ yielded: false });
+                if (asyncStackDepth === 0)
+                    depth0Task = base_1.Task.currentTask;
+                asyncStackDepth++;
             };
-            Promise.__onAsyncExit = async () => {
-                let last = asyncStack.pop();
-                if (last?.yielded) {
-                    base_1.Task.currentTask = null;
+            Promise.__onAsyncExit = () => {
+                asyncStackDepth--;
+                if (asyncStackDepth === 0) {
+                    base_1.Task.currentTask = depth0Task;
                 }
             };
+            //Only call ONCE for each 'await'
             Promise.__onAwait = async (p) => {
                 base_1.Task.getAbortSignal()?.throwIfAborted();
-                let saved = {
-                    task: base_1.Task.currentTask,
-                    lastAsync: asyncStack.pop()
-                };
-                if (saved.lastAsync != undefined) {
-                    if (saved.lastAsync.yielded) {
-                        base_1.Task.currentTask = null;
-                    }
-                    else {
-                        saved.lastAsync.yielded = true;
-                    }
+                let task = base_1.Task.currentTask;
+                asyncStackDepth--;
+                if (asyncStackDepth === 0) {
+                    base_1.Task.currentTask = depth0Task;
                 }
                 try {
                     return await p;
                 }
                 finally {
-                    base_1.Task.currentTask = saved.task;
-                    if (saved.lastAsync)
-                        asyncStack.push(saved.lastAsync);
+                    if (asyncStackDepth === 0)
+                        depth0Task = base_1.Task.currentTask;
+                    asyncStackDepth++;
+                    base_1.Task.currentTask = task;
                 }
             };
         }
     }
+    class CFuncCallProbe {
+        constructor(originalFunction) {
+            this.originalFunction = originalFunction;
+            this.beforeFunctionEnter = new Set();
+        }
+        hooked() {
+            let that = this;
+            return function (...argv) {
+                for (let t1 of that.beforeFunctionEnter) {
+                    try {
+                        t1(argv, that, this);
+                    }
+                    catch (err) { }
+                    ;
+                }
+                return that.originalFunction.apply(this, argv);
+            };
+        }
+    }
+    exports.CFuncCallProbe = CFuncCallProbe;
+    let funcProbeProp = Symbol('funcProbeProp');
+    function ensureFunctionProbe(o, p) {
+        let func = o[p];
+        let p2;
+        if (funcProbeProp in func) {
+            p2 = func[funcProbeProp];
+            if (p2.funcCallProbe == undefined) {
+                p2.funcCallProbe = new CFuncCallProbe(func);
+                p2.funcCallProbe.name = p.toString();
+                o[p] = p2.funcCallProbe.hooked();
+                o[p][funcProbeProp] = p2;
+            }
+        }
+        else {
+            p2 = {
+                funcCallProbe: new CFuncCallProbe(func)
+            };
+            p2.funcCallProbe.name = p.toString();
+            func[funcProbeProp] = p2;
+            o[p] = p2.funcCallProbe.hooked();
+            o[p][funcProbeProp] = p2;
+        }
+        return p2.funcCallProbe;
+    }
+    exports.OnConsoleData = new Set();
+    ensureFunctionProbe(console, 'log').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('log', argv)));
+    ensureFunctionProbe(console, 'debug').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('debug', argv)));
+    ensureFunctionProbe(console, 'info').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('info', argv)));
+    ensureFunctionProbe(console, 'warn').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('warn', argv)));
+    ensureFunctionProbe(console, 'error').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('error', argv)));
     setupAsyncHook();
 });
 //# sourceMappingURL=jsutils2.js.map

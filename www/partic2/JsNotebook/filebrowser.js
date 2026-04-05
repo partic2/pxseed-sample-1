@@ -1,9 +1,14 @@
-define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/domui", "./fileviewer", "partic2/pComponentUi/window", "partic2/pComponentUi/texteditor"], function (require, exports, React, base_1, webutils_1, domui_1, fileviewer_1, window_1, texteditor_1) {
+define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/pComponentUi/texteditor", "../pComponentUi/input", "partic2/pxseedMedia1/index1", "./tjseasyapi", "../pComponentUi/workspace"], function (require, exports, React, base_1, webutils_1, domui_1, window_1, texteditor_1, input_1, index1_1, tjseasyapi_1, workspace_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.FileBrowser = exports.DummyDirectoryHandler = exports.File = void 0;
+    exports.__internal__ = exports.css1 = void 0;
+    exports.openFileBrowserWindowForSimpleFileSystem = openFileBrowserWindowForSimpleFileSystem;
     var ReactDOM = React;
     var __name__ = 'partic2/JsNotebook/filebrowser';
+    exports.css1 = {
+        FileItem: (0, base_1.GenerateRandomString)()
+    };
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css1.FileItem, ['display:flex', 'align-content:center', 'flex-direction:row']);
     class File extends React.Component {
         constructor(props, ctx) {
             super(props, ctx);
@@ -14,6 +19,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
                 //Dblclick
                 this.lastSelectTime = null;
                 this.props.onOpenRequest?.(this.props.path);
+                ev.preventDefault();
             }
             else {
                 this.props.onSelectChange?.(this.props.path, !this.props.selected);
@@ -21,34 +27,17 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             }
         }
         render() {
-            let cls = [domui_1.css.selectable];
+            let cls = [exports.css1.FileItem, domui_1.css.selectable];
             if (this.props.selected) {
                 cls.push(domui_1.css.selected);
             }
             return (React.createElement("div", { className: cls.join(' '), onClick: (ev) => this.onClick(ev), onDblClick: (ev) => ev.preventDefault() },
-                "[",
-                this.props.type.charAt(0).toUpperCase(),
-                "]",
+                this.props.type === 'dir' ? React.createElement("img", { src: (0, index1_1.getIconUrl)('folder.svg') }) : React.createElement("img", { src: (0, index1_1.getIconUrl)('file.svg') }),
                 this.props.name));
         }
     }
-    exports.File = File;
-    class DummyDirectoryHandler extends fileviewer_1.FileTypeHandlerBase {
-        constructor() {
-            super(...arguments);
-            this.title = 'directory';
-            this.extension = '.#NOEXTENSION';
-        }
-        async create(dir) {
-            let path = await this.getUnusedFilename(dir, '');
-            let fs = this.workspace.fs;
-            await fs.mkdir(path);
-            return path;
-        }
-    }
-    exports.DummyDirectoryHandler = DummyDirectoryHandler;
     ;
-    class FileBrowser extends React.Component {
+    class FileBrowserComponent extends React.Component {
         constructor(props, context) {
             super(props, context);
             this._clipboardFile = {
@@ -58,14 +47,13 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             this._clipboardIsCut = false;
             this.filterRef = React.createRef();
             this.filesContainer = React.createRef();
-            this.setState({
-                currPath: this.props.initDir, childrenFile: [],
+            this.rref = {
+                addressBar: new domui_1.ReactRefEx()
+            };
+            this.setState({ childrenFile: [],
                 selectedFiles: new Set(),
-                filterText: ''
+                filterText: '', currPath: '', currPathHistory: []
             });
-        }
-        componentDidMount() {
-            this.doFileOpen(this.state.currPath ?? this.props.initDir);
         }
         getParentPath() {
             var delim = this.state.currPath.lastIndexOf('/');
@@ -76,34 +64,52 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
                 return this.state.currPath.substring(0, delim);
             }
         }
-        async doFileOpen(path) {
-            let filetype = await this.props.sfs.filetype(path);
+        async DoFileOpen(path, opt) {
+            let filetype = await this.props.fs.filetype(path);
             if (filetype == 'dir') {
                 let newPath = path;
                 let children;
                 try {
-                    children = await this.props.sfs.listdir(newPath);
+                    children = await this.props.fs.listdir(newPath);
                 }
                 catch (e1) {
                     newPath = '';
-                    children = await this.props.sfs.listdir(newPath);
+                    children = await this.props.fs.listdir(newPath);
                 }
+                children.sort((a, b) => {
+                    let a1 = (a.type === 'dir' ? 100 : 200);
+                    let b1 = (b.type === 'dir' ? 100 : 200);
+                    let c1 = a.name.localeCompare(b.name);
+                    if (c1 > 0)
+                        c1 = 1;
+                    if (c1 < 0)
+                        c1 = -1;
+                    return a1 - b1 + c1;
+                });
                 this.state.selectedFiles.clear();
+                if (opt?.noHistory !== true) {
+                    if (this.state.currPathHistory.at(-1) != this.state.currPath && this.state.currPath != undefined) {
+                        this.state.currPathHistory.push(this.state.currPath);
+                        if (this.state.currPathHistory.length > 30) {
+                            this.state.currPathHistory.splice(0, this.state.currPathHistory.length - 30);
+                        }
+                    }
+                }
+                if (this.state.currPath != newPath) {
+                    this.onFilterChange('');
+                }
                 this.setState({
                     currPath: newPath,
-                    childrenFile: children
+                    childrenFile: children,
+                }, async () => {
+                    let div1 = await this.rref.addressBar.waitValid();
+                    div1.scrollLeft = div1.scrollWidth;
                 });
-            }
-            else if (filetype == 'file') {
-                this.props.onOpenRequest(path);
             }
         }
         onSelectChange(path, selected) {
             if (selected) {
                 this.setState({ selectedFiles: new Set([path]) });
-            }
-            else {
-                //this.state.selectedFiles.delete(path)
             }
         }
         renderFiles() {
@@ -113,8 +119,12 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
                 files = files.filter((v => v.name.indexOf(this.state.filterText) >= 0));
             }
             return files.map((v) => {
-                let path = parentPath + '/' + v.name;
-                return React.createElement(File, { path: path, name: v.name, type: v.type, selected: this.state.selectedFiles.has(path), onSelectChange: (path, selected) => this.onSelectChange(path, selected), onOpenRequest: (path) => this.doFileOpen(path) });
+                let path = parentPath;
+                if (path.at(-1) != '/') {
+                    path = path + '/';
+                }
+                path = path + v.name;
+                return React.createElement(File, { path: path, name: v.name, type: v.type, selected: this.state.selectedFiles.has(path), onSelectChange: (path, selected) => this.onSelectChange(path, selected), onOpenRequest: (path) => this.DoFileOpen(path) });
             });
         }
         async selectFiles(path) {
@@ -127,7 +137,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             let dlg = await (0, window_1.prompt)(React.createElement("div", null,
                 React.createElement("input", { type: 'text', ref: newFileNameInput, style: { width: '100%', minWidth: '200px' }, value: initname })), 'Input file name...');
             let newFileName = null;
-            if ((await dlg.answer.get()) == 'ok') {
+            if ((await dlg.response.get()) == 'ok') {
                 newFileName = (await newFileNameInput.waitValid()).value;
             }
             dlg.close();
@@ -142,12 +152,12 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             let newFileName = await this._askForFileName(path.substring(path.lastIndexOf('/') + 1));
             if (newFileName != null) {
                 let newPath = this.state.currPath + '/' + newFileName;
-                await this.props.sfs.rename(path, newPath);
+                await this.props.fs.rename(path, newPath);
             }
             await this.reloadFileInfo();
         }
         async reloadFileInfo() {
-            this.doFileOpen(this.state.currPath);
+            this.DoFileOpen(this.state.currPath);
         }
         async DoDelete() {
             let ans = await (0, window_1.confirm)(`Delete ${this.state.selectedFiles.size} files permenantly?`);
@@ -155,7 +165,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
                 return;
             }
             for (let f1 of this.state.selectedFiles) {
-                await this.props.sfs.delete2(f1);
+                await this.props.fs.delete2(f1);
             }
             await this.reloadFileInfo();
         }
@@ -165,18 +175,10 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
                 for (let t1 = 0; t1 < selected.length; t1++) {
                     let data = await (0, base_1.GetBlobArrayBufferContent)(selected.item(t1));
                     let name = selected.item(t1).name;
-                    await this.props.sfs.writeAll(this.state.currPath + '/' + name, new Uint8Array(data));
+                    await this.props.fs.writeAll(this.state.currPath + '/' + name, new Uint8Array(data));
                 }
             }
             await this.reloadFileInfo();
-        }
-        async DoSyncTab() {
-            let currTab = (await this.props.workspace.rref.tv.waitValid()).getCurrentTab();
-            if (currTab == undefined)
-                return;
-            if ('path' in currTab && typeof currTab.path === 'string') {
-                await this.doFileOpen(webutils_1.path.dirname(currTab.path));
-            }
         }
         async DoCopy() {
             this._clipboardFile.paths.splice(0, this._clipboardFile.paths.length);
@@ -192,39 +194,61 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             if (this._clipboardFile.mode === 'cut') {
                 for (let t1 of this._clipboardFile.paths) {
                     let name = t1.substring(t1.lastIndexOf('/') + 1);
-                    this.props.sfs.rename(t1, (this.state.currPath ?? '') + '/' + name);
+                    await this.props.fs.rename(t1, (this.state.currPath ?? '') + '/' + name);
                 }
             }
             else {
-                const copyFileAndDir = async (src, dst) => {
-                    if (await this.props.sfs.filetype(src) == 'dir') {
-                        let children = await this.props.sfs.listdir(src);
-                        this.props.sfs.mkdir(dst);
-                        for (let t1 of children) {
-                            await copyFileAndDir([src, t1.name].join('/'), [dst, t1.name].join('/'));
-                        }
+                for (let t1 of this._clipboardFile.paths) {
+                    let filetype1 = await this.props.fs.filetype(t1);
+                    let name = t1.substring(t1.lastIndexOf('/') + 1);
+                    let dstpath = (this.state.currPath ?? '') + '/' + name;
+                    if (dstpath == t1) {
+                        dstpath = dstpath + '_Copy';
+                    }
+                    if (filetype1 === 'dir') {
+                        await tjseasyapi_1.files.copyFileTree(t1, dstpath, { confilctPolicy: 'overwrite', srcFs: this.props.fs, destFs: this.props.fs });
                     }
                     else {
-                        if (src == dst) {
-                            dst += '_Copy';
-                        }
-                        //XXX:Not suitable for large file.
-                        let t1 = await this.props.sfs.readAll(src);
-                        if (t1 != null) {
-                            await this.props.sfs.writeAll(dst, t1);
-                        }
+                        await tjseasyapi_1.files.copySingleFile(t1, dstpath, { srcFs: this.props.fs, destFs: this.props.fs });
                     }
-                };
-                for (let t1 of this._clipboardFile.paths) {
-                    let name = t1.substring(t1.lastIndexOf('/') + 1);
-                    await copyFileAndDir(t1, (this.state.currPath ?? '') + '/' + name);
                 }
             }
             this.reloadFileInfo();
         }
+        async DoNew() {
+            let form1 = new domui_1.ReactRefEx();
+            let dlg = await (0, window_1.prompt)(React.createElement("div", null,
+                React.createElement(input_1.SimpleReactForm1, { ref: form1 }, form1 => React.createElement("div", null,
+                    React.createElement("div", null,
+                        "Directory:",
+                        React.createElement(input_1.ValueCheckBox, { ref: form1.getRefForInput('isDir') })),
+                    React.createElement("div", null,
+                        "name:",
+                        React.createElement("input", { type: "text", ref: form1.getRefForInput('name') }))))), 'New');
+            (await form1.waitValid()).value = { isDir: false, name: "untitled" };
+            if (await dlg.response.get() == 'ok') {
+                let { isDir, name } = (await form1.waitValid()).value;
+                if (isDir) {
+                    await this.props.fs.mkdir(webutils_1.path.join((this.state.currPath ?? ''), name));
+                }
+                else {
+                    await this.props.fs.writeAll(webutils_1.path.join((this.state.currPath ?? ''), name), new Uint8Array(0));
+                }
+                await this.reloadFileInfo();
+            }
+            dlg.close();
+        }
+        async DoGoBack() {
+            let lastPath = this.state.currPathHistory.pop();
+            if (lastPath != undefined) {
+                this.DoFileOpen(lastPath, { noHistory: true });
+            }
+        }
         renderAction() {
             return React.createElement("div", null,
-                React.createElement("a", { href: "javascript:;", onClick: () => this.props.onCreateRequest?.(this.state.currPath) }, "New"),
+                React.createElement("a", { href: "javascript:;", onClick: () => this.DoGoBack() }, "GoBack"),
+                "\u2003",
+                React.createElement("a", { href: "javascript:;", onClick: () => this.DoNew() }, "New"),
                 "\u2003",
                 React.createElement("a", { href: "javascript:;", onClick: () => this.DoRenameTo() }, "Rename"),
                 "\u2003",
@@ -237,35 +261,96 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
                 React.createElement("a", { href: "javascript:;", onClick: () => this.DoCut() }, "Cut"),
                 "\u2003",
                 React.createElement("a", { href: "javascript:;", onClick: () => this.DoPaste() }, "Paste"),
-                "\u2003",
-                this.props.workspace != undefined ? React.createElement("span", null,
-                    React.createElement("a", { href: "javascript:;", onClick: () => this.DoSyncTab() }, "SyncTab"),
-                    "\u2003")
-                    : null);
+                "\u2003");
         }
         onFilterChange(filterText) {
             this.setState({ filterText });
         }
         async promptForCurrentPath() {
             let newPathInput = new domui_1.ReactRefEx();
-            let dlg = await (0, window_1.prompt)(React.createElement(texteditor_1.TextEditor, { divClass: [domui_1.css.simpleCard], divStyle: { minWidth: 300 }, ref: newPathInput }), 'Jump to');
+            let dlg = await (0, window_1.prompt)(React.createElement("div", null,
+                React.createElement(texteditor_1.TextEditor, { divClass: [domui_1.css.simpleCard], divStyle: { minWidth: 300 }, ref: newPathInput })), 'Jump to');
             (await newPathInput.waitValid()).setPlainText(this.state.currPath ?? '');
-            if (await dlg.answer.get() === 'ok') {
-                this.doFileOpen(await (await newPathInput.waitValid()).getPlainText());
+            if (await dlg.response.get() === 'ok') {
+                let newPath = (await newPathInput.waitValid()).getPlainText();
+                newPath = newPath.replace(/\n/g, '');
+                this.DoFileOpen(newPath);
+            }
+            dlg.close();
+        }
+        componentDidMount() {
+            this.reloadFileInfo();
+        }
+        render() {
+            return (React.createElement("div", { className: domui_1.css.flexColumn, style: { height: '100%' } },
+                React.createElement("a", { href: "javascript:;", onClick: () => this.promptForCurrentPath() },
+                    React.createElement("div", { style: { whiteSpace: 'nowrap', overflow: 'auto', display: 'block' }, className: [domui_1.css.simpleCard].join(' '), ref: this.rref.addressBar }, (this.state.currPath == undefined || this.state.currPath.length == 0) ? '/' : this.state.currPath)),
+                this.renderAction(),
+                React.createElement("input", { type: 'text', placeholder: 'filter', value: this.state.filterText, onInput: (ev) => this.onFilterChange(ev.target.value) }),
+                React.createElement("div", { style: { flexGrow: 1, flexShrink: 1 }, ref: this.filesContainer },
+                    React.createElement(File, { path: this.getParentPath(), name: "..", onOpenRequest: (path) => this.DoFileOpen(path), onSelectChange: (path, selected) => this.onSelectChange(path, selected), selected: this.state.selectedFiles.has(this.getParentPath()), type: 'dir' }),
+                    this.renderFiles())));
+        }
+    }
+    class WorkspaceFileBrowser2 extends FileBrowserComponent {
+        constructor(props, context) {
+            super(props, context);
+        }
+        async DoFileOpen(path, opt) {
+            await super.DoFileOpen(path, opt);
+            let filetype = await this.props.fs.filetype(path);
+            if (filetype == 'file') {
+                let selectedHandle = null;
+                for (let t1 of this.props.context.filehandler) {
+                    for (let t2 of t1.extension) {
+                        if (path.endsWith(t2)) {
+                            selectedHandle = t1;
+                            break;
+                        }
+                    }
+                    if (selectedHandle != null)
+                        break;
+                }
+                if (selectedHandle == null) {
+                    (0, window_1.alert)('No handler for such file extension.');
+                }
+                else {
+                    await selectedHandle.open(path);
+                }
+            }
+        }
+        async promptForCurrentPath() {
+            let newPathInput = new domui_1.ReactRefEx();
+            let dlg = await (0, window_1.prompt)(React.createElement("div", null,
+                React.createElement(texteditor_1.TextEditor, { divClass: [domui_1.css.simpleCard], divStyle: { minWidth: 300 }, ref: newPathInput }),
+                React.createElement("a", { href: "javascript:;", onClick: async () => {
+                        let input1 = await newPathInput.waitValid();
+                        input1.setPlainText(this.props.context.wwwroot ?? '/');
+                    } },
+                    React.createElement("div", null, "Goto WWWRoot"))), 'Jump to');
+            (await newPathInput.waitValid()).setPlainText(this.state.currPath ?? '');
+            if (await dlg.response.get() === 'ok') {
+                let newPath = (await newPathInput.waitValid()).getPlainText();
+                newPath = newPath.replace(/\n/g, '');
+                this.DoFileOpen(newPath);
             }
             dlg.close();
         }
         render() {
-            return (React.createElement("div", { className: domui_1.css.flexColumn, style: { height: '100%' } },
-                React.createElement("div", { style: { wordBreak: 'break-all' }, className: [domui_1.css.simpleCard].join(' ') },
-                    React.createElement("a", { href: "javascript:;", onClick: () => this.promptForCurrentPath() }, this.state.currPath)),
-                this.renderAction(),
-                React.createElement("input", { type: 'text', placeholder: 'filter', onInput: (ev) => this.onFilterChange(ev.target.value) }),
-                React.createElement("div", { style: { flexGrow: 1, flexShrink: 1 }, ref: this.filesContainer },
-                    React.createElement(File, { path: this.getParentPath(), name: "..", onOpenRequest: (path) => this.doFileOpen(path), onSelectChange: (path, selected) => this.onSelectChange(path, selected), selected: this.state.selectedFiles.has(this.getParentPath()), type: 'dir' }),
-                    this.renderFiles())));
+            return super.render();
         }
     }
-    exports.FileBrowser = FileBrowser;
+    async function openFileBrowserWindowForSimpleFileSystem(p) {
+        let ref = new domui_1.ReactRefEx();
+        await (0, workspace_1.openNewWindow)(React.createElement(FileBrowserComponent, { fs: p.fs, title: p.title, ref: ref }));
+        if (p.initdir != undefined) {
+            (await ref.waitValid()).DoFileOpen(p.initdir);
+        }
+    }
+    var __internal__;
+    (function (__internal__) {
+        __internal__.FileBrowser = FileBrowserComponent;
+        __internal__.WorkspaceFileBrowser = WorkspaceFileBrowser2;
+    })(__internal__ || (exports.__internal__ = __internal__ = {}));
 });
 //# sourceMappingURL=filebrowser.js.map

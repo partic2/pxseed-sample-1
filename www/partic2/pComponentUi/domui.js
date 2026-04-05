@@ -1,11 +1,10 @@
 define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutils1/webutils"], function (require, exports, React, base_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.FloatLayerComponent = exports.ReactRefEx = exports.RefChangeEvent = exports.event = exports.css = exports.ReactEventTarget = exports.DomRootComponent = exports.DomDivComponent = exports.DomComponentGroup = exports.DomComponent = void 0;
+    exports.FloatLayerComponent = exports.ReactRefEx = exports.floatLayerZIndexBase = exports.event = exports.css = exports.ReactEventTarget = exports.__inited__ = exports.DomRootComponent = exports.DomDivComponent = exports.DomComponentGroup = exports.DomComponent = void 0;
     exports.ReactRender = ReactRender;
     exports.SetComponentFullScreen = SetComponentFullScreen;
-    exports.RequestPrintWindow = RequestPrintWindow;
-    var ReactDOM = React;
+    exports.RequestUserAgentPrint = RequestUserAgentPrint;
     class DomComponent {
         constructor() {
             this.mounted = false;
@@ -58,15 +57,15 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
     class DomDivComponent extends DomComponentGroup {
         constructor() {
             super();
-            this.domElem = document.createElement('div');
+            this.domElem = globalThis.document.createElement('div');
         }
     }
     exports.DomDivComponent = DomDivComponent;
     class CDomRootComponent extends DomComponentGroup {
         constructor() {
             super();
-            let domroot = document.createElement('div');
-            document.body.appendChild(domroot);
+            let domroot = globalThis.document.createElement('div');
+            globalThis.document.body.appendChild(domroot);
             this.domElem = domroot;
             this.mounted = true;
         }
@@ -78,13 +77,13 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         }
         async update() {
             if (!this.mounted) {
-                await this.appendToNode(document.body);
+                await this.appendToNode(globalThis.document.body);
             }
             await super.update();
         }
         addHiddenElement(e) {
             if (this.hiddenDiv == undefined) {
-                this.hiddenDiv = document.createElement('div');
+                this.hiddenDiv = globalThis.document.createElement('div');
                 this.hiddenDiv.style.display = 'none';
                 this.getDomElement().append(this.hiddenDiv);
             }
@@ -97,7 +96,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         }
         async addHiddenComponent(comp) {
             if (this.hiddenDiv == undefined) {
-                this.hiddenDiv = document.createElement('div');
+                this.hiddenDiv = globalThis.document.createElement('div');
                 this.hiddenDiv.style.display = 'none';
                 this.getDomElement().append(this.hiddenDiv);
             }
@@ -132,7 +131,21 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             return this.get().removeChild(comp);
         }
     }
-    exports.DomRootComponent = new DomRootComponentProxy(new CDomRootComponent());
+    exports.__inited__ = (async () => {
+        if (globalThis.document != undefined) {
+            exports.DomRootComponent = new DomRootComponentProxy(new CDomRootComponent());
+            //To fix preact BUG
+            try {
+                if (globalThis.document.body.ontouchstart === undefined) {
+                    globalThis.HTMLElement.prototype.ontouchstart = null;
+                    globalThis.HTMLElement.prototype.ontouchmove = null;
+                    globalThis.HTMLElement.prototype.ontouchend = null;
+                }
+            }
+            catch (err) { }
+            ;
+        }
+    })();
     class ReactEventTarget extends React.Component {
         constructor() {
             super(...arguments);
@@ -157,10 +170,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         simpleTable: (0, base_1.GenerateRandomString)(),
         simpleTableCell: (0, base_1.GenerateRandomString)(),
         selectable: (0, base_1.GenerateRandomString)(),
-        overlayLayer: (0, base_1.GenerateRandomString)(),
-        activeLayer: (0, base_1.GenerateRandomString)(),
-        inactiveLayer: (0, base_1.GenerateRandomString)(),
-        hideLayer: (0, base_1.GenerateRandomString)()
+        floatLayer: (0, base_1.GenerateRandomString)()
     };
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.flexRow, ['display:flex', 'flex-direction:row']);
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.flexColumn, ['display:flex', 'flex-direction:column']);
@@ -169,92 +179,65 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleCard, ['display:inline-block', 'border:solid black 2px', 'margin:2px', 'padding:2px', 'background-color:white']);
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleTable, ['border-collapse:collapse']);
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleTableCell, ['border:solid black 2px']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.overlayLayer, ['z-index:1000', 'position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.activeLayer, ['z-index:800', 'position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.inactiveLayer, ['z-index:600', 'position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.hideLayer, ['z-index:600', 'position:absolute', 'display:none', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
+    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.floatLayer, ['position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
     exports.event = {
         layout: 'partic2-layout'
     };
+    exports.floatLayerZIndexBase = 600;
     let FloatLayerManager = {
         layerComponents: new Map(),
-        checkRenderLayer: function (c, activeTime) {
+        checkRenderLayerStyle: function (c, activateTime) {
             let cur = this.layerComponents.get(c);
             if (cur == null) {
-                this.layerComponents.set(c, { activeTime, layerClass: '' });
+                this.layerComponents.set(c, { activateTime, layerZIndex: 0 });
                 this.resortAllLayer();
             }
-            else if (cur.activeTime != activeTime) {
-                this.layerComponents.set(c, { activeTime, layerClass: '' });
+            else if (cur.activateTime != activateTime) {
+                this.layerComponents.set(c, { activateTime, layerZIndex: 0 });
                 this.resortAllLayer();
             }
             cur = this.layerComponents.get(c);
-            return cur.layerClass;
+            let t1 = { zIndex: cur.layerZIndex };
+            if (activateTime < 0) {
+                t1.display = 'none';
+            }
+            return t1;
         },
         resortAllLayer() {
-            let activeLayer = [null, 0];
-            '';
-            for (let t1 of this.layerComponents.entries()) {
-                if (activeLayer[1] <= t1[1].activeTime) {
-                    activeLayer = [t1[0], t1[1].activeTime];
-                }
-            }
-            for (let t1 of this.layerComponents.entries()) {
-                if (t1[1].activeTime < 0) {
-                    t1[1].layerClass = exports.css.hideLayer;
-                    t1[0].forceUpdate();
-                }
-                else if (activeLayer[0] == t1[0] && t1[1].layerClass != exports.css.inactiveLayer) {
-                    t1[1].layerClass = exports.css.activeLayer;
-                    t1[0].forceUpdate();
-                }
-                else if (activeLayer[0] != t1[0] && t1[1].layerClass != exports.css.inactiveLayer) {
-                    t1[1].layerClass = exports.css.inactiveLayer;
-                    t1[0].forceUpdate();
+            let ent = Array.from(this.layerComponents.entries());
+            ent.sort((t1, t2) => t1[1].activateTime - t2[1].activateTime);
+            for (let [t1, t2] of ent.entries()) {
+                if (t2[1].layerZIndex != exports.floatLayerZIndexBase + t1) {
+                    t2[1].layerZIndex = exports.floatLayerZIndexBase + t1;
+                    t2[0].forceUpdate();
                 }
             }
         }
     };
-    class RefChangeEvent extends Event {
-        constructor(data) {
-            super('change');
-            this.data = data;
-        }
-    }
-    exports.RefChangeEvent = RefChangeEvent;
-    class ReactRefEx extends EventTarget {
+    class ReactRefEx extends base_1.Ref2 {
         constructor() {
-            super();
-            this.__current = null;
+            super(null);
             this.__forwardTo = [];
-            this.addEventListener('change', (evt) => {
+            this.watch((r, prev) => {
                 for (let t1 of this.__forwardTo) {
                     if (typeof t1 === 'function') {
-                        t1(evt.data.curr);
+                        t1(r.get());
                     }
                     else if (t1 != null) {
-                        t1.current = evt.data.curr;
+                        t1.current = r.get();
                     }
                 }
             });
         }
         set current(curr) {
-            let prev = this.__current;
-            this.__current = curr;
-            this.dispatchEvent(new RefChangeEvent({ prev, curr }));
+            this.set(curr);
         }
         get current() {
-            return this.__current;
+            return this.get();
         }
         forward(refs) {
             this.__forwardTo.push(...refs);
             return this;
-        }
-        addEventListener(type, callback, options) {
-            super.addEventListener(type, callback, options);
-        }
-        removeEventListener(type, callback, options) {
-            super.removeEventListener(type, callback, options);
         }
         async waitValid() {
             if (this.current != null) {
@@ -262,29 +245,31 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             }
             else {
                 return new Promise((resolve) => {
-                    const onRefChange = (ev) => {
-                        if (ev.data.curr != null) {
-                            this.removeEventListener('change', onRefChange);
-                            resolve(ev.data.curr);
+                    const onRefChange = (r) => {
+                        if (r.get() != null) {
+                            this.unwatch(onRefChange);
+                            resolve(r.get());
                         }
                     };
-                    this.addEventListener('change', onRefChange);
+                    this.watch(onRefChange);
                 });
             }
         }
         async waitInvalid() {
-            if (this.current == null) {
-                return;
+            if (this.current != null) {
+                return this.current;
             }
-            return new Promise((resolve) => {
-                const onRefChange = (ev) => {
-                    if (ev.data.curr == null) {
-                        this.removeEventListener('change', onRefChange);
-                        resolve(undefined);
-                    }
-                };
-                this.addEventListener('change', onRefChange);
-            });
+            else {
+                return new Promise((resolve) => {
+                    const onRefChange = (r) => {
+                        if (r.get() != null) {
+                            this.unwatch(onRefChange);
+                            resolve();
+                        }
+                    };
+                    this.watch(onRefChange);
+                });
+            }
         }
     }
     exports.ReactRefEx = ReactRefEx;
@@ -292,16 +277,13 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         constructor() {
             super(...arguments);
             this.containerDiv = null;
-            this.cbOnLayout = () => {
-                this.props.onLayout?.();
-            };
         }
         componentWillUnmount() {
             FloatLayerManager.layerComponents.delete(this);
         }
         render() {
-            return React.createElement("div", { ref: this.props.divRef, className: [FloatLayerManager.checkRenderLayer(this, this.props.activeTime),
-                    ...this.props.divClass ?? []].join(' ') }, this.props.children);
+            return React.createElement("div", { ref: this.props.divRef, className: [exports.css.floatLayer,
+                    ...this.props.divClass ?? []].join(' '), style: FloatLayerManager.checkRenderLayerStyle(this, this.props.activateTime) }, this.props.children);
         }
     }
     exports.FloatLayerComponent = FloatLayerComponent;
@@ -316,7 +298,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             ReactRender(vnode, container.get());
         }
         else if (container == 'create') {
-            let div1 = document.createElement('div');
+            let div1 = globalThis.document.createElement('div');
             React.render(vnode, div1);
             return div1;
         }
@@ -325,16 +307,16 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         let ctl = {
             onExit: new base_1.future(),
             exit: function () { if (!this.onExit.done) {
-                document.exitFullscreen();
+                globalThis.document.exitFullscreen();
             } }
         };
-        if (!document.body.contains(comp.getDomElement())) {
+        if (!globalThis.document.body.contains(comp.getDomElement())) {
             exports.DomRootComponent.get().addHiddenComponent(comp);
         }
         await comp.getDomElement().requestFullscreen();
         exports.DomRootComponent.get().hiddenDiv.style.display = 'block';
         var fsCb = function (ev) {
-            if (document.fullscreenElement !== comp.getDomElement()) {
+            if (globalThis.document.fullscreenElement !== comp.getDomElement()) {
                 comp.getDomElement().removeEventListener('fullscreenchange', fsCb);
                 ctl.onExit.setResult(true);
                 exports.DomRootComponent.get().hiddenDiv.style.display = 'none';
@@ -343,7 +325,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         comp.getDomElement().addEventListener('fullscreenchange', fsCb);
         return ctl;
     }
-    function RequestPrintWindow(options) {
+    function RequestUserAgentPrint(options) {
         let rules = [];
         if (options.pageSize != undefined) {
             if (typeof options.pageSize !== 'string') {

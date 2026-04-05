@@ -1,8 +1,7 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "pxprpc/backend", "pxprpc/base", "pxprpc/extend"], function (require, exports, base_1, webutils_1, backend_1, base_2, extend_1) {
+define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "pxprpc/backend", "pxprpc/base", "pxprpc/extend", "./rpcworker", "partic2/pxprpcBinding/utils"], function (require, exports, base_1, webutils_1, backend_1, base_2, extend_1, rpcworker_1, utils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.rpcId = exports.persistent = exports.ServiceWorker = exports.WebWorker1RpcName = exports.ServerHostWorker1RpcName = exports.ServerHostRpcName = exports.IoOverPxprpc = exports.ClientInfo = exports.RpcWorker = exports.internalProps = exports.rpcWorkerInitModule = exports.__name__ = void 0;
-    exports.getRpcFunctionOn = getRpcFunctionOn;
+    exports.persistent = exports.ServiceWorker = exports.WebWorker1RpcName = exports.ServerHostWorker1RpcName = exports.ServerHostRpcName = exports.__internal__ = exports.IoOverPxprpc = exports.ClientInfo = exports.RpcWorker = exports.rpcWorkerInitModule = exports.RpcSerializeMagicMark = exports.__name__ = void 0;
     exports.createIoPipe = createIoPipe;
     exports.getAttachedRemoteRigstryFunction = getAttachedRemoteRigstryFunction;
     exports.getConnectionFromUrl = getConnectionFromUrl;
@@ -10,23 +9,23 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     exports.listRegistered = listRegistered;
     exports.getPersistentRegistered = getPersistentRegistered;
     exports.listPersistentRegistered = listPersistentRegistered;
+    exports.isServerHost = isServerHost;
     exports.addClient = addClient;
     exports.removeClient = removeClient;
-    exports.addBuiltinClient = addBuiltinClient;
     exports.importRemoteModule = importRemoteModule;
+    exports.easyCallRemoteJsonFunction = easyCallRemoteJsonFunction;
     exports.__name__ = base_1.requirejs.getLocalRequireModule(require);
+    exports.RpcSerializeMagicMark = '__DUz66NYkWuMdex9k2mvwBbYN__';
     exports.rpcWorkerInitModule = [];
-    extend_1.defaultFuncMap[exports.__name__ + '.loadModule'] = new extend_1.RpcExtendServerCallable(async (name) => {
-        return {
-            type: 'module',
-            value: await base_1.requirejs.promiseRequire(name)
-        };
-    }).typedecl('s->o');
+    extend_1.defaultFuncMap[exports.__name__ + '.loadModule'] = new extend_1.RpcExtendServerCallable(async (name) => { await new Promise((resolve_1, reject_1) => { require([name], resolve_1, reject_1); }); }).typedecl('s->');
     extend_1.defaultFuncMap[exports.__name__ + '.unloadModule'] = new extend_1.RpcExtendServerCallable(async (name) => base_1.requirejs.undef(name)).typedecl('s->');
-    extend_1.defaultFuncMap[exports.__name__ + '.callJsonFunction'] = new extend_1.RpcExtendServerCallable(async (module, functionName, paramsJson) => {
+    extend_1.defaultFuncMap[exports.__name__ + '.getDefined'] = new extend_1.RpcExtendServerCallable(async () => base_1.requirejs.getDefined()).typedecl('s->o');
+    extend_1.defaultFuncMap[exports.__name__ + '.getConnectionFromUrl'] = new extend_1.RpcExtendServerCallable(async (url) => {
+        return await getConnectionFromUrl(url);
+    }).typedecl('s->o');
+    extend_1.defaultFuncMap[exports.__name__ + '.runJsonResultCode'] = new extend_1.RpcExtendServerCallable(async (code) => {
         try {
-            let param = JSON.parse(paramsJson);
-            return JSON.stringify([(await module.value[functionName](...param)) ?? null]);
+            return JSON.stringify([await (new Function(code))() ?? null]);
         }
         catch (err) {
             return JSON.stringify([null, {
@@ -34,28 +33,128 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                     stack: err.stack
                 }]);
         }
-    }).typedecl('oss->s');
-    extend_1.defaultFuncMap[exports.__name__ + '.getDefined'] = new extend_1.RpcExtendServerCallable(async () => base_1.requirejs.getDefined()).typedecl('s->o');
-    extend_1.defaultFuncMap[exports.__name__ + '.getConnectionFromUrl'] = new extend_1.RpcExtendServerCallable(async (url) => {
-        return await getConnectionFromUrl(url);
-    }).typedecl('s->o');
-    exports.internalProps = Symbol(exports.__name__ + '.internalProps');
-    async function getRpcFunctionOn(client, funcName, typ) {
-        let attachedFunc = {};
-        if (exports.internalProps in client) {
-            attachedFunc = client[exports.internalProps];
+    }).typedecl('s->s');
+    class RemoteObjectPoolDefaultImpl extends Map {
+        delete(key) {
+            let t1 = this.get(key);
+            if (t1 != null && typeof t1.close === 'function') {
+                t1.close();
+            }
+            return super.delete(key);
         }
-        else {
-            client[exports.internalProps] = attachedFunc;
+        close() {
+            for (let t1 of this.keys()) {
+                this.delete(t1);
+            }
         }
-        if (!(funcName in attachedFunc)) {
-            let fn = await client.getFunc(funcName);
-            if (fn != null)
-                fn.typedecl(typ);
-            attachedFunc[funcName] = fn;
-        }
-        return attachedFunc[funcName];
     }
+    extend_1.defaultFuncMap[exports.__name__ + '.freeObjectInRemoteObjectPool'] = new extend_1.RpcExtendServerCallable(async (objectPool, id) => {
+        objectPool.delete(id);
+    }).typedecl('os->');
+    extend_1.defaultFuncMap[exports.__name__ + '.allocateRemoteObjectPool'] = new extend_1.RpcExtendServerCallable(async () => {
+        return new RemoteObjectPoolDefaultImpl();
+    }).typedecl('->o');
+    function unpackExtraBytesArray(extraBytes) {
+        if (extraBytes.length == 0)
+            return [];
+        let bytesArray = new Array();
+        let ser = new base_2.Serializer().prepareUnserializing(extraBytes);
+        let count = ser.getVarint();
+        for (let t1 = 0; t1 < count; t1++) {
+            bytesArray.push(ser.getBytes());
+        }
+        return bytesArray;
+    }
+    function packExtraBytesArray(bytesArray) {
+        let ser = new base_2.Serializer().prepareSerializing(32);
+        ser.putVarint(bytesArray.length);
+        bytesArray.forEach((val) => ser.putBytes(val));
+        return ser.build();
+    }
+    extend_1.defaultFuncMap[exports.__name__ + '.callJsonFunction'] = new extend_1.RpcExtendServerCallable(async (requestJson, extraBytes, objectPool) => {
+        try {
+            let extraBytesArray = unpackExtraBytesArray(extraBytes);
+            let request = JSON.parse(requestJson, (key, value) => {
+                if (typeof value === 'object' && value !== null) {
+                    if (value[exports.RpcSerializeMagicMark] === true) {
+                        if (value.t === 'Uint8Array') {
+                            return extraBytesArray[value.i];
+                        }
+                        else if (value.t === 'ArrayBuffer') {
+                            return extraBytesArray[value.i].buffer;
+                        }
+                        else if (value.v instanceof Array) {
+                            return new globalThis[value.t](...value.v);
+                        }
+                        else if (value.t === 'Int8Array') {
+                            return new Int8Array(extraBytesArray[value.i].buffer);
+                        }
+                    }
+                    else if (value[exports.RpcSerializeMagicMark] != undefined) {
+                        let markProp = value[exports.RpcSerializeMagicMark];
+                        if (markProp.t === 'RpcRemoteObject') {
+                            return objectPool.get(markProp.id);
+                        }
+                        else {
+                            return value;
+                        }
+                    }
+                    else {
+                        return value;
+                    }
+                }
+                else {
+                    return value;
+                }
+            });
+            let thisObject = {};
+            if (request.module != undefined) {
+                thisObject = await new Promise((resolve_2, reject_2) => { require([request.module], resolve_2, reject_2); });
+            }
+            else if (request.object != undefined) {
+                thisObject = objectPool.get(request.object);
+            }
+            extraBytesArray = new Array();
+            return [
+                JSON.stringify({ result: (await thisObject[request.method](...request.params)) ?? null }, (key, value) => {
+                    if (value instanceof Uint8Array) {
+                        extraBytesArray.push(value);
+                        return { [exports.RpcSerializeMagicMark]: true, t: 'Uint8Array', i: extraBytesArray.length - 1 };
+                    }
+                    else if (value instanceof ArrayBuffer) {
+                        extraBytesArray.push(new Uint8Array(value));
+                        return { [exports.RpcSerializeMagicMark]: true, t: 'ArrayBuffer', i: extraBytesArray.length - 1 };
+                    }
+                    else if (value instanceof Int8Array) {
+                        extraBytesArray.push(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+                        return { [exports.RpcSerializeMagicMark]: true, t: 'Int8Array', i: extraBytesArray.length - 1 };
+                    }
+                    else if (typeof value === 'object' && value !== null && value[exports.RpcSerializeMagicMark] != undefined) {
+                        let markProp = value[exports.RpcSerializeMagicMark];
+                        if (markProp.id === undefined) {
+                            markProp.id = (0, base_1.GenerateRandomString)(8);
+                        }
+                        if (objectPool != null) {
+                            objectPool.set(markProp.id, value);
+                        }
+                        return { [exports.RpcSerializeMagicMark]: { t: 'RpcRemoteObject', ...markProp } };
+                    }
+                    else {
+                        return value;
+                    }
+                }),
+                packExtraBytesArray(extraBytesArray)
+            ];
+        }
+        catch (err) {
+            return [JSON.stringify({ error: {
+                        message: err.message,
+                        stack: err.stack
+                    }
+                }), new base_2.Serializer().prepareSerializing(1).putVarint(0).build()
+            ];
+        }
+    }).typedecl('sbo->sb');
     class RpcWorker {
         constructor(workerId) {
             this.initDone = new base_1.future();
@@ -63,30 +162,34 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             this.workerId = workerId ?? (0, base_1.GenerateRandomString)();
         }
         async ensureConnection() {
-            if (this.conn === undefined) {
-                try {
-                    this.conn = await new backend_1.WebMessage.Connection().connect(this.workerId, 1000);
-                }
-                catch (e) {
-                    if (e instanceof Error && e.message.match(/server not found/) != null) {
-                        //mute
-                    }
-                    else {
-                        throw e;
-                    }
-                }
-                ;
-                if (this.conn === undefined) {
-                    this.wt = (0, webutils_1.CreateWorkerThread)(this.workerId);
-                    await this.wt.start();
-                    backend_1.WebMessage.bind(this.wt.port);
-                    await this.wt.runScript(`require(['partic2/pxprpcClient/rpcworker'],function(workerInit){
-                    workerInit.loadRpcWorkerInitModule(${JSON.stringify(exports.rpcWorkerInitModule)}).then(resolve,reject);
-                },reject)`, true);
-                    this.conn = await new backend_1.WebMessage.Connection().connect(this.wt.workerId, 300);
-                }
+            if (RpcWorker.connectingMutex[this.workerId] == undefined) {
+                RpcWorker.connectingMutex[this.workerId] = new base_1.mutex();
             }
-            return this.conn;
+            let mtx = RpcWorker.connectingMutex[this.workerId];
+            return await mtx.exec(async () => {
+                if (this.conn === undefined) {
+                    try {
+                        this.conn = await new backend_1.WebMessage.Connection().connect(this.workerId, 1000);
+                    }
+                    catch (e) {
+                        if (e instanceof Error && e.message.match(/server not found/) != null) {
+                            //mute
+                        }
+                        else {
+                            throw e;
+                        }
+                    }
+                    ;
+                    if (this.conn === undefined) {
+                        this.wt = (0, webutils_1.CreateWorkerThread)(this.workerId);
+                        await this.wt.start();
+                        backend_1.WebMessage.bind(this.wt.port);
+                        await this.wt.call('partic2/pxprpcClient/rpcworker', '__internalInitRpcWorker', [exports.rpcWorkerInitModule, rpcworker_1.rpcId.get()]);
+                        this.conn = await new backend_1.WebMessage.Connection().connect(this.wt.workerId, 500);
+                    }
+                }
+                return this.conn;
+            });
         }
         async ensureClient() {
             if (this.conn == undefined) {
@@ -99,6 +202,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
     }
     exports.RpcWorker = RpcWorker;
+    RpcWorker.connectingMutex = {};
     class ClientInfo {
         constructor(name, url) {
             this.name = name;
@@ -109,7 +213,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         connected() {
             if (this.client === null)
                 return false;
-            return this.client.conn.isRunning();
+            return this.client.baseClient.isRunning();
         }
         async disconnect() {
             this.client?.close();
@@ -117,12 +221,12 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
         async jsServerLoadModule(name) {
             let fn = await getAttachedRemoteRigstryFunction(this.client);
-            return await fn.loadModule(name);
+            await fn.loadModule(name);
         }
         async ensureConnected() {
             try {
                 await this.connecting.lock();
-                if (this.client !== null && this.client.conn.isRunning()) {
+                if (this.connected()) {
                     return this.client;
                 }
                 else {
@@ -139,6 +243,9 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             finally {
                 await this.connecting.unlock();
             }
+        }
+        toJSON() {
+            return { name: this.name, url: this.url };
         }
     }
     exports.ClientInfo = ClientInfo;
@@ -163,10 +270,15 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
     }
     exports.IoOverPxprpc = IoOverPxprpc;
-    function createIoPipe() {
+    function createIoPipe(opts) {
+        opts = opts ?? {
+            bufferQueueSize: 5
+        };
         let a2b = new base_1.ArrayWrap2();
         let b2a = new base_1.ArrayWrap2();
         let closed = false;
+        a2b.queueSizeLimit = opts.bufferQueueSize;
+        b2a.queueSizeLimit = opts.bufferQueueSize;
         function oneSide(r, s) {
             let tio = {
                 isClosed: () => {
@@ -180,14 +292,19 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                 send: async (data) => {
                     if (closed)
                         throw new Error('closed.');
-                    for (let t1 of data) {
-                        s.queueSignalPush(t1);
+                    if (data.length == 1) {
+                        s.queueBlockPush(data[0]);
+                    }
+                    else {
+                        s.queueBlockPush(new Uint8Array((0, base_1.ArrayBufferConcat)(data)));
                     }
                 },
                 close: () => {
                     closed = true;
                     r.cancelWaiting();
                     s.cancelWaiting();
+                    a2b.arr().length = 0;
+                    b2a.arr().length = 0;
                 }
             };
             return tio;
@@ -202,6 +319,9 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             return this.message + '\n' + (this.remoteStack ?? '');
         }
     }
+    let remoteObjectPoolFree = globalThis.FinalizationRegistry ? new FinalizationRegistry((v) => {
+        v[1].freeObjectInRemoteObjectPool({ [exports.RpcSerializeMagicMark]: { id: v[0], t: 'RpcRemoteObject' } });
+    }) : null;
     class RemoteRegistryFunctionImpl {
         constructor() {
             this.funcs = [];
@@ -209,8 +329,99 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         async loadModule(name) {
             return this.funcs[0].call(name);
         }
-        async callJsonFunction(module, functionName, params) {
-            let [result, error] = JSON.parse(await this.funcs[7].call(module, functionName, JSON.stringify(params)));
+        async callJsonFunction(moduleNameOrThisObject, functionName, params, objectPool) {
+            let request = {
+                method: functionName,
+                params: params
+            };
+            if (typeof moduleNameOrThisObject === 'object' && moduleNameOrThisObject[exports.RpcSerializeMagicMark] != undefined) {
+                request.object = moduleNameOrThisObject[exports.RpcSerializeMagicMark].id;
+            }
+            else {
+                request.module = moduleNameOrThisObject;
+            }
+            if (objectPool == undefined) {
+                if (this.defaultObjectPool == undefined) {
+                    this.defaultObjectPool = await this.allocateRemoteObjectPool();
+                }
+                objectPool = this.defaultObjectPool;
+            }
+            let extraBytesArray = new Array();
+            let requestJson = JSON.stringify(request, (key, value) => {
+                if (value instanceof Uint8Array) {
+                    extraBytesArray.push(value);
+                    return { [exports.RpcSerializeMagicMark]: true, t: 'Uint8Array', i: extraBytesArray.length - 1 };
+                }
+                else if (value instanceof ArrayBuffer) {
+                    extraBytesArray.push(new Uint8Array(value));
+                    return { [exports.RpcSerializeMagicMark]: true, t: 'ArrayBuffer', i: extraBytesArray.length - 1 };
+                }
+                else if (value instanceof Int8Array) {
+                    extraBytesArray.push(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+                    return { [exports.RpcSerializeMagicMark]: true, t: 'Int8Array', i: extraBytesArray.length - 1 };
+                }
+                return value;
+            });
+            let [responseJson, extraBytes] = await this.funcs[7].call(requestJson, packExtraBytesArray(extraBytesArray), objectPool);
+            extraBytesArray = unpackExtraBytesArray(extraBytes);
+            let response = JSON.parse(responseJson, (key, value) => {
+                if (typeof value === 'object' && value !== null) {
+                    if (value[exports.RpcSerializeMagicMark] === true) {
+                        if (value.t === 'Uint8Array') {
+                            return extraBytesArray[value.i];
+                        }
+                        else if (value.t === 'ArrayBuffer') {
+                            return extraBytesArray[value.i].buffer;
+                        }
+                        else if (value.v instanceof Array) {
+                            return new globalThis[value.t](...value.v);
+                        }
+                        else if (value.t === 'Int8Array') {
+                            return new Int8Array(extraBytesArray[value.i].buffer);
+                        }
+                    }
+                    else if (value[exports.RpcSerializeMagicMark] != undefined) {
+                        let markProp = value[exports.RpcSerializeMagicMark];
+                        let funcs = this;
+                        if (markProp.t === 'RpcRemoteObject') {
+                            let p = new Proxy(value, {
+                                get(target, p) {
+                                    //Avoid triggle by Promise.resolve
+                                    if (p === 'then')
+                                        return undefined;
+                                    if (p === exports.RpcSerializeMagicMark)
+                                        return target[p];
+                                    if (p === 'close')
+                                        return async () => funcs.freeObjectInRemoteObjectPool(target);
+                                    return async (...params) => {
+                                        return await funcs.callJsonFunction(target, p, params);
+                                    };
+                                }
+                            });
+                            remoteObjectPoolFree?.register(p, [value[exports.RpcSerializeMagicMark].id, funcs]);
+                            return p;
+                        }
+                        else {
+                            return value;
+                        }
+                    }
+                    else {
+                        return value;
+                    }
+                }
+                else {
+                    return value;
+                }
+            });
+            if (response.error != undefined) {
+                let remoteErr = new RemoteCallFunctionError(response.error.message);
+                remoteErr.remoteStack = response.error.stack;
+                throw remoteErr;
+            }
+            return response.result;
+        }
+        async runJsonResultCode(code) {
+            let [result, error] = JSON.parse(await this.funcs[9].call(code));
             if (error != null) {
                 let remoteError = new RemoteCallFunctionError(error.message);
                 remoteError.remoteStack = error.stack;
@@ -240,42 +451,74 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         async anyToString(obj) {
             return this.funcs[6].call(obj);
         }
+        async allocateRemoteObjectPool() {
+            return await this.funcs[10].call();
+        }
+        async freeObjectInRemoteObjectPool(object, objectPool) {
+            objectPool = objectPool ?? this.defaultObjectPool;
+            if (objectPool != undefined) {
+                await this.funcs[11].call(objectPool ?? this.defaultObjectPool, object[exports.RpcSerializeMagicMark].id);
+            }
+        }
         async ensureInit() {
             if (this.funcs.length == 0) {
                 this.funcs = [
-                    (await this.client1.getFunc(exports.__name__ + '.loadModule'))?.typedecl('s->o'),
-                    (await this.client1.getFunc(exports.__name__ + '.getConnectionFromUrl'))?.typedecl('s->o'),
-                    (await this.client1.getFunc('pxprpc_pp.io_send'))?.typedecl('ob->'),
-                    (await this.client1.getFunc('pxprpc_pp.io_receive'))?.typedecl('o->b'),
-                    (await this.client1.getFunc('builtin.jsExec'))?.typedecl('so->o'),
-                    (await this.client1.getFunc('builtin.bufferData'))?.typedecl('o->b'), //[5]
-                    (await this.client1.getFunc('builtin.anyToString'))?.typedecl('o->s'),
-                    (await this.client1.getFunc(exports.__name__ + '.callJsonFunction'))?.typedecl('oss->s'),
-                    (await this.client1.getFunc(exports.__name__ + '.unloadModule'))?.typedecl('s->')
+                    await (0, utils_1.getRpcFunctionOn)(this.client1, exports.__name__ + '.loadModule', 's->'),
+                    await (0, utils_1.getRpcFunctionOn)(this.client1, exports.__name__ + '.getConnectionFromUrl', 's->o'),
+                    await (0, utils_1.getRpcFunctionOn)(this.client1, 'pxprpc_pp.io_send', 'ob->'),
+                    await (0, utils_1.getRpcFunctionOn)(this.client1, 'pxprpc_pp.io_receive', 'o->b'),
+                    await (0, utils_1.getRpcFunctionOn)(this.client1, 'builtin.jsExec', 'so->o'),
+                    await (0, utils_1.getRpcFunctionOn)(this.client1, 'builtin.bufferData', 'o->b'), //[5]
+                    await (0, utils_1.getRpcFunctionOn)(this.client1, 'builtin.anyToString', 'o->s'),
+                    await (0, utils_1.getRpcFunctionOn)(this.client1, exports.__name__ + '.callJsonFunction', 'sbo->sb'),
+                    await (0, utils_1.getRpcFunctionOn)(this.client1, exports.__name__ + '.unloadModule', 's->'),
+                    await (0, utils_1.getRpcFunctionOn)(this.client1, exports.__name__ + '.runJsonResultCode', 's->s'),
+                    await (0, utils_1.getRpcFunctionOn)(this.client1, exports.__name__ + '.allocateRemoteObjectPool', '->o'), //[10]
+                    await (0, utils_1.getRpcFunctionOn)(this.client1, exports.__name__ + '.freeObjectInRemoteObjectPool', 'os->')
                 ];
             }
         }
     }
+    const attachedRemoteRigstryFunctionName = exports.__name__ + '.RemoteRegistryFunction';
     async function getAttachedRemoteRigstryFunction(client1) {
-        if (!(exports.internalProps in client1)) {
-            let t1 = new RemoteRegistryFunctionImpl();
-            t1.client1 = client1;
-            await t1.ensureInit();
-            client1[exports.internalProps] = t1;
+        let f = (0, utils_1.getRpcLocalVariable)(client1, attachedRemoteRigstryFunctionName);
+        if (f == undefined) {
+            f = new RemoteRegistryFunctionImpl();
+            f.client1 = client1;
+            await f.ensureInit();
+            (0, utils_1.setRpcLocalVariable)(client1, attachedRemoteRigstryFunctionName, f);
         }
-        return client1[exports.internalProps];
+        return f;
     }
+    exports.__internal__ = {
+        isPxseedWorker: false,
+        isServerHost: new base_1.future(),
+    };
     async function getConnectionFromUrl(url) {
         let url2 = new URL(url);
         if (url2.protocol == 'pxpwebmessage:') {
-            let conn = new backend_1.WebMessage.Connection();
-            await conn.connect(url2.pathname, 300);
-            return conn;
+            if (exports.__internal__.isPxseedWorker) {
+                let fn = await getAttachedRemoteRigstryFunction((await (0, rpcworker_1.getRpcClientConnectWorkerParent)()));
+                let remoteIo = await fn.getConnectionFromUrl(url);
+                return new IoOverPxprpc(remoteIo);
+            }
+            else {
+                let conn = new backend_1.WebMessage.Connection();
+                await conn.connect(url2.pathname, 300);
+                return conn;
+            }
         }
         else if (url2.protocol == 'webworker:') {
-            let workerId = url2.pathname;
-            let rpcWorker = new RpcWorker(workerId);
-            return await rpcWorker.ensureConnection();
+            if (exports.__internal__.isPxseedWorker) {
+                let fn = await getAttachedRemoteRigstryFunction((await (0, rpcworker_1.getRpcClientConnectWorkerParent)()));
+                let remoteIo = await fn.getConnectionFromUrl(url);
+                return new IoOverPxprpc(remoteIo);
+            }
+            else {
+                let workerId = url2.pathname;
+                let rpcWorker = new RpcWorker(workerId);
+                return await rpcWorker.ensureConnection();
+            }
         }
         else if (['ws:', 'wss:'].indexOf(url2.protocol) >= 0) {
             return await new backend_1.WebSocketIo().connect(url);
@@ -285,7 +528,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             let firstRpcName = decodeURIComponent(url2.pathname.substring(0, firstSlash));
             let restRpcPath = url2.pathname.substring(firstSlash + 1);
             let cinfo = await getPersistentRegistered(firstRpcName);
-            if (cinfo == null) {
+            if (cinfo == undefined) {
                 cinfo = await addClient(firstRpcName, firstRpcName);
             }
             await cinfo.ensureConnected();
@@ -303,21 +546,26 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             if (url2.pathname !== '1') {
                 throw new Error('Only support default service worker(serviceworker:1)');
             }
-            let swu = await new Promise((resolve_1, reject_1) => { require(['partic2/jsutils1/webutilssw'], resolve_1, reject_1); });
+            let swu = await new Promise((resolve_3, reject_3) => { require(['partic2/jsutils1/webutilssw'], resolve_3, reject_3); });
             let worker = await swu.ensureServiceWorkerInstalled();
             backend_1.WebMessage.bind(worker.port);
-            await worker.runScript(`require(['partic2/pxprpcClient/rpcworker'],function(workerInit){
-            workerInit.loadRpcWorkerInitModule(${JSON.stringify(exports.rpcWorkerInitModule)}).then(resolve,reject);
-        },reject)`, true);
+            await worker.call('partic2/pxprpcClient/rpcworker', '__internalInitRpcWorker', [exports.rpcWorkerInitModule]);
             return await new backend_1.WebMessage.Connection().connect(worker.workerId, 300);
         }
         else if (url2.protocol == 'pxseedjs:') {
             //For user custom connection factory.
             //potential security issue?
-            let functionDelim = url2.pathname.lastIndexOf('.');
-            let moduleName = url2.pathname.substring(0, functionDelim);
-            let functionName = url2.pathname.substring(functionDelim + 1);
-            return (await new Promise((resolve_2, reject_2) => { require([moduleName], resolve_2, reject_2); }))[functionName](url2.toString());
+            if (exports.__internal__.isPxseedWorker) {
+                let fn = await getAttachedRemoteRigstryFunction((await (0, rpcworker_1.getRpcClientConnectWorkerParent)()));
+                let remoteIo = await fn.getConnectionFromUrl(url);
+                return new IoOverPxprpc(remoteIo);
+            }
+            else {
+                let functionDelim = url2.pathname.lastIndexOf('.');
+                let moduleName = url2.pathname.substring(0, functionDelim);
+                let functionName = url2.pathname.substring(functionDelim + 1);
+                return (await new Promise((resolve_4, reject_4) => { require([moduleName], resolve_4, reject_4); }))[functionName](url2.toString());
+            }
         }
         return null;
     }
@@ -332,17 +580,29 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     }
     async function getPersistentRegistered(name) {
         await exports.persistent.load();
-        return getRegistered(name);
+        await addPxseedJsBuiltinClient();
+        return registered.get(name);
     }
-    async function listPersistentRegistered(name) {
+    async function listPersistentRegistered() {
         await exports.persistent.load();
-        return registered.entries();
+        await addPxseedJsBuiltinClient();
+        return Array.from(registered.entries());
+    }
+    async function isServerHost(set) {
+        if (set !== undefined) {
+            if (exports.__internal__.isServerHost.done && set.overwrite) {
+                exports.__internal__.isServerHost = new base_1.future();
+            }
+            exports.__internal__.isServerHost.setResult(set.newValue);
+        }
+        return await exports.__internal__.isServerHost.get();
     }
     async function addClient(url, name) {
         name = (name == undefined || name === '') ? url.toString() : name;
+        await exports.persistent.load();
         let clie = registered.get(name);
         if (clie == undefined) {
-            //Skip if existed, To avoid connection lost unexpected.
+            //Skip if existed, To avoid connection lost unexpectedly.
             clie = new ClientInfo(name, url);
         }
         clie.url = url;
@@ -351,33 +611,37 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         return clie;
     }
     async function removeClient(name) {
+        await exports.persistent.load();
         let clie = registered.get(name);
         if (clie != undefined) {
-            clie.disconnect();
+            clie.disconnect().catch(() => { });
             registered.delete(name);
         }
         await exports.persistent.save();
     }
+    //"ServerHost" usually refer to the server hosting pxseed web, and shared by all js worker in one pxeed application.
     exports.ServerHostRpcName = 'server host';
+    //"ServerHostWorker1" refer to the worker spawn by ServerHost to handle the most remote requests.
     exports.ServerHostWorker1RpcName = 'server host worker 1';
     exports.WebWorker1RpcName = 'webworker 1';
     exports.ServiceWorker = 'service worker 1';
-    async function addBuiltinClient() {
-        if (globalThis.location != undefined && globalThis.WebSocket != undefined) {
+    async function addPxseedJsBuiltinClient() {
+        if (globalThis.location != undefined && ['http:', 'https:'].includes(globalThis.location.protocol)
+            && globalThis.__pxseedInit != undefined) {
             if (getRegistered(exports.ServerHostRpcName) != null && getRegistered(exports.ServerHostWorker1RpcName) == null) {
-                addClient('iooverpxprpc:' + exports.ServerHostRpcName + '/' +
+                await addClient('iooverpxprpc:' + exports.ServerHostRpcName + '/' +
                     encodeURIComponent('webworker:' + exports.__name__ + '/worker/1'), exports.ServerHostWorker1RpcName);
             }
             if (getRegistered(exports.ServiceWorker) == null) {
-                addClient('serviceworker:1', exports.ServiceWorker);
+                await addClient('serviceworker:1', exports.ServiceWorker);
             }
             if (getRegistered(exports.WebWorker1RpcName) == null) {
-                addClient('webworker:' + exports.__name__ + '/worker/1', exports.WebWorker1RpcName);
+                await addClient('webworker:' + exports.__name__ + '/worker/1', exports.WebWorker1RpcName);
             }
         }
         else {
             if (getRegistered(exports.ServerHostWorker1RpcName) == null) {
-                addClient('webworker:' + exports.__name__ + '/worker/1', exports.ServerHostWorker1RpcName);
+                await addClient('webworker:' + exports.__name__ + '/worker/1', exports.ServerHostWorker1RpcName);
             }
         }
     }
@@ -387,69 +651,111 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
             config.registered = Array.from(registered.entries()).map(v => ({ name: v[0], url: v[1].url }));
             await (0, webutils_1.SavePersistentConfig)(exports.__name__);
         },
-        load: async function load() {
+        load: async function () {
             let config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
-            if ('registered' in config) {
+            if (config.registered != undefined) {
                 config.registered.forEach(item => {
-                    addClient(item.url, item.name);
+                    let { name, url } = item;
+                    name = (name == undefined || name === '') ? url.toString() : name;
+                    let clie = registered.get(name);
+                    if (clie == undefined) {
+                        //Skip if existed, To avoid connection lost unexpected.
+                        clie = new ClientInfo(name, url);
+                    }
+                    clie.url = url;
+                    registered.set(name, clie);
                 });
             }
-            await addBuiltinClient();
+        },
+        pullFromServerHost: async function () {
+            let rpc = getRegistered(exports.ServerHostRpcName);
+            if (rpc != undefined && !await exports.__internal__.isServerHost.get()) {
+                let result1 = await easyCallRemoteJsonFunction(await rpc.ensureConnected(), exports.__name__, 'listPersistentRegistered', []);
+                for (let t1 of result1) {
+                    if (t1[0] == exports.ServerHostRpcName)
+                        continue;
+                    if (t1[1].url.startsWith('iooverpxprpc:')) {
+                        await addClient(`iooverpxprpc:${exports.ServerHostRpcName}/${t1[1].url.substring('iooverpxprpc:'.length)}`);
+                    }
+                    else {
+                        await addClient(`iooverpxprpc:${exports.ServerHostRpcName}/${encodeURIComponent(t1[1].url)}`, t1[0]);
+                    }
+                }
+            }
+        },
+        pushToServerHost: async function () {
+            let rpc = getRegistered(exports.ServerHostRpcName);
+            if (rpc != undefined && !await exports.__internal__.isServerHost.get()) {
+                let remoteClientList = new Map(await easyCallRemoteJsonFunction(await rpc.ensureConnected(), exports.__name__, 'listPersistentRegistered', []));
+                let toRemove = new Array();
+                let toAdd = new Array();
+                let registered = await listPersistentRegistered();
+                for (let t1 of registered) {
+                    if (t1[1].url.startsWith(`iooverpxprpc:${exports.ServerHostRpcName}/`)) {
+                        let restRpcPath = t1[1].url.substring(`iooverpxprpc:${exports.ServerHostRpcName}/`.length);
+                        if (restRpcPath.indexOf('/') >= 0) {
+                            restRpcPath = 'iooverpxprpc:' + restRpcPath;
+                        }
+                        else {
+                            restRpcPath = decodeURIComponent(restRpcPath);
+                        }
+                        if (remoteClientList.get(t1[0])?.url != restRpcPath) {
+                            toAdd.push([restRpcPath, t1[0]]);
+                        }
+                    }
+                }
+                for (let t1 of remoteClientList.keys()) {
+                    if (getRegistered(t1) == undefined) {
+                        toRemove.push(t1);
+                    }
+                }
+                for (let t1 of toAdd) {
+                    await easyCallRemoteJsonFunction(await rpc.ensureConnected(), exports.__name__, 'addClient', t1);
+                }
+                for (let t1 of toRemove) {
+                    await easyCallRemoteJsonFunction(await rpc.ensureConnected(), exports.__name__, 'removeClient', [t1]);
+                }
+            }
         }
     };
-    //Critical Security Risk. this value can be use to communicate cross-origin.
-    exports.rpcId = globalThis.__workerId ?? (0, base_1.GenerateRandomString)();
-    if ('window' in globalThis) {
-        if (globalThis.window.opener != null) {
-            backend_1.WebMessage.bind({
-                postMessage: (data, opt) => globalThis.window.opener.postMessage(data, { targetOrigin: '*', ...opt }),
-                addEventListener: () => { },
-                removeEventListener: () => { }
-            });
-        }
-        if (globalThis.window.parent != undefined && globalThis.window.self != globalThis.window.parent) {
-            backend_1.WebMessage.bind({
-                postMessage: (data, opt) => globalThis.window.parent.postMessage(data, { targetOrigin: '*', ...opt }),
-                addEventListener: () => { },
-                removeEventListener: () => { }
-            });
-        }
-        //Critical Security Risk
-        if (globalThis.document != undefined) {
-            try {
-                new backend_1.WebMessage.Server((conn) => {
-                    //mute error
-                    new extend_1.RpcExtendServer1(new base_2.Server(conn)).serve().catch(() => { });
-                }).listen(exports.rpcId);
+    (async () => {
+        try {
+            await exports.persistent.load();
+            let rpc = getRegistered(exports.ServerHostRpcName);
+            if (rpc != undefined) {
+                await easyCallRemoteJsonFunction(await rpc.ensureConnected(), exports.__name__, 'isServerHost', [{ newValue: true }]);
             }
-            catch (err) { }
-            ;
+            if (!exports.__internal__.isServerHost.done) {
+                exports.__internal__.isServerHost.setResult(false);
+            }
         }
-        backend_1.WebMessage.postMessageOptions.targetOrigin = '*';
-    }
-    let finalizerCallback = globalThis.FinalizationRegistry ? new FinalizationRegistry((cb) => { cb(); }) : null;
+        catch (err) {
+            exports.__internal__.isServerHost.setResult(false);
+        }
+        ;
+    })();
     //Before typescript support syntax like <typeof import(T)>, we can only tell module type explicitly.
     //Only support plain JSON parameter and return value.
     async function importRemoteModule(rpc, moduleName) {
-        let module = null;
         let funcs = null;
         funcs = await getAttachedRemoteRigstryFunction(rpc);
-        module = await funcs.loadModule(moduleName);
         let proxyModule = new Proxy({}, {
             get(target, p) {
                 //Avoid triggle by Promise.resolve
                 if (p === 'then')
                     return undefined;
-                if (p === exports.internalProps) {
-                    return { rpcModule: module };
-                }
                 return async (...params) => {
-                    return await funcs.callJsonFunction(module, p, params);
+                    return await funcs.callJsonFunction(moduleName, p, params);
                 };
             }
         });
-        finalizerCallback?.register(proxyModule, () => module.free().catch(() => { }));
         return proxyModule;
+    }
+    async function easyCallRemoteJsonFunction(rpc, moduleName, funcName, args) {
+        let funcs = null;
+        funcs = await getAttachedRemoteRigstryFunction(rpc);
+        let r = await funcs.callJsonFunction(moduleName, funcName, args);
+        return r;
     }
 });
 //# sourceMappingURL=registry.js.map

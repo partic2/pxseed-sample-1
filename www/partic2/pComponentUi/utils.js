@@ -4,31 +4,30 @@ define(["require", "exports"], function (require, exports) {
     exports.text2html = text2html;
     exports.docNode2text = docNode2text;
     exports.GetCookieNamed = GetCookieNamed;
+    exports.GeneratePutCookieString = GeneratePutCookieString;
     exports.PutCookie = PutCookie;
     function text2html(src) {
-        let lines = src.split('\n').map(t1 => t1.replace(/[<>&"\u0020]/g, function (c) {
-            return { '<': '&lt;', '>': '&gt;', '&': '&amp', '"': '&quot;', '\u0020': '&nbsp;' }[c] ?? '';
+        let lines = src.split(/\r?\n/).map(t1 => t1.replace(/[<>&"]/g, function (c) {
+            return { '<': '&lt;', '>': '&gt;', '&': '&amp', '"': '&quot;' }[c] ?? '';
         }));
         return lines.map(t1 => '<div>' + ((t1 === '') ? '<br/>' : t1) + '</div>').join('');
     }
     function docNode2text(node) {
-        let walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+        let walker = globalThis.document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
         let textParts = [];
-        while (walker.nextNode()) {
-            if (walker.currentNode instanceof HTMLDivElement || walker.currentNode instanceof HTMLParagraphElement) {
-                if (walker.currentNode.previousSibling == null) {
-                    textParts.push({ node: walker.currentNode, text: '' });
-                }
-                else if (walker.currentNode.previousSibling instanceof HTMLBRElement) {
-                    textParts.push({ node: walker.currentNode, text: '' });
-                }
-                else {
-                    textParts.push({ node: 'phony', text: '\n' });
-                    textParts.push({ node: walker.currentNode, text: '' });
-                }
+        const isBlockElement = (e) => {
+            if (e instanceof Element) {
+                return !getComputedStyle(e).display.includes('inline');
             }
-            else if (walker.currentNode instanceof HTMLBRElement) {
-                if (walker.currentNode.previousSibling != null) {
+            return false;
+        };
+        while (walker.nextNode()) {
+            if (walker.currentNode.previousSibling != null && (isBlockElement(walker.currentNode.previousSibling) ||
+                isBlockElement(walker.currentNode))) {
+                textParts.push({ node: 'phony', text: '\n' });
+            }
+            if (walker.currentNode instanceof HTMLBRElement) {
+                if (walker.currentNode.nextSibling != null && !isBlockElement(walker.currentNode.nextSibling)) {
                     textParts.push({ node: walker.currentNode, text: '\n' });
                 }
                 else {
@@ -36,22 +35,23 @@ define(["require", "exports"], function (require, exports) {
                 }
             }
             else if (walker.currentNode instanceof Text) {
-                let prev = walker.currentNode.previousSibling;
                 let textData = '';
-                if (prev != null) {
-                    if (prev instanceof HTMLDivElement || prev instanceof HTMLParagraphElement) {
-                        textData += '\n';
-                    }
-                }
-                if (textData == ' ') {
-                    textData = '';
+                let parentElem = walker.currentNode.parentElement;
+                if (parentElem != undefined && getComputedStyle(parentElem).whiteSpace.startsWith('pre')) {
+                    textData += walker.currentNode.data;
                 }
                 else {
                     //trim charCode(32) and THEN replace charCode(160)
                     textData += walker.currentNode.data.replace(/\n|(^ +)|( +$)/g, '').replace(/\u00a0/g, ' ');
                 }
+                if ((walker.currentNode.nextSibling == null || isBlockElement(walker.currentNode.nextSibling)) && textData.at(-1) == '\n') {
+                    textData = textData.substring(0, textData.length - 1);
+                }
                 textParts.push({ node: walker.currentNode,
                     text: textData });
+            }
+            else {
+                textParts.push({ node: walker.currentNode, text: '' });
             }
         }
         return { textParts, node,
@@ -73,7 +73,22 @@ define(["require", "exports"], function (require, exports) {
                         offset = nextOffset;
                     }
                 }
-                return { node: null, offset: -1 };
+                let lastNode = null;
+                for (let t1 = this.textParts.length - 1; t1 >= 0; t1--) {
+                    if (this.textParts[t1].node !== 'phony') {
+                        lastNode = this.textParts[t1].node;
+                        break;
+                    }
+                }
+                if (lastNode == null) {
+                    return { node: null, offset: 0 };
+                }
+                else if (lastNode instanceof Text) {
+                    return { node: lastNode, offset: lastNode.data.length };
+                }
+                else {
+                    return { node: lastNode, offset: 0 };
+                }
             },
             textOffsetFromNode(node, offset) {
                 if (this.node == node && offset == 0) {
@@ -101,20 +116,23 @@ define(["require", "exports"], function (require, exports) {
             }
         };
     }
-    async function GetCookieNamed(name) {
-        if (document.cookie.length > 0) {
-            let begin = document.cookie.indexOf(name + "=");
+    async function GetCookieNamed(name, cookie) {
+        if (cookie == undefined) {
+            cookie = globalThis.document.cookie;
+        }
+        if (cookie.length > 0) {
+            let begin = cookie.indexOf(name + "=");
             if (begin !== -1) {
                 begin += name.length + 1;
-                let end = document.cookie.indexOf(";", begin);
+                let end = cookie.indexOf(";", begin);
                 if (end === -1)
-                    end = document.cookie.length;
-                return decodeURIComponent(document.cookie.substring(begin, end));
+                    end = cookie.length;
+                return decodeURIComponent(cookie.substring(begin, end));
             }
         }
         return null;
     }
-    async function PutCookie(name, value, maxAge, path) {
+    function GeneratePutCookieString(name, value, maxAge, path) {
         let cookieString = `${name}=${value};`;
         if (maxAge != undefined) {
             cookieString += `max-age=${maxAge};`;
@@ -122,7 +140,10 @@ define(["require", "exports"], function (require, exports) {
         if (path != undefined) {
             cookieString += `path=${path};`;
         }
-        document.cookie = cookieString;
+        return cookieString;
+    }
+    async function PutCookie(name, value, maxAge, path) {
+        document.cookie = GeneratePutCookieString(name, value, maxAge, path);
     }
 });
 //# sourceMappingURL=utils.js.map

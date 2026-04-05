@@ -1,11 +1,10 @@
-define(["require", "exports", "./kvdb", "./worker", "./jseio", "partic2/jsutils1/base", "partic2/pxprpcClient/registry"], function (require, exports, kvdb_1, worker_1, jseio_1, base_1, registry_1) {
+define(["require", "exports", "./kvdb", "./worker", "./jseio"], function (require, exports, kvdb_1, worker_1, jseio_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.setupEnv = setupEnv;
-    function setupEnv() {
+    exports.__inited__ = void 0;
+    function setupImpl() {
         (0, kvdb_1.setupImpl)();
         (0, worker_1.setupImpl)();
-        (0, jseio_1.setup)();
         if (globalThis.open == undefined) {
             globalThis.open = (async (url, target) => {
                 let jscode = '';
@@ -27,20 +26,20 @@ define(["require", "exports", "./kvdb", "./worker", "./jseio", "partic2/jsutils1
                     let fs = await new Promise((resolve_2, reject_2) => { require(['fs/promises'], resolve_2, reject_2); });
                     jscode = new TextDecoder().decode(await fs.readFile(path));
                 }
-                if (target == '_self') {
-                    new Function(jscode)();
-                }
-                else {
-                    if (target == '_blank' || target == undefined) {
-                        target = (0, base_1.GenerateRandomString)();
-                    }
-                    let worker = new registry_1.RpcWorker(target);
-                    let workerClient = await worker.ensureClient();
-                    let workerFuncs = await (0, registry_1.getAttachedRemoteRigstryFunction)(workerClient);
-                    await workerFuncs.jsExec(`new Function(${JSON.stringify(jscode)})();`, null);
-                }
+                new Function(jscode)();
             });
         }
     }
+    exports.__inited__ = (async () => {
+        if (globalThis.process?.versions?.node == undefined) {
+            console.warn('This module is only used to initialize pxseed environment on Node.js,' +
+                ' and has no effect on other platform.' +
+                'Also avoid to import this module on other platform.');
+        }
+        else {
+            setupImpl();
+            await jseio_1.__inited__;
+        }
+    })();
 });
 //# sourceMappingURL=env.js.map
