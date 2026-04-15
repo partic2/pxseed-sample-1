@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/webutils"], function (require, exports, webutils_1) {
+define("partic2/jsutils1/workerentry", ["require", "exports", "partic2/jsutils1/webutils"], function (require, exports, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.spawnerCall = void 0;
@@ -32,4 +32,3 @@ define(["require", "exports", "partic2/jsutils1/webutils"], function (require, e
         globalThis.close();
     }
 });
-//# sourceMappingURL=workerentry.js.map

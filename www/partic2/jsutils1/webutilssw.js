@@ -1,6 +1,6 @@
 //This module can ONLY be used in environemnt support Service worker
 //(https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API)
-define(["require", "exports", "./base", "./webutils"], function (require, exports, base_1, webutils_1) {
+define("partic2/jsutils1/webutilssw", ["require", "exports", "./base", "./webutils"], function (require, exports, base_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.SimpleGETCache = exports.usingSimpleGETCacheFetchHandler = exports.ServiceWorkerId = exports.serviceWorkerServeRoot = void 0;
@@ -285,4 +285,3 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
         return await exports.SimpleGETCache.reloadConfig();
     }
 });
-//# sourceMappingURL=webutilssw.js.map

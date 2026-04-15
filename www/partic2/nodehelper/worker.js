@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/webutils", "worker_threads", "path"], function (require, exports, webutils_1, worker_threads_1, path_1) {
+define("partic2/nodehelper/worker", ["require", "exports", "partic2/jsutils1/webutils", "worker_threads", "path"], function (require, exports, webutils_1, worker_threads_1, path_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.MessagePortForNodeWorker = void 0;
@@ -82,4 +82,3 @@ define(["require", "exports", "partic2/jsutils1/webutils", "worker_threads", "pa
         }
     }
 });
-//# sourceMappingURL=worker.js.map

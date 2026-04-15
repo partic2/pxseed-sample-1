@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "pxprpc/extend", "./pxseedhttpserver", "partic2/CodeRunner/jsutils2", "partic2/pxprpcBinding/utils", "partic2/tjshelper/httpprot", "partic2/pxprpcClient/registry"], function (require, exports, base_1, extend_1, pxseedhttpserver_1, jsutils2_1, utils_1, httpprot_1, registry_1) {
+define("pxseedServer2023/httpforward", ["require", "exports", "partic2/jsutils1/base", "pxprpc/extend", "./pxseedhttpserver", "partic2/CodeRunner/jsutils2", "partic2/pxprpcBinding/utils", "partic2/tjshelper/httpprot", "partic2/pxprpcClient/registry"], function (require, exports, base_1, extend_1, pxseedhttpserver_1, jsutils2_1, utils_1, httpprot_1, registry_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.HttpRequestForwardOnRpc = void 0;
@@ -227,4 +227,3 @@ define(["require", "exports", "partic2/jsutils1/base", "pxprpc/extend", "./pxsee
         httpforward.__serverHostForwardHttpRequestToRpcWorker(prefix, rpc);
     }
 });
-//# sourceMappingURL=httpforward.js.map

@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "pxprpc/base", "partic2/jsutils1/webutils", "partic2/tjshelper/tjsbuilder"], function (require, exports, base_1, base_2, webutils_1, tjsbuilder_1) {
+define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base", "pxprpc/base", "partic2/jsutils1/webutils", "partic2/tjshelper/tjsbuilder"], function (require, exports, base_1, base_2, webutils_1, tjsbuilder_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.MessagePortProxyKvDbV1 = exports.FsBasedKvDbV1 = void 0;
@@ -246,4 +246,3 @@ define(["require", "exports", "partic2/jsutils1/base", "pxprpc/base", "partic2/j
     }
     ;
 });
-//# sourceMappingURL=kvdb.js.map

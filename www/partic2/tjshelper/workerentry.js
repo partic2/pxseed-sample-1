@@ -1,4 +1,4 @@
-define(["require", "exports", "./tjsenv"], function (require, exports, tjsenv_1) {
+define("partic2/tjshelper/workerentry", ["require", "exports", "./tjsenv"], function (require, exports, tjsenv_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     const WorkerThreadMessageMark = '__messageMark_WorkerThread';
@@ -40,4 +40,3 @@ define(["require", "exports", "./tjsenv"], function (require, exports, tjsenv_1)
         afterPostMessageSetup();
     }
 });
-//# sourceMappingURL=workerentry.js.map

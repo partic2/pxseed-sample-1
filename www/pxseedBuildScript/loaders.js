@@ -1,4 +1,4 @@
-define(["require", "exports", "./util"], function (require, exports, util_1) {
+define("pxseedBuildScript/loaders", ["require", "exports", "./util"], function (require, exports, util_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.pxseedBuiltinLoader = exports.inited = exports.outputDir = exports.sourceDir = void 0;
@@ -56,10 +56,6 @@ define(["require", "exports", "./util"], function (require, exports, util_1) {
             let ts;
             if (globalThis?.process?.versions?.node == undefined) {
                 //use non node typescript
-                if (!config.transpileOnly) {
-                    util_1.console.info('force use transpileOnly on non-node platform');
-                    config.transpileOnly = true;
-                }
                 const { getTypescriptModuleTjs } = await new Promise((resolve_1, reject_1) => { require(['partic2/packageManager/nodecompat'], resolve_1, reject_1); });
                 ts = await getTypescriptModuleTjs();
                 ts = ts.default ?? ts;
@@ -68,45 +64,41 @@ define(["require", "exports", "./util"], function (require, exports, util_1) {
                 ts = await new Promise((resolve_2, reject_2) => { require(['typescript'], resolve_2, reject_2); });
                 ts = ts.default ?? ts;
             }
-            if (config.transpileOnly === true) {
-                let include = config.include ?? ["./**/*.ts", "./**/*.tsx"];
-                let files = await (0, util_1.simpleGlob)(include, { cwd: dir });
-                for (let t1 of files) {
-                    try {
-                        if (t1.endsWith('.d.ts') || t1.endsWith('.d.tsx'))
-                            continue;
-                        let filePath = path.join(dir, t1);
-                        let fileInfo = await fs.stat(filePath);
-                        let mtime = fileInfo.mtime.getTime();
-                        let moduleName = dir.substring(exports.sourceDir.length + 1).replace(/\\/g, '/') + '/' + t1.replace(/.tsx?$/, '');
-                        moduleName = moduleName.replace(/\/\/+/g, '/');
-                        if (mtime > status.lastSuccessBuildTime) {
-                            util_1.console.info('typescript transpile ' + t1);
-                            let transpiled = '';
-                            if (t1.endsWith('.ts')) {
-                                transpiled = ts.transpile(new TextDecoder().decode(await fs.readFile(filePath)), { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.AMD, esModuleInterop: false }, filePath, [], moduleName);
-                            }
-                            else if (t1.endsWith('.tsx')) {
-                                transpiled = ts.transpile(new TextDecoder().decode(await fs.readFile(filePath)), { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.AMD, esModuleInterop: false, jsx: ts.JsxEmit.React }, filePath, [], moduleName);
-                            }
-                            let outputPath = path.join(exports.outputDir, dir.substring(exports.sourceDir.length + 1).replace(/\\/g, '/'), t1.replace(/.tsx?$/, '.js'));
-                            await fs.mkdir(path.join(outputPath, '..'), { recursive: true });
-                            await fs.writeFile(outputPath, new TextEncoder().encode(transpiled));
+            let include = config.include ?? ["./**/*.ts", "./**/*.tsx"];
+            let files = await (0, util_1.simpleGlob)(include, { cwd: dir });
+            for (let t1 of files) {
+                try {
+                    if (t1.endsWith('.d.ts') || t1.endsWith('.d.tsx'))
+                        continue;
+                    let filePath = path.join(dir, t1);
+                    let fileInfo = await fs.stat(filePath);
+                    let mtime = fileInfo.mtime.getTime();
+                    let moduleName = dir.substring(exports.sourceDir.length + 1).replace(/\\/g, '/') + '/' + t1.replace(/.tsx?$/, '');
+                    moduleName = moduleName.replace(/\/\/+/g, '/');
+                    if (mtime > status.lastSuccessBuildTime) {
+                        util_1.console.info('typescript transpile ' + t1);
+                        let transpiled = '';
+                        if (t1.endsWith('.ts')) {
+                            transpiled = ts.transpile(new TextDecoder().decode(await fs.readFile(filePath)), { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.AMD, esModuleInterop: false }, filePath, [], moduleName);
                         }
-                    }
-                    catch (err) {
-                        status.currentBuildError.push('typescript transpile error:file:' + t1 + ' message:' + err.toString());
+                        else if (t1.endsWith('.tsx')) {
+                            transpiled = ts.transpile(new TextDecoder().decode(await fs.readFile(filePath)), { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.AMD, esModuleInterop: false, jsx: ts.JsxEmit.React }, filePath, [], moduleName);
+                        }
+                        let outputPath = path.join(exports.outputDir, dir.substring(exports.sourceDir.length + 1).replace(/\\/g, '/'), t1.replace(/.tsx?$/, '.js'));
+                        await fs.mkdir(path.join(outputPath, '..'), { recursive: true });
+                        await fs.writeFile(outputPath, new TextEncoder().encode(transpiled));
                     }
                 }
+                catch (err) {
+                    status.currentBuildError.push('typescript transpile error:file:' + t1 + ' message:' + err.toString());
+                }
             }
-            else {
-                let tscPath = path.join(exports.outputDir, '..', 'npmdeps', 'node_modules', 'typescript', 'bin', 'tsc');
-                let sourceRootPath = dir.substring(exports.sourceDir.length + 1).split(/[\\/]/).map(v => '..').join('/');
-                let include = config.include ?? ["./**/*.ts", "./**/*.tsx"];
+            if (config.createTsConfig ?? true) {
                 try {
                     await fs.access(path.join(dir, 'tsconfig.json'));
                 }
                 catch (err) {
+                    let sourceRootPath = dir.substring(exports.sourceDir.length + 1).split(/[\\/]/).map(v => '..').join('/');
                     if (err.code == 'ENOENT') {
                         let tsconfig = {
                             "compilerOptions": {
@@ -117,30 +109,12 @@ define(["require", "exports", "./util"], function (require, exports, util_1) {
                             "extends": `${sourceRootPath}/tsconfig.base.json`,
                             "include": include
                         };
-                        if (config.exclude != undefined) {
-                            tsconfig.exclude = config.exclude;
-                        }
                         await fs.writeFile(path.join(dir, 'tsconfig.json'), new TextEncoder().encode(JSON.stringify(tsconfig)));
                     }
                     else {
                         throw err;
                     }
                 }
-                let files = await (0, util_1.simpleGlob)(include, { cwd: dir });
-                let latestMtime = 0;
-                for (let t1 of files) {
-                    let fileInfo = await fs.stat(path.join(dir, t1));
-                    let mtime = fileInfo.mtime.getTime();
-                    if (mtime > latestMtime)
-                        latestMtime = mtime;
-                }
-                if (status.lastSuccessBuildTime > latestMtime) {
-                    util_1.console.info('typescript loader: No file modified since last build, skiped.');
-                    return;
-                }
-                let returnCode = await util_1.__internal__.runCommand(`node ${tscPath} -p ${dir}`);
-                if (returnCode !== 0)
-                    status.currentBuildError.push('tsc failed.');
             }
         },
         rollup: async function (dir, config, status) {
@@ -192,7 +166,7 @@ define(["require", "exports", "./util"], function (require, exports, util_1) {
                             if (source != mod && config.entryModules.includes(source)) {
                                 isExternal = true;
                             }
-                            if (source != mod && !(/^\.[\\\/]/.test(source) || source.startsWith('/') || /^[a-zA-Z]:[\\\/]/.test(source)) && !config.noImplicitExternal?.includes(mod) && !config.bundle?.includes(source)) {
+                            if (source != mod && !(/^\.\.?[\\\/]/.test(source) || source.startsWith('/') || /^[a-zA-Z]:[\\\/]/.test(source)) && !config.noImplicitExternal?.includes(mod) && !config.bundle?.includes(source)) {
                                 if (!config.entryModules.includes(source)) {
                                     config.entryModules.push(source);
                                 }
@@ -214,4 +188,3 @@ define(["require", "exports", "./util"], function (require, exports, util_1) {
         }
     };
 });
-//# sourceMappingURL=loaders.js.map

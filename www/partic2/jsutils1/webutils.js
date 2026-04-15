@@ -1,4 +1,4 @@
-define(["require", "exports", "./base"], function (require, exports, base_1) {
+define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (require, exports, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.globalInputState = exports.GlobalInputStateTracer = exports.lifecycle = exports.path = exports.defaultHttpClient = exports.HttpClient = exports.WebWorkerThread = exports.FunctionCallOverMessagePort = exports.WorkerThreadMessageMark = exports.DynamicPageCSSManager = exports.CDynamicPageCSSManager = exports.CKeyValueDb = exports.config = exports.__name__ = void 0;
@@ -271,9 +271,10 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             fileInput.click();
         });
     }
-    function AddStyleSheetNode() {
+    function AddStyleSheetNode(parentNode) {
+        parentNode = parentNode ?? (document.head);
         let cssNode = document.createElement('style');
-        document.head.appendChild(cssNode);
+        parentNode.appendChild(cssNode);
         return cssNode.sheet;
     }
     function GetStyleRuleOfSelector(selector) {
@@ -295,35 +296,41 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
         return matched;
     }
     class CDynamicPageCSSManager {
-        constructor() {
-            this.InsertedSelector = new Array();
+        constructor(cssSheetIn) {
+            this.cssSheet = cssSheetIn ?? AddStyleSheetNode();
         }
         PutCss(selector, rules) {
-            if (this.CssNode == undefined) {
-                this.CssNode = AddStyleSheetNode();
+            let found = this.FindRuleFor(selector);
+            if (found != undefined) {
+                this.cssSheet.deleteRule(found.index);
             }
-            let index = this.InsertedSelector.indexOf(selector);
-            if (index >= 0) {
-                //cssText is read only, Do not write it. 
-                this.CssNode.deleteRule(index);
-                this.InsertedSelector.splice(index, 1);
+            this.cssSheet.insertRule(selector + '{' + rules.join(';') + '}', 0);
+        }
+        *IterCss() {
+            for (let t1 = 0; t1 < this.cssSheet.cssRules.length; t1++) {
+                let rule = this.cssSheet.cssRules.item(t1);
+                yield { index: t1, rule };
             }
-            this.CssNode.insertRule(selector + '{' + rules.join(';') + '}', 0);
-            this.InsertedSelector.unshift(selector);
+        }
+        FindRuleFor(selector) {
+            for (let t1 of this.IterCss()) {
+                if (t1.rule.selectorText == selector) {
+                    return t1;
+                }
+            }
         }
         RemoveCss(selector) {
-            if (this.CssNode == undefined) {
-                this.CssNode = AddStyleSheetNode();
-            }
-            let index = this.InsertedSelector.indexOf(selector);
-            if (index >= 0) {
-                this.CssNode.deleteRule(index);
-                this.InsertedSelector.splice(index, 1);
+            let found = this.FindRuleFor(selector);
+            if (found != undefined) {
+                this.cssSheet.deleteRule(found.index);
             }
         }
     }
     exports.CDynamicPageCSSManager = CDynamicPageCSSManager;
-    exports.DynamicPageCSSManager = new CDynamicPageCSSManager();
+    exports.DynamicPageCSSManager = null;
+    if (globalThis.document != undefined) {
+        exports.DynamicPageCSSManager = new CDynamicPageCSSManager(AddStyleSheetNode());
+    }
     var kvdbmap = {};
     var kvdbinitmutex = new base_1.mutex();
     var kvStoreBackend = async (dbname) => {
@@ -507,8 +514,12 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
             this.respHooks = [];
         }
         async fetch(url, init) {
+            init = init ?? {};
             for (let hook of this.reqHooks) {
                 await hook({ url, init });
+            }
+            if (base_1.Task.currentTask != undefined && init?.signal == undefined) {
+                init.signal = base_1.Task.currentTask.getAbortSignal();
             }
             let resp = await fetch(url, init);
             for (let hook of this.respHooks) {
@@ -694,4 +705,3 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     exports.GlobalInputStateTracer = GlobalInputStateTracer;
     exports.globalInputState = new GlobalInputStateTracer();
 });
-//# sourceMappingURL=webutils.js.map

@@ -1,4 +1,4 @@
-define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/pComponentUi/texteditor", "../pComponentUi/input", "partic2/pxseedMedia1/index1", "./tjseasyapi", "../pComponentUi/workspace"], function (require, exports, React, base_1, webutils_1, domui_1, window_1, texteditor_1, input_1, index1_1, tjseasyapi_1, workspace_1) {
+define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/pComponentUi/texteditor", "../pComponentUi/input", "partic2/pxseedMedia1/index1", "./tjseasyapi", "../pComponentUi/workspace"], function (require, exports, React, base_1, webutils_1, domui_1, window_1, texteditor_1, input_1, index1_1, tjseasyapi_1, workspace_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__internal__ = exports.css1 = void 0;
@@ -40,6 +40,7 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
     class FileBrowserComponent extends React.Component {
         constructor(props, context) {
             super(props, context);
+            this._latestOpeningFile = '';
             this._clipboardFile = {
                 paths: [],
                 mode: 'copy'
@@ -65,7 +66,10 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
             }
         }
         async DoFileOpen(path, opt) {
+            this._latestOpeningFile = path;
             let filetype = await this.props.fs.filetype(path);
+            if (this._latestOpeningFile != path)
+                return;
             if (filetype == 'dir') {
                 let newPath = path;
                 let children;
@@ -76,6 +80,8 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
                     newPath = '';
                     children = await this.props.fs.listdir(newPath);
                 }
+                if (this._latestOpeningFile != path)
+                    return;
                 children.sort((a, b) => {
                     let a1 = (a.type === 'dir' ? 100 : 200);
                     let b1 = (b.type === 'dir' ? 100 : 200);
@@ -86,6 +92,8 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
                         c1 = -1;
                     return a1 - b1 + c1;
                 });
+                if (this._latestOpeningFile != path)
+                    return;
                 this.state.selectedFiles.clear();
                 if (opt?.noHistory !== true) {
                     if (this.state.currPathHistory.at(-1) != this.state.currPath && this.state.currPath != undefined) {
@@ -95,9 +103,13 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
                         }
                     }
                 }
+                if (this._latestOpeningFile != path)
+                    return;
                 if (this.state.currPath != newPath) {
                     this.onFilterChange('');
                 }
+                if (this._latestOpeningFile != path)
+                    return;
                 this.setState({
                     currPath: newPath,
                     childrenFile: children,
@@ -353,4 +365,3 @@ define(["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutil
         __internal__.WorkspaceFileBrowser = WorkspaceFileBrowser2;
     })(__internal__ || (exports.__internal__ = __internal__ = {}));
 });
-//# sourceMappingURL=filebrowser.js.map

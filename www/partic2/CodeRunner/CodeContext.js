@@ -1,4 +1,4 @@
-define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./Inspector", "./pxseedLoader", "./jsutils2"], function (require, exports, acorn_walk_1, acorn, base_1, jsutils1, Inspector_1, pxseedLoader_1, jsutils2_1) {
+define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./Inspector", "./pxseedLoader", "./jsutils2"], function (require, exports, acorn_walk_1, acorn, base_1, jsutils1, Inspector_1, pxseedLoader_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.jsExecLib = exports.LocalRunCodeContext = exports.CodeContextEvent = exports.CodeContextEventTarget = exports.TaskLocalEnv = void 0;
@@ -75,8 +75,7 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
                 event: this.event,
                 CodeContextEvent,
                 Task: jsutils1.Task,
-                TaskLocalRef: jsutils2_1.TaskLocalRef,
-                TaskLocalEnv: exports.TaskLocalEnv,
+                tasks: {},
                 //Will be close when LocalRunCodeContext is closing.
                 autoClosable: {},
                 close: () => {
@@ -285,11 +284,20 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
         async runCodeInScope(source) {
             let withBlockBegin = 'with(_ENV){';
             let code = new Function('_ENV', withBlockBegin +
-                'return (async ()=>{' + source + '\n})();}');
+                'return (async ()=>{Promise.__onAsyncEnter();try{\n' + source + '\n}finally{Promise.__onAsyncExit();}})();}');
             let that = this;
+            let taskName = __name__ + '.task-' + jsutils1.GenerateRandomString();
             let r = jsutils1.Task.fork(function* () {
+                let curtask = jsutils1.Task.currentTask;
+                curtask.name = taskName;
+                that.localScope.tasks[taskName] = curtask;
                 exports.TaskLocalEnv.set(that.localScope);
-                return (yield code(that.localScopeProxy));
+                try {
+                    return (yield code(that.localScopeProxy));
+                }
+                finally {
+                    delete that.localScope.tasks[taskName];
+                }
             }).run();
             return await r;
         }
@@ -325,4 +333,3 @@ define(["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "p
         }
     };
 });
-//# sourceMappingURL=CodeContext.js.map

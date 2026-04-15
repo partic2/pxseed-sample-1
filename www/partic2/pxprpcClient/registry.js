@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "pxprpc/backend", "pxprpc/base", "pxprpc/extend", "./rpcworker", "partic2/pxprpcBinding/utils"], function (require, exports, base_1, webutils_1, backend_1, base_2, extend_1, rpcworker_1, utils_1) {
+define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "pxprpc/backend", "pxprpc/base", "pxprpc/extend", "./rpcworker", "partic2/pxprpcBinding/utils"], function (require, exports, base_1, webutils_1, backend_1, base_2, extend_1, rpcworker_1, utils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.persistent = exports.ServiceWorker = exports.WebWorker1RpcName = exports.ServerHostWorker1RpcName = exports.ServerHostRpcName = exports.__internal__ = exports.IoOverPxprpc = exports.ClientInfo = exports.RpcWorker = exports.rpcWorkerInitModule = exports.RpcSerializeMagicMark = exports.__name__ = void 0;
@@ -758,4 +758,3 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         return r;
     }
 });
-//# sourceMappingURL=registry.js.map

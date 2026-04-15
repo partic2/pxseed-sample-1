@@ -1,4 +1,4 @@
-define(["require", "exports", "pxseedBuildScript/util", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2"], function (require, exports, util_1, base_1, webutils_1, jsutils2_1) {
+define("partic2/packageManager/pkgfetcher", ["require", "exports", "pxseedBuildScript/util", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2"], function (require, exports, util_1, base_1, webutils_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__internal__ = exports.defaultGitClient = void 0;
@@ -197,4 +197,3 @@ define(["require", "exports", "pxseedBuildScript/util", "partic2/jsutils1/base",
         initGitPackage, upgradeGitPackage, fetchGitPackageFromUrl, publishPackage
     };
 });
-//# sourceMappingURL=pkgfetcher.js.map

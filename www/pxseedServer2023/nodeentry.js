@@ -1,4 +1,4 @@
-define(["require", "exports", "./pxseedhttpserver", "partic2/jsutils1/base", "pxprpc/base", "stream", "http", "path", "partic2/jsutils1/webutils", "child_process", "ws", "partic2/nodehelper/nodeio", "pxprpc/extend", "pxprpc/backend", "./pxseedhttpserver", "partic2/nodehelper/env"], function (require, exports, pxseedhttpserver_1, base_1, base_2, stream_1, http_1, path_1, webutils_1, child_process_1, ws_1, nodeio_1, extend_1, backend_1, pxseedhttpserver_2) {
+define("pxseedServer2023/nodeentry", ["require", "exports", "./pxseedhttpserver", "partic2/jsutils1/base", "pxprpc/base", "stream", "http", "path", "partic2/jsutils1/webutils", "child_process", "ws", "partic2/nodehelper/nodeio", "pxprpc/extend", "pxprpc/backend", "./pxseedhttpserver", "partic2/nodehelper/env"], function (require, exports, pxseedhttpserver_1, base_1, base_2, stream_1, http_1, path_1, webutils_1, child_process_1, ws_1, nodeio_1, extend_1, backend_1, pxseedhttpserver_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__inited__ = exports.httpOnRequest = exports.httpServ = exports.WsServer = exports.ensureInit = exports.config = exports.__name__ = void 0;
@@ -222,4 +222,3 @@ define(["require", "exports", "./pxseedhttpserver", "partic2/jsutils1/base", "px
         exports.ensureInit.setResult(0);
     })();
 });
-//# sourceMappingURL=nodeentry.js.map

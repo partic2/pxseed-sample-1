@@ -1,4 +1,4 @@
-define(["require", "exports", "pxprpc/backend", "pxprpc/base", "pxprpc/extend", "partic2/jsutils1/base", "../jsutils1/webutils"], function (require, exports, backend_1, base_1, extend_1, base_2, webutils_1) {
+define("partic2/pxprpcClient/rpcworker", ["require", "exports", "pxprpc/backend", "pxprpc/base", "pxprpc/extend", "partic2/jsutils1/base", "../jsutils1/webutils"], function (require, exports, backend_1, base_1, extend_1, base_2, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__internal__ = exports.rpcId = void 0;
@@ -104,4 +104,3 @@ define(["require", "exports", "pxprpc/backend", "pxprpc/base", "pxprpc/extend", 
         }
     }
 });
-//# sourceMappingURL=rpcworker.js.map

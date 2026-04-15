@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/jsutils1/base", "partic2/CodeRunner/JsEnviron", "partic2/tjshelper/tjsutil"], function (require, exports, jsutils2_1, base_1, JsEnviron_1, tjsutil_1) {
+define("partic2/tjshelper/httpprot", ["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/jsutils1/base", "partic2/CodeRunner/JsEnviron", "partic2/tjshelper/tjsutil"], function (require, exports, jsutils2_1, base_1, JsEnviron_1, tjsutil_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.SimpleFileServer = exports.SimpleHttpServerRouter = exports.HttpClient = exports.HttpServer = exports.WebSocketClientStreamHandler = exports.WebSocketServerStreamHandler = exports.ExtendHttpRequest = exports.ExtendHttpResponse = void 0;
@@ -883,4 +883,3 @@ define(["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/jsutils1/b
     }
     exports.SimpleFileServer = SimpleFileServer;
 });
-//# sourceMappingURL=httpprot.js.map

@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2", "partic2/tjshelper/tjsbuilder", "pxseedBuildScript/util", "partic2/CodeRunner/JsEnviron", "./registry"], function (require, exports, base_1, webutils_1, jsutils2_1, tjsbuilder_1, util_1, JsEnviron_1, registry_1) {
+define("partic2/packageManager/misc", ["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2", "partic2/tjshelper/tjsbuilder", "pxseedBuildScript/util", "partic2/CodeRunner/JsEnviron", "./registry"], function (require, exports, base_1, webutils_1, jsutils2_1, tjsbuilder_1, util_1, JsEnviron_1, registry_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__name__ = void 0;
@@ -15,27 +15,25 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     exports.waitBuildWatcherEvent = waitBuildWatcherEvent;
     exports.startFileSystemWatcherAutoBuild = startFileSystemWatcherAutoBuild;
     exports.stopFileSystemWatcherAutoBuild = stopFileSystemWatcherAutoBuild;
-    exports.__name__ = 'partic2/packageManager/misc';
+    exports.__name__ = base_1.requirejs.getLocalRequireModule(require);
+    let log = base_1.logger.getLogger(exports.__name__);
     async function cleanWWW(dir) {
-        let { dirname, join } = await new Promise((resolve_1, reject_1) => { require(['path'], resolve_1, reject_1); });
-        let { readdir, rm, rmdir } = await new Promise((resolve_2, reject_2) => { require(['fs/promises'], resolve_2, reject_2); });
-        let log = base_1.logger.getLogger(exports.__name__);
-        let wwwDir = join(dirname(dirname(dirname(__dirname))), 'www');
-        let sourceDir = join(dirname(dirname(dirname(__dirname))), 'source');
+        let { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
+        let wwwDir = wwwroot;
         //clean .js .d.ts .tsbuildinfo .js.map and empty directory
         dir = dir ?? wwwDir;
-        let children = await readdir(dir, { withFileTypes: true });
+        let children = await fs.readdir(dir, { withFileTypes: true });
         let emptyDir = true;
         for (let t1 of children) {
             if (t1.name.endsWith('.js') || t1.name.endsWith('.d.ts') || t1.name.endsWith('.tsbuildinfo') || t1.name.endsWith('.js.map')) {
-                log.debug(`delete ${join(dir, t1.name)}`);
-                await rm(join(dir, t1.name));
+                log.debug(`delete ${path.join(dir, t1.name)}`);
+                await fs.rm(path.join(dir, t1.name));
             }
             else if (t1.isDirectory()) {
-                let r1 = await cleanWWW(join(dir, t1.name));
+                let r1 = await cleanWWW(path.join(dir, t1.name));
                 if (r1.emptyDir) {
-                    log.debug(`delete ${join(dir, t1.name)}`);
-                    await rmdir(join(dir, t1.name));
+                    log.debug(`delete ${path.join(dir, t1.name)}`);
+                    await fs.rmdir(path.join(dir, t1.name));
                 }
                 else {
                     emptyDir = false;
@@ -51,8 +49,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         let { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
         let { dirname, join } = path;
         let { access } = fs;
-        let { processDirectory } = await new Promise((resolve_3, reject_3) => { require(['pxseedBuildScript/buildlib'], resolve_3, reject_3); });
-        let sourceDir = join(dirname(dirname(dirname(__dirname))), 'source');
+        let sourceDir = join(dirname(wwwroot), 'source');
         let splitPath = file.split(/[\\\/]/);
         let pkgPath = null;
         for (let t1 of base_1.ArrayWrap2.IntSequence(splitPath.length, -1)) {
@@ -205,7 +202,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     //Patch files in PXSEED_HOME from remote patch file.
     async function patchPxseedServerFiles(patchIndexUrl) {
         let resp = await webutils_1.defaultHttpClient.fetch(patchIndexUrl);
-        let { path } = await new Promise((resolve_4, reject_4) => { require(['partic2/jsutils1/webutils'], resolve_4, reject_4); });
+        let { path } = await new Promise((resolve_1, reject_1) => { require(['partic2/jsutils1/webutils'], resolve_1, reject_1); });
         (0, base_1.assert)(resp.ok);
         let patchIndex = await resp.json();
         let fetchIndexRootUrl = new URL(patchIndexUrl);
@@ -252,7 +249,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     }
     //Generate patch files from patchDir relative the PXSEED_HOME
     async function generatePxseedServerFilesPatch(patchDir) {
-        let { path } = await new Promise((resolve_5, reject_5) => { require(['partic2/jsutils1/webutils'], resolve_5, reject_5); });
+        let { path } = await new Promise((resolve_2, reject_2) => { require(['partic2/jsutils1/webutils'], resolve_2, reject_2); });
         await (0, JsEnviron_1.ensureDefaultFileSystem)();
         let fs = JsEnviron_1.defaultFileSystem;
         let pxseedHome = path.join((0, JsEnviron_1.getSimpleFileSysteNormalizedWWWRoot)(), '..');
@@ -299,20 +296,24 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
     }
     async function waitBuildWatcherEvent() {
         if (registry_1.listener.onBuild.find(t1 => t1.module === exports.__name__) == undefined) {
-            registry_1.listener.onBuild.push({ module: exports.__name__, function: '__miscBuildFunctionEventListener' });
+            registry_1.listener.onBuild.push({ module: exports.__name__, func: '__miscBuildFunctionEventListener' });
         }
         return buildWatcher.event.get();
     }
-    let fileSystemWatcherAutoBuildDebounceCall = new jsutils2_1.DebounceCall(async () => {
+    let __buildingMutex = new base_1.mutex();
+    let fileSystemWatcherAutoBuildDebounceCall = new jsutils2_1.DebounceCall(async () => __buildingMutex.exec(async () => {
         let copy = Array.from(buildWatcher.pendingBuildingTask);
         buildWatcher.pendingBuildingTask.clear();
         for (let t1 of copy) {
-            await (0, registry_1.buildPackageAndNotfiy)(t1);
+            log.info('building package:', t1);
+            let consoleContent = await (0, registry_1.buildPackageAndNotfiy)(t1);
+            log.info('built package:', t1);
+            log.info('outputs:', consoleContent);
         }
-    }, 1000);
+    }), 1000);
     async function startFileSystemWatcherAutoBuild() {
         if (buildWatcher.fsw == null) {
-            let nfs = await new Promise((resolve_6, reject_6) => { require(['fs'], resolve_6, reject_6); });
+            let nfs = await new Promise((resolve_3, reject_3) => { require(['fs'], resolve_3, reject_3); });
             let { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
             let sourceRoot = path.join(wwwroot, '..', 'source');
             buildWatcher.fsw = nfs.watch(sourceRoot, { recursive: true }, async (ev, fn) => {
@@ -320,7 +321,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
                     let { pkgName } = await findPxseedPackageContainFile(path.join(sourceRoot, fn));
                     if (pkgName != null) {
                         buildWatcher.pendingBuildingTask.add(pkgName);
-                        await fileSystemWatcherAutoBuildDebounceCall.call();
+                        __buildingMutex.exec(async () => { fileSystemWatcherAutoBuildDebounceCall.call(); });
                     }
                 }
             });
@@ -333,4 +334,3 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
     }
 });
-//# sourceMappingURL=misc.js.map

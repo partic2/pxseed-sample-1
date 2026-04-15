@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "net", "partic2/jsutils1/webutils", "ws", "pxprpc/backend"], function (require, exports, base_1, net_1, webutils_1, ws_1, backend_1) {
+define("partic2/nodehelper/nodeio", ["require", "exports", "partic2/jsutils1/base", "net", "ws"], function (require, exports, base_1, net_1, ws_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.NodeWritableDataSink = exports.NodeReadableDataSource = exports.NodeWsConnectionAdapter2 = exports.PxprpcTcpServer = exports.PxprpcIoFromSocket = exports.wrappedStreams = void 0;
@@ -165,28 +165,8 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "partic2/jsutils1/
     exports.PxprpcTcpServer = PxprpcTcpServer;
     const __name__ = base_1.requirejs.getLocalRequireModule(require);
     async function createIoPxseedJsUrl(url) {
-        let type = (0, webutils_1.GetUrlQueryVariable2)(url, 'type') ?? 'tcp';
-        if (type === 'tcp') {
-            let io = new PxprpcIoFromSocket();
-            let host = (0, webutils_1.GetUrlQueryVariable2)(url, 'host') ?? '127.0.0.1';
-            let port = Number((0, webutils_1.GetUrlQueryVariable2)(url, 'port'));
-            await io.connect({ host, port });
-            return io;
-        }
-        else if (type == 'pipe') {
-            let io = new PxprpcIoFromSocket();
-            let path = (0, webutils_1.GetUrlQueryVariable2)(url, 'pipe');
-            (0, base_1.assert)(path != null);
-            await io.connect({ path });
-            return io;
-        }
-        else if (type === 'ws') {
-            let target = (0, webutils_1.GetUrlQueryVariable2)(url, 'target');
-            (0, base_1.assert)(target != null);
-            let io = await new backend_1.WebSocketIo().connect(target);
-            return io;
-        }
-        throw new Error(`Unsupported type ${type}`);
+        let bus = await new Promise((resolve_1, reject_1) => { require(['partic2/pxprpcClient/bus'], resolve_1, reject_1); });
+        return bus.createIoPxseedJsUrl(url);
     }
     class NodeWsConnectionAdapter2 {
         constructor(ws) {
@@ -267,4 +247,3 @@ define(["require", "exports", "partic2/jsutils1/base", "net", "partic2/jsutils1/
     }
     exports.NodeWritableDataSink = NodeWritableDataSink;
 });
-//# sourceMappingURL=nodeio.js.map

@@ -1,4 +1,4 @@
-define(["require", "exports", "./kvdb", "./worker", "./jseio"], function (require, exports, kvdb_1, worker_1, jseio_1) {
+define("partic2/nodehelper/env", ["require", "exports", "./kvdb", "./worker", "./jseio"], function (require, exports, kvdb_1, worker_1, jseio_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__inited__ = void 0;
@@ -42,4 +42,3 @@ define(["require", "exports", "./kvdb", "./worker", "./jseio"], function (requir
         }
     })();
 });
-//# sourceMappingURL=env.js.map

@@ -1,4 +1,4 @@
-define(["require", "exports", "./loaders", "./util"], function (require, exports, loaders_1, util_1) {
+define("pxseedBuildScript/buildlib", ["require", "exports", "./loaders", "./util"], function (require, exports, loaders_1, util_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.outputDir = exports.sourceDir = void 0;
@@ -18,8 +18,10 @@ define(["require", "exports", "./loaders", "./util"], function (require, exports
     function makeDefaultStatus() {
         return { ...PxseedStatusDefault, lastBuildError: [], currentBuildError: [], subpackages: [], loadersData: {} };
     }
-    async function processDirectory(dir) {
+    async function processDirectory(dir, context) {
         await loaders_1.inited;
+        context = context ?? {};
+        context._ensuredPackages = context._ensuredPackages ?? new Set();
         let startTime = new Date().getTime();
         const { fs, path } = await (0, util_1.getNodeCompatApi)();
         util_1.console.info(`enter ${dir}`);
@@ -33,7 +35,7 @@ define(["require", "exports", "./loaders", "./util"], function (require, exports
             for (let child of children) {
                 if (child.isDirectory()) {
                     try {
-                        await processDirectory(path.join(dir, child.name));
+                        await processDirectory(path.join(dir, child.name), context);
                     }
                     catch (err) {
                         util_1.console.warn('recursive pxseed process failed.' + err.toString() + '\n' + err.stack);
@@ -54,12 +56,14 @@ define(["require", "exports", "./loaders", "./util"], function (require, exports
             let loaders = pxseedConfig.loaders;
             for (let loaderConfig of loaders) {
                 try {
-                    //Experimental.
                     if (loaderConfig.name === 'ensure') {
                         let packages = loaderConfig.packages;
                         if (packages != undefined) {
                             for (let p1 of packages) {
-                                await processDirectory(path.join(loaders_1.sourceDir, p1));
+                                if (!context._ensuredPackages.has(p1)) {
+                                    await processDirectory(path.join(loaders_1.sourceDir, p1), context);
+                                    context._ensuredPackages.add(p1);
+                                }
                             }
                         }
                     }
@@ -88,7 +92,7 @@ define(["require", "exports", "./loaders", "./util"], function (require, exports
             }
             if (pstat.subpackages.length > 0) {
                 for (let t1 of pstat.subpackages) {
-                    await processDirectory(path.join(dir, t1));
+                    await processDirectory(path.join(dir, t1), context);
                 }
                 //Don't save ".subpackages" to file.
                 pstat.subpackages = [];
@@ -147,4 +151,3 @@ define(["require", "exports", "./loaders", "./util"], function (require, exports
         catch (e) { }
     }
 });
-//# sourceMappingURL=buildlib.js.map

@@ -1,5 +1,5 @@
 /*jshint node:true */
-define(["require", "exports", "partic2/jsutils1/base"], function (require, exports, base_1) {
+define("partic2/tjshelper/tjsutil", ["require", "exports", "partic2/jsutils1/base"], function (require, exports, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.polyfill = exports.TlsStream = exports.PxprpcIoFromTjsStream = exports.TjsWriterDataSink = exports.TjsReaderDataSource = void 0;
@@ -299,4 +299,3 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
         WebSocket: WebSocketPolyfill
     };
 });
-//# sourceMappingURL=tjsutil.js.map

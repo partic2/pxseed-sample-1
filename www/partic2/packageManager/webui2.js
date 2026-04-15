@@ -1,10 +1,10 @@
-define(["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/pxprpcClient/registry", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/input", "partic2/pComponentUi/window", "partic2/CodeRunner/jsutils2", "partic2/pxprpcClient/bus", "partic2/JsNotebook/workspace", "partic2/pComponentUi/texteditor", "partic2/pComponentUi/workspace", "partic2/pxseedMedia1/index1", "partic2/pComponentUi/transform", "pxprpc/extend", "pxprpc/base", "partic2/pxprpcClient/rpcworker"], function (require, exports, React, domui_1, registry_1, base_1, webutils_1, input_1, window_1, jsutils2_1, bus_1, workspace_1, texteditor_1, workspace_2, index1_1, transform_1, extend_1, base_2, rpcworker_1) {
+define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/pxprpcClient/registry", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/input", "partic2/pComponentUi/window", "partic2/CodeRunner/jsutils2", "partic2/JsNotebook/workspace", "partic2/pComponentUi/texteditor", "partic2/pComponentUi/workspace", "partic2/pxseedMedia1/index1", "partic2/pComponentUi/transform"], function (require, exports, React, domui_1, registry_1, base_1, webutils_1, input_1, window_1, jsutils2_1, workspace_1, texteditor_1, workspace_2, index1_1, transform_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.webuiStartupExecuteFunction = exports.renderPackagePanel = exports.__name__ = void 0;
     exports.startWebuiForPackage = startWebuiForPackage;
     exports.openPackageMainWindow = openPackageMainWindow;
-    exports.then = then;
+    exports.main = main;
     var registryModuleName = 'partic2/packageManager/registry';
     exports.__name__ = base_1.requirejs.getLocalRequireModule(require);
     let i18n = {
@@ -569,13 +569,9 @@ import2env('partic2/packageManager/registry');`,
             return Object.entries(config.startupExecuteFunction);
         }
     };
-    let __inited__ = (async () => {
-        if ((0, webutils_1.GetJsEntry)() == exports.__name__) {
-            document.body.style.overflow = 'hidden';
+    async function main(cmd) {
+        if (cmd == 'webui') {
             (0, exports.renderPackagePanel)();
-            bus_1.RemotePxseedJsIoServer.serve(`/pxprpc/pxseed_webui/${exports.__name__.replace(/\//g, '.')}/${rpcworker_1.rpcId.get()}`, {
-                onConnect: (io) => new extend_1.RpcExtendServer1(new base_2.Server(io))
-            }).catch((err) => console.warn(err.message, err.stack));
             config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
             for (let t1 of await exports.webuiStartupExecuteFunction.iter()) {
                 new Promise((resolve_3, reject_3) => { require([t1[1].module], resolve_3, reject_3); }).then(mod => mod[t1[1].functionName](...(t1[1].arguments ?? []))).catch(() => { });
@@ -584,11 +580,5 @@ import2env('partic2/packageManager/registry');`,
                 }
             }
         }
-    })();
-    async function then(resolve) {
-        delete exports.then;
-        await __inited__;
-        resolve(exports);
     }
 });
-//# sourceMappingURL=webui2.js.map

@@ -1,4 +1,4 @@
-define(["require", "exports", "./backend", "./base", "./extend", "partic2/jsutils1/webutils", "./backend"], function (require, exports, backend_1, base_1, extend_1, webutils_1, backend_2) {
+define("pxprpc/tests", ["require", "exports", "./backend", "./base", "./extend", "partic2/jsutils1/webutils", "./backend"], function (require, exports, backend_1, base_1, extend_1, webutils_1, backend_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.testAsClient = testAsClient;
@@ -131,4 +131,3 @@ define(["require", "exports", "./backend", "./base", "./extend", "partic2/jsutil
         //await testAsServer();
     })();
 });
-//# sourceMappingURL=tests.js.map

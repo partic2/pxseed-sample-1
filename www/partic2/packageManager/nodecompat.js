@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/CodeRunner/JsEnviron", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pxprpcClient/registry"], function (require, exports, JsEnviron_1, base_1, webutils_1, registry_1) {
+define("partic2/packageManager/nodecompat", ["require", "exports", "partic2/CodeRunner/JsEnviron", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pxprpcClient/registry"], function (require, exports, JsEnviron_1, base_1, webutils_1, registry_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.pathCompat = exports.NodeFsAdapter = void 0;
@@ -167,6 +167,9 @@ define(["require", "exports", "partic2/CodeRunner/JsEnviron", "partic2/jsutils1/
             p.split(/[\\\/]/).at(-1) ?? '';
         }
     };
+    exports.pathCompat.join = exports.pathCompat.join.bind(exports.pathCompat);
+    exports.pathCompat.dirname = exports.pathCompat.dirname.bind(exports.pathCompat);
+    exports.pathCompat.basename = exports.pathCompat.basename.bind(exports.pathCompat);
     async function buildNodeCompatApiTjs() {
         const { buildTjs } = await new Promise((resolve_1, reject_1) => { require(['partic2/tjshelper/tjsbuilder'], resolve_1, reject_1); });
         const tjs = await buildTjs();
@@ -232,4 +235,3 @@ define(["require", "exports", "partic2/CodeRunner/JsEnviron", "partic2/jsutils1/
         }
     }
 });
-//# sourceMappingURL=nodecompat.js.map

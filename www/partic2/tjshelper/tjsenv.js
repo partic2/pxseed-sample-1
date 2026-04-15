@@ -1,5 +1,5 @@
 //import this module to Initialize pxseed environment on txiki.js platform.
-define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", "pxprpc/base", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/nodehelper/kvdb", "partic2/pxprpcBinding/utils"], function (require, exports, base_1, jsutils1base, base_2, base_3, webutils_1, kvdb_1, utils_1) {
+define("partic2/tjshelper/tjsenv", ["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", "pxprpc/base", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/nodehelper/kvdb", "partic2/pxprpcBinding/utils"], function (require, exports, base_1, jsutils1base, base_2, base_3, webutils_1, kvdb_1, utils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__inited__ = exports.TjsTlsClient = exports.txikijsPxprpc = exports.PxprpcRtbIo = void 0;
@@ -253,4 +253,3 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/base", 
         }
     })();
 });
-//# sourceMappingURL=tjsenv.js.map

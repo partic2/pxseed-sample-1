@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/domui", "preact", "partic2/jsutils1/webutils", "partic2/pComponentUi/texteditor", "./Inspector", "./Component1", "partic2/pComponentUi/utils", "./jsutils2"], function (require, exports, base_1, domui_1, React, webutils_1, texteditor_1, Inspector_1, Component1_1, utils_1, jsutils2_1) {
+define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/domui", "preact", "partic2/jsutils1/webutils", "partic2/pComponentUi/texteditor", "./Inspector", "./Component1", "partic2/pComponentUi/utils", "./jsutils2"], function (require, exports, base_1, domui_1, React, webutils_1, texteditor_1, Inspector_1, Component1_1, utils_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.CodeCellList = exports.DefaultCodeCellList = exports.CodeCell = exports.css = void 0;
@@ -149,6 +149,9 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                 await new Promise(requestAnimationFrame);
                 this.ensureCandidateScroll.call();
             }
+            else if (ev.code == 'Escape' && this.state.codeCompleteCandidate != null) {
+                this.resetTooltips();
+            }
         }
         onCellInput(editor, inputData) {
             if (inputData.char == '\n') {
@@ -180,7 +183,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
             this.rref.codeInput.current.setPlainText(input);
         }
         setCellOutput(output, resultVariable) {
-            this.setState({ cellOutput: output, resultVariable });
+            this.setState({ cellOutput: output, resultVariable, errorCatched: null });
         }
         resetTooltips() {
             this.setState({ focusingCompletionCandidate: 0, codeCompleteCandidate: null, extraTooltips: null });
@@ -263,7 +266,7 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                                 this.resetTooltips();
                             }
                         } }, onInput: (target, inputData) => this.onCellInput(target, inputData), divClass: [exports.css.inputCell, ...(this.props.inputClass ?? [])] }),
-                this.state.focusin ? React.createElement("div", { style: { position: 'relative', display: 'flex', justifyContent: 'end' } },
+                this.state.focusin ? React.createElement("div", { style: { position: 'relative', display: 'flex', flexDirection: 'row-reverse' } },
                     React.createElement("div", { style: { position: 'absolute', backgroundColor: 'white', maxWidth: '50%', wordBreak: 'break-all' } },
                         React.createElement("div", null, this.renderActionButton()))) : null,
                 this.renderTooltipsContent(),
@@ -401,8 +404,11 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
                                 { label: 'New', cb: () => this.newCell(v.key) },
                                 { label: 'Del', cb: () => this.deleteCell(v.key) }
                             ], onClearOutputs: () => this.clearConsoleOutput(v.key), onRun: async () => {
-                                this.lastRunCellKey = v.key;
                                 this.props.onRun?.(v.key);
+                                this.lastRunCellKey = v.key;
+                                if (v.key == this.state.list.at(-1)?.key) {
+                                    this.newCell(v.key);
+                                }
                             }, onFocusChange: (focusin) => {
                                 if (focusin) {
                                     this.setState({ lastFocusCellKey: v.key });
@@ -468,4 +474,3 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/dom
         exports.CodeCellList = ccl;
     }
 });
-//# sourceMappingURL=WebUi.js.map

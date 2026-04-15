@@ -1,4 +1,4 @@
-define(["require", "exports", "worker_threads", "./worker", "./env"], function (require, exports, worker_threads_1, worker_1) {
+define("partic2/nodehelper/workerentry", ["require", "exports", "worker_threads", "./worker", "./env"], function (require, exports, worker_threads_1, worker_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     (0, worker_1.setupImpl)();
@@ -11,4 +11,3 @@ define(["require", "exports", "worker_threads", "./worker", "./env"], function (
     global.close = () => process.exit();
     new Promise((resolve_1, reject_1) => { require(['partic2/jsutils1/workerentry'], resolve_1, reject_1); });
 });
-//# sourceMappingURL=workerentry.js.map

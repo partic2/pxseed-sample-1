@@ -1,4 +1,4 @@
-define(["require", "exports", "pxprpc/extend", "pxprpc/base", "partic2/pxprpcClient/registry", "partic2/jsutils1/webutils", "partic2/tjshelper/httpprot", "partic2/tjshelper/tjsbuilder", "partic2/jsutils1/base", "partic2/CodeRunner/JsEnviron", "partic2/pxprpcClient/rpcworker"], function (require, exports, extend_1, base_1, registry_1, webutils_1, httpprot_1, tjsbuilder_1, base_2, JsEnviron_1, rpcworker_1) {
+define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/extend", "pxprpc/base", "partic2/pxprpcClient/registry", "partic2/jsutils1/webutils", "partic2/tjshelper/httpprot", "partic2/tjshelper/tjsbuilder", "partic2/jsutils1/base", "partic2/CodeRunner/JsEnviron", "partic2/pxprpcClient/rpcworker"], function (require, exports, extend_1, base_1, registry_1, webutils_1, httpprot_1, tjsbuilder_1, base_2, JsEnviron_1, rpcworker_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.serverCommandRegistry = exports.wsPipe = exports.defaultHttpHandler = exports.defaultRouter = exports.rootConfig = exports.config = exports.subprocessMagic = exports.__name__ = void 0;
@@ -302,4 +302,3 @@ define(["require", "exports", "pxprpc/extend", "pxprpc/base", "partic2/pxprpcCli
         Object.assign(_ENV, exports.serverCommandRegistry);
     }
 });
-//# sourceMappingURL=pxseedhttpserver.js.map

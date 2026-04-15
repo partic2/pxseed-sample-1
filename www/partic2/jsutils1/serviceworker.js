@@ -1,4 +1,4 @@
-define(["require", "exports", "./base", "./webutils"], function (require, exports, base_1, webutils_1) {
+define("partic2/jsutils1/serviceworker", ["require", "exports", "./base", "./webutils"], function (require, exports, base_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.onfetchHandlers = exports.__internal__ = exports.proxyMessageEventTarget = exports.ServiceWorkerId = exports.serviceWorkerServeRoot = void 0;
@@ -114,4 +114,3 @@ define(["require", "exports", "./base", "./webutils"], function (require, export
         })();
     }
 });
-//# sourceMappingURL=serviceworker.js.map

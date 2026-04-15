@@ -1,4 +1,4 @@
-define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/webutils", "partic2/jsutils1/base", "pxseedBuildScript/util", "partic2/CodeRunner/JsEnviron", "partic2/JsNotebook/workerinit", "partic2/CodeRunner/Inspector", "partic2/pxprpcClient/registry", "./pkgfetcher"], function (require, exports, buildlib_1, webutils_1, base_1, util_1, JsEnviron_1, workerinit_1, Inspector_1, registry_1, pkgfetcher_1) {
+define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/webutils", "partic2/jsutils1/base", "pxseedBuildScript/util", "partic2/CodeRunner/JsEnviron", "partic2/JsNotebook/workerinit", "partic2/CodeRunner/Inspector", "partic2/pxprpcClient/registry", "./pkgfetcher"], function (require, exports, buildlib_1, webutils_1, base_1, util_1, JsEnviron_1, workerinit_1, Inspector_1, registry_1, pkgfetcher_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.listener = exports.__name__ = void 0;
@@ -20,6 +20,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
     exports.exportPackagesInstallation = exportPackagesInstallation;
     exports.importPackagesInstallation = importPackagesInstallation;
     exports.cleanPackageInstallCache = cleanPackageInstallCache;
+    exports.getPackageListeners = getPackageListeners;
     exports.sendOnStartupEventForAllPackages = sendOnStartupEventForAllPackages;
     exports.__name__ = base_1.requirejs.getLocalRequireModule(require);
     let log = base_1.logger.getLogger(exports.__name__);
@@ -334,13 +335,13 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
         if (pkgConfig != null) {
             if (pkgConfig.onInstalled != undefined) {
                 try {
-                    (await new Promise((resolve_2, reject_2) => { require([pkgConfig.onInstalled.module], resolve_2, reject_2); }))[pkgConfig.onInstalled.function]();
+                    (await new Promise((resolve_2, reject_2) => { require([pkgConfig.onInstalled.module], resolve_2, reject_2); }))[pkgConfig.onInstalled.func]();
                 }
                 catch (e) { }
                 ;
             }
         }
-        exports.listener.onInstall.forEach((l) => new Promise((resolve_3, reject_3) => { require([l.module], resolve_3, reject_3); }).then(m => m[l.function](pkgname)).catch(() => { }));
+        exports.listener.onInstall.forEach((l) => new Promise((resolve_3, reject_3) => { require([l.module], resolve_3, reject_3); }).then(m => m[l.func](pkgname)).catch(() => { }));
     }
     async function getUrlTemplateFromScopeName(scopeName) {
         return RepositoriesRegistry.getScopeRepo(scopeName);
@@ -379,7 +380,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
         wrapConsole.error = (...msg) => records.push(msg);
         let buildPath = await getSourceDirForPackage(pkgName);
         await (0, util_1.withConsole)(wrapConsole, () => processDirectory(buildPath));
-        exports.listener.onBuild.forEach((l) => { new Promise((resolve_5, reject_5) => { require([l.module], resolve_5, reject_5); }).then(m => m[l.function](pkgName)).catch(() => { }); });
+        exports.listener.onBuild.forEach((l) => { new Promise((resolve_5, reject_5) => { require([l.module], resolve_5, reject_5); }).then(m => m[l.func](pkgName)).catch(() => { }); });
         try {
             await updatePackagesDatabase(pkgName);
         }
@@ -391,7 +392,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
         let dir1 = await getSourceDirForPackage(pkgname);
         await (0, buildlib_1.cleanBuildStatus)(dir1);
         await fs.rm(dir1, { recursive: true });
-        exports.listener.onUninstall.forEach((l) => new Promise((resolve_6, reject_6) => { require([l.module], resolve_6, reject_6); }).then(m => m[l.function](pkgname)));
+        exports.listener.onUninstall.forEach((l) => new Promise((resolve_6, reject_6) => { require([l.module], resolve_6, reject_6); }).then(m => m[l.func](pkgname)));
     }
     async function getPxseedConfigForPackage(pkgname) {
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
@@ -463,7 +464,7 @@ define(["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/we
         let pxseedConfig = await util_1.__internal__.readJson(path.join(pkgdir, 'pxseed.config.json'));
         let pmopt = getPMOptFromPcfg(pxseedConfig);
         if (pmopt?.onUpgrade != undefined) {
-            await (await new Promise((resolve_7, reject_7) => { require([pmopt.onUpgrade.module], resolve_7, reject_7); }))[pmopt.onUpgrade.function](pkgname, pkgdir);
+            await (await new Promise((resolve_7, reject_7) => { require([pmopt.onUpgrade.module], resolve_7, reject_7); }))[pmopt.onUpgrade.func](pkgname, pkgdir);
         }
         else {
             await fs.access(path.join(pkgdir, '.git'));
@@ -627,19 +628,24 @@ export function main(args:string){
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
         await fs.rm(path.join(wwwroot, ...exports.__name__.split('/'), '..', '__temp'), { recursive: true });
     }
-    async function sendOnStartupEventForAllPackages() {
+    async function getPackageListeners(eventType) {
+        let result = new Array();
         for await (let pkg of listPackages()) {
             let pmopt = getPMOptFromPcfg(pkg);
             if (pmopt != null) {
-                if (pmopt.onServerStartup != null) {
+                if (pmopt[eventType] != null) {
                     try {
-                        (await new Promise((resolve_8, reject_8) => { require([pmopt.onServerStartup.module], resolve_8, reject_8); }))[pmopt.onServerStartup.function]();
+                        result.push(pmopt[eventType]);
                     }
                     catch (err) { }
                     ;
                 }
             }
         }
+        return result;
+    }
+    async function sendOnStartupEventForAllPackages() {
+        await Promise.allSettled((await getPackageListeners('onServerStartup')).map(t1 => new Promise((resolve_8, reject_8) => { require([t1.module], resolve_8, reject_8); }).then(t2 => t2[t1.func]())));
         await (0, JsEnviron_1.ensureDefaultFileSystem)();
         let startupNotebook = (0, JsEnviron_1.getSimpleFileSysteNormalizedWWWRoot)() + '/' + webutils_1.path.join(exports.__name__, '..', 'notebook', 'startup.ijsnb');
         if (await JsEnviron_1.defaultFileSystem.filetype(startupNotebook) == 'none') {
@@ -655,4 +661,3 @@ export function main(args:string){
         }
     }
 });
-//# sourceMappingURL=registry.js.map

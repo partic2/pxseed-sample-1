@@ -1,4 +1,4 @@
-define("pxseedBuildScript/build", ["require", "exports", "./loaders", "./buildlib", "./util"], function (require, exports, loaders_1, buildlib_1, util_1) {
+define(["require", "exports", "./loaders", "./buildlib", "./util"], function (require, exports, loaders_1, buildlib_1, util_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     (async () => {
@@ -22,3 +22,4 @@ define("pxseedBuildScript/build", ["require", "exports", "./loaders", "./buildli
         }
     })();
 });
+//# sourceMappingURL=build.js.map
