@@ -100,7 +100,7 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
             this.db = new CIndexedDb();
             var update = await this.db.connect(dbName);
             if (update && !new Set(this.db.getObjectStoreNames()).has('KeyValueMap')) {
-                var objStore = await this.db.createObjectStore('KeyValueMap', {});
+                await this.db.createObjectStore('KeyValueMap', {});
                 await this.db.close();
                 await this.db.connect(dbName);
             }
@@ -314,7 +314,7 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
         }
         FindRuleFor(selector) {
             for (let t1 of this.IterCss()) {
-                if (t1.rule.selectorText == selector) {
+                if (t1.rule != null && t1.rule.selectorText === selector) {
                     return t1;
                 }
             }
@@ -523,15 +523,23 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
             }
             let resp = await fetch(url, init);
             for (let hook of this.respHooks) {
-                await hook({ url, init }, resp);
+                resp = await hook({ url, init }, resp);
             }
             return resp;
         }
-        hookRequest(hook) {
-            this.reqHooks.push(hook);
+        hookRequest(hook) { this.reqHooks.push(hook); }
+        removeRequestHook(hook) {
+            let foundIndex = this.reqHooks.indexOf(hook);
+            if (foundIndex >= 0) {
+                this.reqHooks.splice(foundIndex, 1);
+            }
         }
-        hookResponse(hook) {
-            this.respHooks.push(hook);
+        hookResponse(hook) { this.respHooks.push(hook); }
+        removeResponseHook(hook) {
+            let foundIndex = this.respHooks.indexOf(hook);
+            if (foundIndex >= 0) {
+                this.respHooks.splice(foundIndex, 1);
+            }
         }
     }
     exports.HttpClient = HttpClient;

@@ -1,4 +1,4 @@
-define(["require", "exports", "./loaders", "./buildlib", "./util"], function (require, exports, loaders_1, buildlib_1, util_1) {
+define("pxseedBuildScript/build", ["require", "exports", "./loaders", "./buildlib", "./util"], function (require, exports, loaders_1, buildlib_1, util_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     (async () => {
@@ -12,7 +12,7 @@ define(["require", "exports", "./loaders", "./buildlib", "./util"], function (re
             }
         }
         else if (command == 'clean') {
-            await (0, buildlib_1.cleanBuildStatus)(buildlib_1.sourceDir);
+            await (0, buildlib_1.cleanBuildStatus)(buildlib_1.outputDir);
             if (process.argv.includes('--js')) {
                 await (0, buildlib_1.cleanJsFiles)(buildlib_1.outputDir);
             }
@@ -22,4 +22,3 @@ define(["require", "exports", "./loaders", "./buildlib", "./util"], function (re
         }
     })();
 });
-//# sourceMappingURL=build.js.map

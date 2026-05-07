@@ -63,7 +63,12 @@ define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base"
         let tjs1 = await (0, tjsbuilder_1.buildTjs)();
         let file1 = await tjs1.open(path, 'w');
         try {
-            await file1.write(data);
+            let offset = 0;
+            while (offset < data.byteLength) {
+                let count = await file1.write(new Uint8Array(data.buffer, data.byteOffset + offset, data.byteLength - offset));
+                (0, base_1.assert)(count > 0);
+                offset += count;
+            }
         }
         finally {
             await file1.close();
@@ -76,18 +81,20 @@ define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base"
             this.mtx = new base_1.mutex();
         }
         async readLatestConfig() {
-            try {
-                let data = await this.tjs1.readFile(this.baseDir + '/config.json');
-                this.config = JSON.parse(new TextDecoder().decode(data));
-                if (this.config?.version !== 1) {
-                    log.warning('Invalid kvdb file, ignored.', this.baseDir + '/config.json');
-                    this.config = { version: 1, time: (0, base_1.GetCurrentTime)().getTime(), fileList: {} };
+            await this.mtx.exec(async () => {
+                try {
+                    let data = await this.tjs1.readFile(this.baseDir + '/config.json');
+                    this.config = JSON.parse(new TextDecoder().decode(data));
+                    if (this.config?.version !== 1) {
+                        log.warning('Invalid kvdb file, ignored.', this.baseDir + '/config.json');
+                        this.config = { version: 1, time: (0, base_1.GetCurrentTime)().getTime(), fileList: {} };
+                    }
                 }
-            }
-            catch (e) {
-                this.config = { version: 1, fileList: {}, time: (0, base_1.GetCurrentTime)().getTime(), lastError: e.toString() + e.stack };
-                await tjsWriteFile(this.baseDir + '/config.json', new TextEncoder().encode(JSON.stringify(this.config)));
-            }
+                catch (e) {
+                    this.config = { version: 1, fileList: {}, time: (0, base_1.GetCurrentTime)().getTime(), lastError: e.toString() + e.stack };
+                    await tjsWriteFile(this.baseDir + '/config.json', new TextEncoder().encode(JSON.stringify(this.config)));
+                }
+            });
         }
         async saveConfigToFile() {
             await tjsWriteFile(this.baseDir + '/config.json', new TextEncoder().encode(JSON.stringify(this.config)));
@@ -101,7 +108,7 @@ define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base"
             this.setItemRaw(key, serializableObject(val));
         }
         async setItemRaw(key, val) {
-            this.mtx.exec(async () => {
+            await this.mtx.exec(async () => {
                 if (!(key in this.config.fileList)) {
                     this.config.fileList[key] = { fileName: (0, base_1.GenerateRandomString)() };
                 }
@@ -143,7 +150,7 @@ define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base"
             onKey(null);
         }
         async delete(key) {
-            this.mtx.exec(async () => {
+            await this.mtx.exec(async () => {
                 let { fileName } = this.config.fileList[key];
                 await this.tjs1.remove(this.baseDir + '/' + fileName);
                 delete this.config.fileList[key];

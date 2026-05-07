@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/CodeRunner/simplecli", "partic2/nodehelper/nodeio", "partic2/nodehelper/env", "./pxseedhttpserver"], function (require, exports, base_1, simplecli_1, nodeio_1) {
+define("pxseedServer2023/nodecli", ["require", "exports", "partic2/nodehelper/env", "partic2/jsutils1/base", "partic2/CodeRunner/simplecli", "partic2/nodehelper/nodeio", "./pxseedhttpserver"], function (require, exports, env_1, base_1, simplecli_1, nodeio_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.setCliOption = setCliOption;
@@ -62,6 +62,5 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/CodeRunner/simpl
             }
         }
     }
-    cliMain();
+    env_1.__inited__.then(() => cliMain());
 });
-//# sourceMappingURL=nodecli.js.map

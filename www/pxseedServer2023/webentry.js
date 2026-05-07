@@ -1,11 +1,11 @@
-define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pxprpcClient/registry", "pxprpc/backend"], function (require, exports, base_1, webutils_1, registry_1, backend_1) {
+define("pxseedServer2023/webentry", ["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pxprpcClient/registry", "pxprpc/backend"], function (require, exports, base_1, webutils_1, registry_1, backend_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__name__ = void 0;
     exports.getPxseedUrl = getPxseedUrl;
     exports.updatePxseedServerConfig = updatePxseedServerConfig;
     exports.createNewEntryUrlWithPxprpcKey = createNewEntryUrlWithPxprpcKey;
-    exports.__name__ = base_1.requirejs.getLocalRequireModule(require);
+    exports.__name__ = 'pxseedServer2023/webentry';
     async function getPxseedUrl() {
         let pxseedBaseUrl = base_1.requirejs.getConfig().baseUrl;
         if (pxseedBaseUrl.endsWith('/'))
@@ -21,6 +21,8 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         if (pxprpcKey === undefined) {
             pxprpcKey = (0, webutils_1.GetUrlQueryVariable)('__pxprpcKey');
         }
+        (await (0, webutils_1.GetPersistentConfig)(exports.__name__)).pxprpcKey = pxprpcKey;
+        await (0, webutils_1.SavePersistentConfig)(exports.__name__);
         if ((0, registry_1.getRegistered)(registry_1.ServerHostRpcName) != null) {
             await (0, registry_1.removeClient)(registry_1.ServerHostRpcName);
         }
@@ -59,4 +61,3 @@ define(["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutil
         }
     })();
 });
-//# sourceMappingURL=webentry.js.map

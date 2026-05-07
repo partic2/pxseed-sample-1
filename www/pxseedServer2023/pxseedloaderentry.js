@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "pxprpc/extend", "partic2/tjshelper/tjsenv", "pxprpc/base", "partic2/pxprpcClient/registry", "partic2/pxprpcBinding/utils", "partic2/tjshelper/jseiorpcserver", "partic2/tjshelper/httpprot", "partic2/tjshelper/tjsbuilder", "partic2/jsutils1/webutils", "partic2/pxprpcBinding/pxprpc_rtbridge", "./pxseedhttpserver", "pxprpc/backend", "partic2/packageManager/misc", "partic2/pxprpcBinding/rpcregistry"], function (require, exports, base_1, extend_1, tjsenv_1, base_2, registry_1, utils_1, jseiorpcserver_1, httpprot_1, tjsbuilder_1, webutils_1, pxprpc_rtbridge_1, pxseedhttpserver, backend_1, misc_1, rpcregistry_1) {
+define("pxseedServer2023/pxseedloaderentry", ["require", "exports", "partic2/jsutils1/base", "pxprpc/extend", "partic2/tjshelper/tjsenv", "pxprpc/base", "partic2/pxprpcClient/registry", "partic2/pxprpcBinding/utils", "partic2/tjshelper/jseiorpcserver", "partic2/tjshelper/httpprot", "partic2/tjshelper/tjsbuilder", "partic2/jsutils1/webutils", "partic2/pxprpcBinding/pxprpc_rtbridge", "./pxseedhttpserver", "pxprpc/backend", "partic2/packageManager/misc", "partic2/pxprpcBinding/rpcregistry", "partic2/CodeRunner/jsutils2"], function (require, exports, base_1, extend_1, tjsenv_1, base_2, registry_1, utils_1, jseiorpcserver_1, httpprot_1, tjsbuilder_1, webutils_1, pxprpc_rtbridge_1, pxseedhttpserver, backend_1, misc_1, rpcregistry_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__inited__ = exports.pxprpcJavaRtbClient = exports.pxprpcRuntimeBridgeClient = void 0;
@@ -60,10 +60,12 @@ define(["require", "exports", "partic2/jsutils1/base", "pxprpc/extend", "partic2
             console.warn('pxseedloader state detecting...');
             if (tjsState.listenOn != undefined) {
                 console.warn('try to connect pxseedloader instance ' + `ws://${tjsState.listenOn.host}:${tjsState.listenOn.port}${tjsState.pxseedBase}/pxprpc/runtime_bridge`);
-                let wsio1 = await new backend_1.WebSocketIo().connect(`ws://${tjsState.listenOn.host}:${tjsState.listenOn.port}${tjsState.pxseedBase}/pxprpc/runtime_bridge`);
+                let wsio1 = await new backend_1.WebSocketIo().connect(`ws://${tjsState.listenOn.host}:${tjsState.listenOn.port}${tjsState.pxseedBase}/pxprpc/runtime_bridge?key=${tjsState.pxprpcKey}`);
                 console.warn(`connected...`);
-                await wsio1.send([new TextEncoder().encode('/pxprpc/runtime_bridge/0')]);
                 try {
+                    await wsio1.send([(0, jsutils2_1.utf8conv)('/pxprpc/runtime_bridge/0')]);
+                    let result = (0, jsutils2_1.utf8conv)(await wsio1.receive());
+                    (0, base_1.assert)(result == 'connected');
                     let client1 = await new extend_1.RpcExtendClient1(new base_2.Client(wsio1)).init();
                     let invoker1 = new pxprpc_rtbridge_1.Invoker();
                     await invoker1.useClient(client1);
@@ -86,9 +88,11 @@ define(["require", "exports", "partic2/jsutils1/base", "pxprpc/extend", "partic2
                 let target = new TextDecoder().decode(await ws.receive());
                 rtbc = await tjsenv_1.PxprpcRtbIo.connect(target);
                 if (rtbc == null) {
+                    await ws.send((0, jsutils2_1.utf8conv)('not found'));
                     ws.close();
                 }
                 else {
+                    ws.send((0, jsutils2_1.utf8conv)('connected'));
                     await Promise.race([(async () => {
                             while (true) {
                                 ws.send(await rtbc.receive());
@@ -112,8 +116,10 @@ define(["require", "exports", "partic2/jsutils1/base", "pxprpc/extend", "partic2
         };
         pxseedhttpserver.defaultRouter.setHandler(pxseedBase + '/pxprpc/runtime_bridge', {
             websocket: async (ctl) => {
-                let ws = await ctl.accept();
-                rtbtunnel(ws);
+                if ((pxseedhttpserver.config.pxprpcKey == null) || (decodeURIComponent((0, webutils_1.GetUrlQueryVariable2)(ctl.request.url ?? '', 'key') ?? '') === pxseedhttpserver.config.pxprpcKey)) {
+                    let ws = await ctl.accept();
+                    rtbtunnel(ws);
+                }
             }
         });
         let ssoc = null;
@@ -163,4 +169,3 @@ define(["require", "exports", "partic2/jsutils1/base", "pxprpc/extend", "partic2
         }
     })();
 });
-//# sourceMappingURL=pxseedloaderentry.js.map

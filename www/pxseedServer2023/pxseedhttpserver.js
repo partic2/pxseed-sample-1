@@ -26,10 +26,10 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
         },
         //pxprpcKey should be secret.
         blockFilesMatch: ['^/+www/+pxseedServer2023/+config\\.json$'],
-        serveSourceDirectory: false,
-        serveWwwRootWithCoi: true
+        serveSourceDirectory: false
     };
     exports.rootConfig = { ...exports.config };
+    let blockFileMatchRegex = new Array();
     async function loadConfig() {
         let tjs = await (0, tjsbuilder_1.buildTjs)();
         try {
@@ -37,23 +37,8 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
             console.warn(`config file ${(0, webutils_1.getWWWRoot)() + '/pxseedServer2023/config.json'} found. `);
             let readinConfig = JSON.parse(new TextDecoder().decode(configData));
             exports.rootConfig = Object.assign(readinConfig);
-            if (globalThis.process != undefined) {
-                let subprocessAt = process.argv.indexOf(exports.subprocessMagic);
-                if (subprocessAt >= 0) {
-                    //This is subprocee spawn by deamon.
-                    let subprocessIndex = Number(process.argv[subprocessAt + 1]);
-                    Object.assign(exports.config, exports.rootConfig, exports.rootConfig.deamonMode.subprocessConfig[subprocessIndex]);
-                    exports.config.deamonMode.enabled = false;
-                    exports.config.deamonMode.subprocessConfig = [];
-                    exports.config.subprocessIndex = subprocessIndex;
-                }
-                else {
-                    Object.assign(exports.config, exports.rootConfig);
-                }
-            }
-            else {
-                Object.assign(exports.config, exports.rootConfig);
-            }
+            Object.assign(exports.config, exports.rootConfig);
+            blockFileMatchRegex = exports.config.blockFilesMatch?.map(t1 => new RegExp(t1)) ?? [];
         }
         catch (e) {
             console.warn(`config file not found, write to ${(0, webutils_1.getWWWRoot)() + '/pxseedServer2023/config.json'}`);
@@ -145,7 +130,6 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
         let wwwroot = (0, webutils_1.getWWWRoot)().replace(/\\/g, '/');
         let fileServer = new httpprot_1.SimpleFileServer(new JsEnviron_1.DirAsRootFS(tjsfs, wwwroot));
         fileServer.pathStartAt = (exports.config.pxseedBase + '/www').length;
-        let blockFileMatchRegex = exports.config.blockFilesMatch?.map(t1 => new RegExp(t1)) ?? [];
         fileServer.interceptor = async (path) => {
             path = '/www' + path;
             for (let t1 of blockFileMatchRegex) {
@@ -163,18 +147,20 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
                 return { maxAge: 86400 };
             }
         };
-        if (exports.config.serveWwwRootWithCoi) {
-            let coiOnfetch = async (req) => {
-                let resp = await fileServer.onfetch(req);
-                resp.headers.append('Cross-Origin-Opener-Policy', 'same-origin');
-                resp.headers.append('Cross-Origin-Embedder-Policy', 'require-corp');
-                return resp;
-            };
-            exports.defaultRouter.setHandler(exports.config.pxseedBase + '/www', { fetch: coiOnfetch });
-        }
-        else {
-            exports.defaultRouter.setHandler(exports.config.pxseedBase + '/www', { fetch: fileServer.onfetch });
-        }
+        let wwwOnFetch = async (req) => {
+            let resp = await fileServer.onfetch(req);
+            let pxseedserveropt = (0, webutils_1.GetUrlQueryVariable2)(req.url, '__pxseedserveropt');
+            if (pxseedserveropt != null) {
+                let opt = decodeURIComponent(pxseedserveropt).split(' ');
+                if (opt.includes('coi')) {
+                    //Cross Origin Isolation
+                    resp.headers.append('Cross-Origin-Opener-Policy', 'same-origin');
+                    resp.headers.append('Cross-Origin-Embedder-Policy', 'require-corp');
+                }
+            }
+            return resp;
+        };
+        exports.defaultRouter.setHandler(exports.config.pxseedBase + '/www', { fetch: wwwOnFetch });
         if (exports.config.serveSourceDirectory) {
             //For sourcemap
             let soourceFileServer = new httpprot_1.SimpleFileServer(new JsEnviron_1.DirAsRootFS(tjsfs, path.join(wwwroot, '..', 'source')));
@@ -273,7 +259,7 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
             await saveConfig(param);
             await loadConfig();
             return 'done';
-        }
+        },
     };
     function pxseedRunStartupModules() {
         Promise.allSettled(exports.config.initModule.map(mod => base_2.requirejs.promiseRequire(mod)));
@@ -288,16 +274,21 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
     }
     //For ServerHost access on Server side
     async function getConnectionForServerHost() {
-        if (globalThis.__workerId == undefined) {
+        let parent = await (0, rpcworker_1.getRpcClientConnectWorkerParent)();
+        if (parent == null) {
             let [c2s, s2c] = (0, registry_1.createIoPipe)();
             new extend_1.RpcExtendServer1(new base_1.Server(s2c)).serve().catch(() => { });
             return c2s;
         }
         else {
-            return await (0, rpcworker_1.getRpcClientConnectWorkerParent)();
+            return parent;
         }
     }
-    (0, registry_1.addClient)('pxseedjs:' + exports.__name__ + '.getConnectionForServerHost', registry_1.ServerHostRpcName).catch(() => { });
+    ;
+    (async () => {
+        await (0, registry_1.addClient)('pxseedjs:' + exports.__name__ + '.getConnectionForServerHost', registry_1.ServerHostRpcName);
+        await (0, registry_1.addClient)('webworker:partic2/pxprpcClient/registry/worker/1', registry_1.ServerHostWorker1RpcName);
+    })();
     async function initNotebookCodeEnv(_ENV) {
         Object.assign(_ENV, exports.serverCommandRegistry);
     }

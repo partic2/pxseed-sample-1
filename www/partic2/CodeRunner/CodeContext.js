@@ -1,7 +1,7 @@
-define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./Inspector", "./pxseedLoader", "./jsutils2"], function (require, exports, acorn_walk_1, acorn, base_1, jsutils1, Inspector_1, pxseedLoader_1, jsutils2_1) {
+define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./Inspector", "./pxseedLoader", "./jsutils2"], function (require, exports, acornWalk, acorn, base_1, jsutils1, Inspector_1, pxseedLoader_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.jsExecLib = exports.LocalRunCodeContext = exports.CodeContextEvent = exports.CodeContextEventTarget = exports.TaskLocalEnv = void 0;
+    exports.jsExecLib = exports.LocalRunCodeContext = exports.__internal__ = exports.CodeContextEvent = exports.CodeContextEventTarget = exports.TaskLocalEnv = void 0;
     exports.enableDebugger = enableDebugger;
     acorn.defaultOptions.allowAwaitOutsideFunction = true;
     acorn.defaultOptions.ecmaVersion = 'latest';
@@ -30,6 +30,9 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
         removeEventListener(type, callback, options) {
             super.removeEventListener(type, callback);
         }
+        _dispatchEventOnEventTarget(event) {
+            return super.dispatchEvent(event);
+        }
     }
     exports.CodeContextEventTarget = CodeContextEventTarget;
     //RunCodeContext.jsExec run code like this
@@ -54,6 +57,14 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
         catch (err) { }
         ;
     }
+    async function defaultCodeTranspilingProcessor(processContext) {
+        let replacePlan = new pxseedLoader_1.JsSourceReplacePlan(processContext.source);
+        await (0, pxseedLoader_1.addAutoAsyncAwait)(replacePlan, processContext._ENV.__topLevelTranspileDirective ?? {});
+        processContext.source = replacePlan.apply();
+    }
+    exports.__internal__ = {
+        defaultCodeTranspilingProcessor
+    };
     class LocalRunCodeContext {
         constructor() {
             this.importHandler = async (source) => {
@@ -68,10 +79,12 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
                     let imp = this.importHandler(module);
                     return imp;
                 },
+                __topLevelTranspileDirective: {},
+                __transpile__: (directive, source) => source,
                 //some utils provide by codeContext
                 __priv_jsExecLib: exports.jsExecLib,
                 //custom source processor for 'runCode' _ENV.__priv_processSource, run before builtin processor.
-                __priv_processSource: [],
+                __priv_sourceProcessors: [{ name: __name__ + '.defaultCodeTranspilingProcessor', process: defaultCodeTranspilingProcessor }],
                 event: this.event,
                 CodeContextEvent,
                 Task: jsutils1.Task,
@@ -162,7 +175,7 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
                 });
                 return { declNames };
             }
-            (0, acorn_walk_1.ancestor)(result, {
+            acornWalk.ancestor(result, {
                 VariableDeclaration(node, state, ancestors) {
                     //Performance issue.
                     if (ancestors.find(v => v.type.endsWith('FunctionExpression')))
@@ -261,8 +274,8 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
             let processContext = { _ENV: this.localScope, source };
             await jsutils1.Task.fork(function* () {
                 exports.TaskLocalEnv.set(that.localScope);
-                for (let processor of that.localScope.__priv_processSource) {
-                    let isAsync = processor(processContext);
+                for (let processor of that.localScope.__priv_sourceProcessors) {
+                    let isAsync = processor.process(processContext);
                     if (isAsync != undefined && 'then' in isAsync) {
                         yield isAsync;
                     }

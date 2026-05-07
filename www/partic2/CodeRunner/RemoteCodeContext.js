@@ -1,4 +1,4 @@
-define(["require", "exports", "./CodeContext", "partic2/jsutils1/base", "partic2/pxprpcClient/registry", "./jsutils2"], function (require, exports, CodeContext_1, base_1, registry_1, jsutils2_1) {
+define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeContext", "partic2/jsutils1/base", "partic2/pxprpcClient/registry", "./jsutils2"], function (require, exports, CodeContext_1, base_1, registry_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.RemoteRunCodeContext = exports.RunCodeContextConnector = exports.__name__ = void 0;
@@ -33,6 +33,9 @@ define(["require", "exports", "./CodeContext", "partic2/jsutils1/base", "partic2
             }
             return events;
         }
+        async pushCodeContextEvent(event) {
+            this.value.event._dispatchEventOnEventTarget(new CodeContext_1.CodeContextEvent(event.type, { data: event.data }));
+        }
         async runCode(source, resultVariable) {
             return this.value.runCode(source, resultVariable);
         }
@@ -50,12 +53,22 @@ define(["require", "exports", "./CodeContext", "partic2/jsutils1/base", "partic2
         t1.close = () => codeContext.close();
         return t1;
     }
+    class RemoteCodeContextEventTarget extends CodeContext_1.CodeContextEventTarget {
+        constructor(rcc) {
+            super();
+            this.rcc = rcc;
+        }
+        dispatchEvent(event) {
+            this.rcc._remoteContext?.pushCodeContextEvent({ type: event.type, data: event.data });
+            return super.dispatchEvent(event);
+        }
+    }
     class RemoteRunCodeContext {
         constructor(client1, remoteCodeContext) {
             this.client1 = client1;
             //RunCodeContextConnector here is usually a rpc object, not the real local object.
             this._remoteContext = null;
-            this.event = new CodeContext_1.CodeContextEventTarget();
+            this.event = new RemoteCodeContextEventTarget(this);
             this.inited = new base_1.future();
             this.initMutex = new base_1.mutex();
             if (remoteCodeContext != undefined) {
@@ -69,7 +82,7 @@ define(["require", "exports", "./CodeContext", "partic2/jsutils1/base", "partic2
                 while (this._remoteContext != null) {
                     let events = await this._remoteContext.pullCodeContextEvent(lastEventSeq);
                     for (let t1 of events) {
-                        this.event.dispatchEvent(new CodeContext_1.CodeContextEvent(t1.type, { data: t1.data }));
+                        this.event._dispatchEventOnEventTarget(new CodeContext_1.CodeContextEvent(t1.type, { data: t1.data }));
                     }
                     if (events.length > 0) {
                         lastEventSeq = events.at(-1).seq;
@@ -117,9 +130,9 @@ define(["require", "exports", "./CodeContext", "partic2/jsutils1/base", "partic2
             this._remoteContext = null;
             if (t1 != null) {
                 (async () => {
-                    await t1.runCode(`event.dispatchEvent(new Event('remote-disconnected'))`).catch();
-                    await t1.close?.();
-                })();
+                    this.event.dispatchEvent(new CodeContext_1.CodeContextEvent('remote-disconnected'));
+                    t1.close?.();
+                })().catch(() => { });
             }
         }
         ;
@@ -137,4 +150,3 @@ define(["require", "exports", "./CodeContext", "partic2/jsutils1/base", "partic2
         return new RemoteRunCodeContext(client1, await (0, registry_1.easyCallRemoteJsonFunction)(client1, exports.__name__, 'connectToCodeContextFromCode', [connectCode]));
     }
 });
-//# sourceMappingURL=RemoteCodeContext.js.map

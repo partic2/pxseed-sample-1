@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/CodeRunner/JsEnviron", "partic2/jsutils1/base", "partic2/pxprpcClient/registry", "partic2/CodeRunner/CodeContext", "partic2/CodeRunner/RemoteCodeContext", "partic2/CodeRunner/jsutils2", "pxprpc/extend", "pxprpc/base", "partic2/CodeRunner/Inspector"], function (require, exports, JsEnviron_1, base_1, registry_1, CodeContext_1, RemoteCodeContext_1, jsutils2_1, extend_1, base_2, Inspector_1) {
+define("partic2/JsNotebook/workerinit", ["require", "exports", "partic2/CodeRunner/JsEnviron", "partic2/jsutils1/base", "partic2/pxprpcClient/registry", "partic2/CodeRunner/CodeContext", "partic2/CodeRunner/RemoteCodeContext", "partic2/CodeRunner/jsutils2", "pxprpc/extend", "pxprpc/base", "partic2/CodeRunner/Inspector", "partic2/jsutils1/webutils"], function (require, exports, JsEnviron_1, base_1, registry_1, CodeContext_1, RemoteCodeContext_1, jsutils2_1, extend_1, base_2, Inspector_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.runningRunCodeContextForNotebookFile = exports.NotebookFileData = exports.__internal__ = exports.__inited__ = exports.ensureInited = exports.__name__ = void 0;
@@ -142,24 +142,7 @@ define(["require", "exports", "partic2/CodeRunner/JsEnviron", "partic2/jsutils1/
             _ENV.fs.simple.delete2[CustomFunctionParameterCompletionSymbol] = makeFunctionCompletionWithFilePathArg0(undefined);
         }
         _ENV.globalThis = globalThis;
-        _ENV.pxseedServerCommand = {
-            buildPackages: async () => {
-                let module1 = await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName)).ensureConnected(), 'pxseedServer2023/pxseedhttpserver');
-                return await module1.serverCommand('buildPackages');
-            },
-            rebuildPackages: async () => {
-                let module1 = await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName)).ensureConnected(), 'pxseedServer2023/pxseedhttpserver');
-                return await module1.serverCommand('rebuildPackages');
-            },
-            getConfig: async () => {
-                let module1 = await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName)).ensureConnected(), 'pxseedServer2023/pxseedhttpserver');
-                return await module1.serverCommand('rebuildPackages');
-            },
-            saveConfig: async (cfg) => {
-                let module1 = await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName)).ensureConnected(), 'pxseedServer2023/pxseedhttpserver');
-                return await module1.serverCommand('saveConfig', cfg);
-            }
-        };
+        _ENV.fetch = webutils_1.defaultHttpClient.fetch.bind(webutils_1.defaultHttpClient);
         _ENV.restartThisWorker = async () => {
             _ENV.jsnotebook?.reconnectCodeContextSoon?.();
             await (0, base_1.sleep)(100);
@@ -218,4 +201,3 @@ define(["require", "exports", "partic2/CodeRunner/JsEnviron", "partic2/jsutils1/
         return cc.value;
     }
 });
-//# sourceMappingURL=workerinit.js.map

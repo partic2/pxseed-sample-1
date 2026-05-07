@@ -1,10 +1,11 @@
-define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/jsutils1/base", "./rpcworker", "partic2/jsutils1/webutils"], function (require, exports, React, registry_1, domui_1, window_1, base_1, rpcworker_1, webutils_1) {
+define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/jsutils1/base", "./rpcworker", "partic2/jsutils1/webutils"], function (require, exports, React, registry_1, domui_1, window_1, base_1, rpcworker_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.RegistryUI = void 0;
     let css2 = {
         rpcClientCard: (0, base_1.GenerateRandomString)()
     };
+    let __name__ = base_1.requirejs.getLocalRequireModule(require);
     webutils_1.DynamicPageCSSManager.PutCss('.' + css2.rpcClientCard, ['word-break:break-all']);
     class AddCard extends React.Component {
         constructor(props, ctx) {
@@ -62,6 +63,60 @@ define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domu
                         "->")))) : null);
         }
     }
+    let config = null;
+    async function pullFromServerHost() {
+        let rpc = await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName);
+        if (rpc != undefined && !await (0, registry_1.isServerHost)()) {
+            let result1 = await (0, registry_1.easyCallRemoteJsonFunction)(await rpc.ensureConnected(), webutils_1.path.join(__name__, '..', 'registry'), 'listPersistentRegistered', []);
+            for (let t1 of result1) {
+                if (t1[0] == registry_1.ServerHostRpcName)
+                    continue;
+                let existed = await (0, registry_1.getPersistentRegistered)(t1[0]);
+                if (existed == null || t1[1].url.startsWith(`iooverpxprpc:${registry_1.ServerHostRpcName}`)) {
+                    if (t1[1].url.startsWith('iooverpxprpc:')) {
+                        await (0, registry_1.addClient)(`iooverpxprpc:${registry_1.ServerHostRpcName}/${t1[1].url.substring('iooverpxprpc:'.length)}`);
+                    }
+                    else {
+                        await (0, registry_1.addClient)(`iooverpxprpc:${registry_1.ServerHostRpcName}/${encodeURIComponent(t1[1].url)}`, t1[0]);
+                    }
+                }
+            }
+        }
+    }
+    async function pushToServerHost() {
+        let rpc = (0, registry_1.getRegistered)(registry_1.ServerHostRpcName);
+        if (rpc != undefined && !await (0, registry_1.isServerHost)()) {
+            let remoteClientList = new Map(await (0, registry_1.easyCallRemoteJsonFunction)(await rpc.ensureConnected(), webutils_1.path.join(__name__, '..', 'registry'), 'listPersistentRegistered', []));
+            let toRemove = new Array();
+            let toAdd = new Array();
+            let registered = await (0, registry_1.listPersistentRegistered)();
+            for (let t1 of registered) {
+                if (t1[1].url.startsWith(`iooverpxprpc:${registry_1.ServerHostRpcName}/`)) {
+                    let restRpcPath = t1[1].url.substring(`iooverpxprpc:${registry_1.ServerHostRpcName}/`.length);
+                    if (restRpcPath.indexOf('/') >= 0) {
+                        restRpcPath = 'iooverpxprpc:' + restRpcPath;
+                    }
+                    else {
+                        restRpcPath = decodeURIComponent(restRpcPath);
+                    }
+                    if (remoteClientList.get(t1[0])?.url != restRpcPath) {
+                        toAdd.push([restRpcPath, t1[0]]);
+                    }
+                }
+            }
+            for (let t1 of remoteClientList.keys()) {
+                if ((0, registry_1.getRegistered)(t1) == undefined) {
+                    toRemove.push(t1);
+                }
+            }
+            for (let t1 of toAdd) {
+                await (0, registry_1.easyCallRemoteJsonFunction)(await rpc.ensureConnected(), __name__, 'addClient', t1);
+            }
+            for (let t1 of toRemove) {
+                await (0, registry_1.easyCallRemoteJsonFunction)(await rpc.ensureConnected(), __name__, 'removeClient', [t1]);
+            }
+        }
+    }
     class RegistryUI extends React.Component {
         constructor() {
             super(...arguments);
@@ -69,6 +124,12 @@ define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domu
         }
         async doLoadConfig() {
             await (0, registry_1.listPersistentRegistered)();
+            if (config == null) {
+                config = await (0, webutils_1.GetPersistentConfig)(__name__);
+                if (config.lastFilter != undefined) {
+                    this.setState({ filter: config.lastFilter });
+                }
+            }
             this.forceUpdate(() => {
                 let div = this.rref.div.current;
                 div?.dispatchEvent(new Event(domui_1.event.layout, { bubbles: true }));
@@ -76,7 +137,7 @@ define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domu
         }
         componentDidMount() {
             this.doLoadConfig();
-            this.setState({ selected: null });
+            this.setState({ selected: null, filter: '' });
         }
         async doAdd() {
             let addCard = new domui_1.ReactRefEx();
@@ -121,8 +182,8 @@ define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domu
         }
         async doSyncWithServer() {
             try {
-                await registry_1.persistent.pullFromServerHost();
-                await registry_1.persistent.pushToServerHost();
+                await pullFromServerHost();
+                await pushToServerHost();
                 this.forceUpdate();
             }
             catch (err) {
@@ -142,6 +203,14 @@ define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domu
         getSelected() {
             return this.state.selected;
         }
+        async onFilterChange(newFilter) {
+            if (config == null) {
+                config = await (0, webutils_1.GetPersistentConfig)(__name__);
+            }
+            config.lastFilter = newFilter;
+            await (0, webutils_1.SavePersistentConfig)(__name__);
+            this.setState({ filter: newFilter });
+        }
         render(props, state, context) {
             let btns = [];
             let sel2 = (0, registry_1.getRegistered)(this.state.selected ?? '');
@@ -160,8 +229,14 @@ define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domu
             let allClients = Array.from((0, registry_1.listRegistered)());
             allClients.sort((a, b) => (a[0] < b[0]) ? -1 : (a[0] === b[0] ? 0 : 1));
             return React.createElement("div", { className: [domui_1.css.simpleCard, domui_1.css.flexColumn].join(' '), ref: this.rref.div },
-                React.createElement("h3", null, "PXPRPC Connection:"),
-                allClients.map(ent => {
+                React.createElement("div", { className: domui_1.css.flexRow },
+                    React.createElement("b", { style: { flexGrow: '0', flexShrink: '1' } }, "PXPRPC Connection:"),
+                    React.createElement("input", { type: "text", placeholder: "filter", style: { flexGrow: '1', flexShrink: '1' }, onChange: (e) => this.onFilterChange(e.target.value), value: this.state.filter })),
+                React.createElement("div", null, btns.map(v => React.createElement("span", null,
+                    "\u2003",
+                    React.createElement("a", { href: "javascript:;", onClick: v.handler }, v.label),
+                    "\u2003"))),
+                allClients.filter(t1 => t1[0].includes(this.state.filter)).map(ent => {
                     return React.createElement("div", { key: ent[0], className: [css2.rpcClientCard, domui_1.css.simpleCard, domui_1.css.selectable,
                             this.state.selected === ent[0] ? domui_1.css.selected : ''].join(' '), onClick: () => this.doSelect(ent[0]) },
                         React.createElement("div", null, ent[0]),
@@ -170,10 +245,6 @@ define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domu
                         React.createElement("hr", null),
                         React.createElement("div", null, ent[1].connected() ? 'connected' : 'disconnected'));
                 }),
-                React.createElement("div", null, btns.map(v => React.createElement("span", null,
-                    "\u2003",
-                    React.createElement("a", { href: "javascript:;", onClick: v.handler }, v.label),
-                    "\u2003"))),
                 React.createElement("hr", null),
                 React.createElement("div", { style: { wordBreak: 'break-all' } },
                     "RPC id for this scope:",
@@ -182,4 +253,3 @@ define(["require", "exports", "preact", "./registry", "partic2/pComponentUi/domu
     }
     exports.RegistryUI = RegistryUI;
 });
-//# sourceMappingURL=ui.js.map

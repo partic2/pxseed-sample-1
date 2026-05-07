@@ -9,6 +9,8 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
     exports.listRegistered = listRegistered;
     exports.getPersistentRegistered = getPersistentRegistered;
     exports.listPersistentRegistered = listPersistentRegistered;
+    exports.setIsServingRpcName = setIsServingRpcName;
+    exports.getIsServingRpcName = getIsServingRpcName;
     exports.isServerHost = isServerHost;
     exports.addClient = addClient;
     exports.removeClient = removeClient;
@@ -492,7 +494,7 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
     }
     exports.__internal__ = {
         isPxseedWorker: false,
-        isServerHost: new base_1.future(),
+        isServingRpcName: {}
     };
     async function getConnectionFromUrl(url) {
         let url2 = new URL(url);
@@ -527,12 +529,17 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
             let firstSlash = url2.pathname.indexOf('/');
             let firstRpcName = decodeURIComponent(url2.pathname.substring(0, firstSlash));
             let restRpcPath = url2.pathname.substring(firstSlash + 1);
-            let cinfo = await getPersistentRegistered(firstRpcName);
+            await exports.persistent.load();
+            let cinfo = getRegistered(firstRpcName);
+            let rpcClient = null;
             if (cinfo == undefined) {
-                cinfo = await addClient(firstRpcName, firstRpcName);
+                rpcClient = new extend_1.RpcExtendClient1(new base_2.Client((await getConnectionFromUrl(firstRpcName))));
+                await rpcClient.init();
             }
-            await cinfo.ensureConnected();
-            let fn = await getAttachedRemoteRigstryFunction(cinfo.client);
+            else {
+                rpcClient = await cinfo.ensureConnected();
+            }
+            let fn = await getAttachedRemoteRigstryFunction(rpcClient);
             if (restRpcPath.indexOf('/') >= 0) {
                 restRpcPath = 'iooverpxprpc:' + restRpcPath;
             }
@@ -578,24 +585,49 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
     function listRegistered() {
         return registered.entries();
     }
+    //NOTE:this function will call addDefaultPxseedJsBuiltinRpcClient, which may connect ServerHost internal.
+    //     So don't use this function directly when connecting to ServerHost, use persistent.load() instead.
     async function getPersistentRegistered(name) {
         await exports.persistent.load();
-        await addPxseedJsBuiltinClient();
+        await addDefaultPxseedJsBuiltinRpcClient();
         return registered.get(name);
     }
+    //See also getPersistentRegistered
     async function listPersistentRegistered() {
         await exports.persistent.load();
-        await addPxseedJsBuiltinClient();
+        await addDefaultPxseedJsBuiltinRpcClient();
         return Array.from(registered.entries());
     }
-    async function isServerHost(set) {
-        if (set !== undefined) {
-            if (exports.__internal__.isServerHost.done && set.overwrite) {
-                exports.__internal__.isServerHost = new base_1.future();
-            }
-            exports.__internal__.isServerHost.setResult(set.newValue);
+    async function setIsServingRpcName(name, isServing) {
+        let f = exports.__internal__.isServingRpcName[name];
+        if (f == undefined) {
+            f = new base_1.future();
+            exports.__internal__.isServingRpcName[name] = f;
         }
-        return await exports.__internal__.isServerHost.get();
+        f.setResult(isServing);
+    }
+    async function getIsServingRpcName(name) {
+        if (exports.__internal__.isServingRpcName[name] == undefined) {
+            exports.__internal__.isServingRpcName[name] = new base_1.future();
+        }
+        try {
+            await exports.persistent.load();
+            let rpc = getRegistered(name);
+            if (rpc != undefined) {
+                await easyCallRemoteJsonFunction(await rpc.ensureConnected(), exports.__name__, 'setIsServingRpcName', [name, true]);
+            }
+            if (!exports.__internal__.isServingRpcName[name].done) {
+                exports.__internal__.isServingRpcName[name].setResult(false);
+            }
+        }
+        catch (err) {
+            exports.__internal__.isServingRpcName[name].setResult(false);
+        }
+        ;
+        return await exports.__internal__.isServingRpcName[name].get();
+    }
+    async function isServerHost() {
+        return getIsServingRpcName(exports.ServerHostRpcName);
     }
     async function addClient(url, name) {
         name = (name == undefined || name === '') ? url.toString() : name;
@@ -625,26 +657,6 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
     exports.ServerHostWorker1RpcName = 'server host worker 1';
     exports.WebWorker1RpcName = 'webworker 1';
     exports.ServiceWorker = 'service worker 1';
-    async function addPxseedJsBuiltinClient() {
-        if (globalThis.location != undefined && ['http:', 'https:'].includes(globalThis.location.protocol)
-            && globalThis.__pxseedInit != undefined) {
-            if (getRegistered(exports.ServerHostRpcName) != null && getRegistered(exports.ServerHostWorker1RpcName) == null) {
-                await addClient('iooverpxprpc:' + exports.ServerHostRpcName + '/' +
-                    encodeURIComponent('webworker:' + exports.__name__ + '/worker/1'), exports.ServerHostWorker1RpcName);
-            }
-            if (getRegistered(exports.ServiceWorker) == null) {
-                await addClient('serviceworker:1', exports.ServiceWorker);
-            }
-            if (getRegistered(exports.WebWorker1RpcName) == null) {
-                await addClient('webworker:' + exports.__name__ + '/worker/1', exports.WebWorker1RpcName);
-            }
-        }
-        else {
-            if (getRegistered(exports.ServerHostWorker1RpcName) == null) {
-                await addClient('webworker:' + exports.__name__ + '/worker/1', exports.ServerHostWorker1RpcName);
-            }
-        }
-    }
     exports.persistent = {
         save: async function () {
             let config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
@@ -666,74 +678,8 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
                     registered.set(name, clie);
                 });
             }
-        },
-        pullFromServerHost: async function () {
-            let rpc = getRegistered(exports.ServerHostRpcName);
-            if (rpc != undefined && !await exports.__internal__.isServerHost.get()) {
-                let result1 = await easyCallRemoteJsonFunction(await rpc.ensureConnected(), exports.__name__, 'listPersistentRegistered', []);
-                for (let t1 of result1) {
-                    if (t1[0] == exports.ServerHostRpcName)
-                        continue;
-                    if (t1[1].url.startsWith('iooverpxprpc:')) {
-                        await addClient(`iooverpxprpc:${exports.ServerHostRpcName}/${t1[1].url.substring('iooverpxprpc:'.length)}`);
-                    }
-                    else {
-                        await addClient(`iooverpxprpc:${exports.ServerHostRpcName}/${encodeURIComponent(t1[1].url)}`, t1[0]);
-                    }
-                }
-            }
-        },
-        pushToServerHost: async function () {
-            let rpc = getRegistered(exports.ServerHostRpcName);
-            if (rpc != undefined && !await exports.__internal__.isServerHost.get()) {
-                let remoteClientList = new Map(await easyCallRemoteJsonFunction(await rpc.ensureConnected(), exports.__name__, 'listPersistentRegistered', []));
-                let toRemove = new Array();
-                let toAdd = new Array();
-                let registered = await listPersistentRegistered();
-                for (let t1 of registered) {
-                    if (t1[1].url.startsWith(`iooverpxprpc:${exports.ServerHostRpcName}/`)) {
-                        let restRpcPath = t1[1].url.substring(`iooverpxprpc:${exports.ServerHostRpcName}/`.length);
-                        if (restRpcPath.indexOf('/') >= 0) {
-                            restRpcPath = 'iooverpxprpc:' + restRpcPath;
-                        }
-                        else {
-                            restRpcPath = decodeURIComponent(restRpcPath);
-                        }
-                        if (remoteClientList.get(t1[0])?.url != restRpcPath) {
-                            toAdd.push([restRpcPath, t1[0]]);
-                        }
-                    }
-                }
-                for (let t1 of remoteClientList.keys()) {
-                    if (getRegistered(t1) == undefined) {
-                        toRemove.push(t1);
-                    }
-                }
-                for (let t1 of toAdd) {
-                    await easyCallRemoteJsonFunction(await rpc.ensureConnected(), exports.__name__, 'addClient', t1);
-                }
-                for (let t1 of toRemove) {
-                    await easyCallRemoteJsonFunction(await rpc.ensureConnected(), exports.__name__, 'removeClient', [t1]);
-                }
-            }
         }
     };
-    (async () => {
-        try {
-            await exports.persistent.load();
-            let rpc = getRegistered(exports.ServerHostRpcName);
-            if (rpc != undefined) {
-                await easyCallRemoteJsonFunction(await rpc.ensureConnected(), exports.__name__, 'isServerHost', [{ newValue: true }]);
-            }
-            if (!exports.__internal__.isServerHost.done) {
-                exports.__internal__.isServerHost.setResult(false);
-            }
-        }
-        catch (err) {
-            exports.__internal__.isServerHost.setResult(false);
-        }
-        ;
-    })();
     //Before typescript support syntax like <typeof import(T)>, we can only tell module type explicitly.
     //Only support plain JSON parameter and return value.
     async function importRemoteModule(rpc, moduleName) {
@@ -756,5 +702,22 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
         funcs = await getAttachedRemoteRigstryFunction(rpc);
         let r = await funcs.callJsonFunction(moduleName, funcName, args);
         return r;
+    }
+    let addingDefaultPxseedJsBuiltinRpcClient = new base_1.mutex();
+    async function addDefaultPxseedJsBuiltinRpcClient() {
+        await addingDefaultPxseedJsBuiltinRpcClient.exec(async () => {
+            if (globalThis.location != undefined && ['http:', 'https:'].includes(globalThis.location.protocol)) {
+                if (getRegistered(exports.ServiceWorker) == null) {
+                    await addClient('serviceworker:1', exports.ServiceWorker);
+                }
+            }
+            if (getRegistered(exports.WebWorker1RpcName) == null) {
+                await addClient('webworker:' + exports.__name__ + '/worker/1', exports.WebWorker1RpcName);
+            }
+            if (getRegistered(exports.ServerHostRpcName) != null && getRegistered(exports.ServerHostWorker1RpcName) == null && !exports.__internal__.isPxseedWorker) {
+                await addClient('iooverpxprpc:' + exports.ServerHostRpcName + '/' +
+                    encodeURIComponent('webworker:' + exports.__name__ + '/worker/1'), exports.ServerHostWorker1RpcName);
+            }
+        });
     }
 });

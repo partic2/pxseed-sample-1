@@ -5,8 +5,8 @@ define("partic2/packageManager/pxseedloaderbuilder", ["require", "exports", "par
     exports.defaultBuild = defaultBuild;
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
     let pathsep = (0, webutils_1.getWWWRoot)().includes('\\') ? '\\' : '/';
-    function onlyJsFilesFilter(p) {
-        return p.endsWith('.js');
+    function onlyJsCssBuildInfoFilesFilter(p) {
+        return p.endsWith('.js') || p.endsWith('.pxseed.status.json') || p.endsWith('.css');
     }
     let corePackOutputs = [
         { path: ['www', 'index.html'] },
@@ -19,19 +19,19 @@ define("partic2/packageManager/pxseedloaderbuilder", ["require", "exports", "par
         { path: ['www', 'buffer.js'] },
         { path: ['www', 'isomorphic-git.js'] },
         { path: ['www', 'preact.js'] },
-        { path: ['www', 'pxseedBuildScript'], filter: onlyJsFilesFilter },
-        { path: ['www', 'pxseedServer2023'], filter: onlyJsFilesFilter },
-        { path: ['www', 'pxprpc'], filter: onlyJsFilesFilter },
-        { path: ['www', 'partic2', 'CodeRunner'], filter: onlyJsFilesFilter },
-        { path: ['www', 'partic2', 'JsNotebook'], filter: onlyJsFilesFilter },
-        { path: ['www', 'partic2', 'jsutils1'], filter: onlyJsFilesFilter },
-        { path: ['www', 'partic2', 'nodehelper'], filter: onlyJsFilesFilter },
-        { path: ['www', 'partic2', 'pComponentUi'], filter: onlyJsFilesFilter },
-        { path: ['www', 'partic2', 'packageManager'], filter: onlyJsFilesFilter },
-        { path: ['www', 'partic2', 'pxprpcBinding'], filter: onlyJsFilesFilter },
-        { path: ['www', 'partic2', 'pxprpcClient'], filter: onlyJsFilesFilter },
+        { path: ['www', 'pxseedBuildScript'], filter: onlyJsCssBuildInfoFilesFilter },
+        { path: ['www', 'pxseedServer2023'], filter: onlyJsCssBuildInfoFilesFilter },
+        { path: ['www', 'pxprpc'], filter: onlyJsCssBuildInfoFilesFilter },
+        { path: ['www', 'partic2', 'CodeRunner'], filter: onlyJsCssBuildInfoFilesFilter },
+        { path: ['www', 'partic2', 'JsNotebook'], filter: onlyJsCssBuildInfoFilesFilter },
+        { path: ['www', 'partic2', 'jsutils1'], filter: onlyJsCssBuildInfoFilesFilter },
+        { path: ['www', 'partic2', 'nodehelper'], filter: onlyJsCssBuildInfoFilesFilter },
+        { path: ['www', 'partic2', 'pComponentUi'], filter: onlyJsCssBuildInfoFilesFilter },
+        { path: ['www', 'partic2', 'packageManager'], filter: onlyJsCssBuildInfoFilesFilter },
+        { path: ['www', 'partic2', 'pxprpcBinding'], filter: onlyJsCssBuildInfoFilesFilter },
+        { path: ['www', 'partic2', 'pxprpcClient'], filter: onlyJsCssBuildInfoFilesFilter },
         { path: ['www', 'partic2', 'pxseedMedia1'] },
-        { path: ['www', 'partic2', 'tjshelper'], filter: onlyJsFilesFilter }
+        { path: ['www', 'partic2', 'tjshelper'], filter: onlyJsCssBuildInfoFilesFilter }
     ];
     class PxseedLoaderBuilder {
         constructor() {
@@ -85,6 +85,7 @@ define("partic2/packageManager/pxseedloaderbuilder", ["require", "exports", "par
             let tjsi = await this.ensureTjsi();
             let proc = await tjsi.spawn(cmd, { stdout: 'inherit', stderr: 'inherit', cwd });
             let runstat = await proc.wait();
+            console.info('commmand done.');
             (0, base_1.assert)(runstat.exit_status == 0, 'process exit with code ' + runstat.exit_status);
         }
         async listDir(dir) {
@@ -140,10 +141,15 @@ define("partic2/packageManager/pxseedloaderbuilder", ["require", "exports", "par
                 }
             }
         }
-        async build() {
+        async ensurePxseedLoaderSource() {
             let tjsi = await this.ensureTjsi();
             if (this.pxseedLoaderSource === null) {
-                this.pxseedLoaderSource = [(0, webutils_1.getWWWRoot)(), ...__name__.split('/'), 'pxseedloadersource'].join(pathsep);
+                if (tjsi.env.PXSEEDLOADER_SOURCE_DIR != null && tjsi.env.PXSEEDLOADER_SOURCE_DIR != '') {
+                    this.pxseedLoaderSource = tjsi.env.PXSEEDLOADER_SOURCE_DIR;
+                }
+            }
+            if (this.pxseedLoaderSource === null) {
+                this.pxseedLoaderSource = [(0, webutils_1.getWWWRoot)(), '__data__', ...__name__.split('/'), 'pxseedloadersource'].join(pathsep);
                 console.info(`pxseed loader source not defined, use ${this.pxseedLoaderSource}`);
             }
             try {
@@ -154,6 +160,18 @@ define("partic2/packageManager/pxseedloaderbuilder", ["require", "exports", "par
                 await tjsi.makeDir(this.pxseedLoaderSource, { recursive: true });
                 await this.runCommand([this.git, 'clone', '--depth=1', 'https://gitee.com/partic/xplatj2.git', this.pxseedLoaderSource]);
             }
+        }
+        async build() {
+            if (this.pxseedLoaderSource == null) {
+                await this.ensurePxseedLoaderSource();
+            }
+            let tjsi = await this.ensureTjsi();
+            try {
+                let configJs = new TextDecoder().decode(await tjsi.readFile(this.pxseedLoaderSource + '/launcher/build_config.txt'));
+                new Function('c', configJs)(this);
+            }
+            catch (err) { }
+            ;
             await this.initializeEnviron();
             if (this.androidBuild)
                 await this.buildAndroidRelease();
@@ -372,22 +390,14 @@ define("partic2/packageManager/pxseedloaderbuilder", ["require", "exports", "par
         try {
             let buildConfig = new PxseedLoaderBuilder();
             let tjsi = await (0, tjsbuilder_1.buildTjs)();
-            if (tjsi.env.PXSEEDLOADER_SOURCE_DIR != null && tjsi.env.PXSEEDLOADER_SOURCE_DIR != '') {
-                buildConfig.pxseedLoaderSource = tjsi.env.PXSEEDLOADER_SOURCE_DIR;
-            }
             let configJs = '';
             if (configFile != undefined) {
                 configJs = new TextDecoder().decode(await tjsi.readFile(configFile));
             }
-            else {
-                try {
-                    configJs = new TextDecoder().decode(await tjsi.readFile(buildConfig.pxseedLoaderSource + '/launcher/build_config.txt'));
-                }
-                catch (err) { }
-                ;
-            }
+            else { }
             if (configJs != '')
                 new Function('c', configJs)(buildConfig);
+            await buildConfig.ensurePxseedLoaderSource();
             await buildConfig.build();
         }
         catch (err) {

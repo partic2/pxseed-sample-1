@@ -1,8 +1,9 @@
-define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/pComponentUi/workspace", "partic2/pxprpcClient/registry", "./clientFunction", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./webentry", "partic2/JsNotebook/workspace"], function (require, exports, React, texteditor_1, domui_1, window_1, workspace_1, registry_1, clientFunction_1, base_1, webutils_1, webentry_1, workspace_2) {
+define("pxseedServer2023/webui", ["require", "exports", "preact", "partic2/pComponentUi/texteditor", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/pComponentUi/workspace", "partic2/pxprpcClient/registry", "./clientFunction", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./webentry", "partic2/JsNotebook/workspace"], function (require, exports, React, texteditor_1, domui_1, window_1, workspace_1, registry_1, clientFunction_1, base_1, webutils_1, webentry_1, workspace_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.PxseedServerAdministrateTool = void 0;
     exports.main = main;
+    let __name__ = base_1.requirejs.getLocalRequireModule(require);
     async function alertIfError(p) {
         try {
             return await p();
@@ -104,7 +105,8 @@ define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "part
                             " on ",
                             `${cfg.listenOn?.host}:${cfg.listenOn?.port}`);
                     }) : null,
-                    React.createElement("a", { href: "javascript:;", onClick: () => this.openNotebookWorkspace() }, "notebook")));
+                    React.createElement("a", { href: "javascript:;", onClick: () => this.openNotebookWorkspace() }, "notebook"),
+                    React.createElement("a", { href: "javascript:;", onClick: () => this.clearPxprpcKey() }, "clear pxprpc key")));
         }
         async openNotebookWorkspace() {
             let wb = await workspace_2.openWorkspaceWithProfile.openJSNotebookFirstProfileWorkspace({
@@ -113,6 +115,9 @@ define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "part
                 notebookDirectory: webutils_1.path.join(__name__, '..', 'notebook')
             });
             wb.start();
+        }
+        async clearPxprpcKey() {
+            await (0, webentry_1.updatePxseedServerConfig)('');
         }
         async doLogin() {
             await (0, webentry_1.updatePxseedServerConfig)(this.state.pxprpcKey);
@@ -159,7 +164,6 @@ define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "part
         }
     }
     exports.PxseedServerAdministrateTool = PxseedServerAdministrateTool;
-    let __name__ = base_1.requirejs.getLocalRequireModule(require);
     function* main() {
         (0, workspace_1.openNewWindow)(React.createElement(PxseedServerAdministrateTool, null), {
             title: 'PxseedServerAdministrateTool'
@@ -172,4 +176,3 @@ define(["require", "exports", "preact", "partic2/pComponentUi/texteditor", "part
         }
     })();
 });
-//# sourceMappingURL=webui.js.map

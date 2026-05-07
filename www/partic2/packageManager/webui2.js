@@ -423,7 +423,7 @@ import2env('partic2/jsutils1/webutils');
 import2env('partic2/CodeRunner/jsutils2');
 import2env('partic2/packageManager/registry');`,
                     notebookDirectory: webutils_1.path.join(exports.__name__, '..', 'notebook'),
-                    sampleCode: [`installPackage('xxx')`, `listPackageArray('')`]
+                    sampleCode: [`installPackage('xxx')`, `listPackagesArray('')`]
                 });
                 nbw.title = 'PackageManager';
                 await nbw.start();

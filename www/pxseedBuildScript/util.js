@@ -1,4 +1,4 @@
-define(["require", "exports"], function (require, exports) {
+define("pxseedBuildScript/util", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__internal__ = exports.console = void 0;
@@ -38,7 +38,7 @@ define(["require", "exports"], function (require, exports) {
     async function writeJson(path, obj) {
         const { fs } = await getNodeCompatApi();
         const { readFile, writeFile } = fs;
-        await writeFile(path, new TextEncoder().encode(JSON.stringify(obj, undefined, 2)));
+        await writeFile(path, new TextEncoder().encode(JSON.stringify(obj)));
     }
     async function runBuild() {
         const { dirname, join: pathJoin } = await new Promise((resolve_5, reject_5) => { require(['path'], resolve_5, reject_5); });
@@ -135,4 +135,3 @@ define(["require", "exports"], function (require, exports) {
         runCommand, readJson, writeJson, runBuild
     };
 });
-//# sourceMappingURL=util.js.map

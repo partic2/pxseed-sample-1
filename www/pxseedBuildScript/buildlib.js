@@ -7,16 +7,15 @@ define("pxseedBuildScript/buildlib", ["require", "exports", "./loaders", "./util
     exports.cleanJsFiles = cleanJsFiles;
     Object.defineProperty(exports, "sourceDir", { enumerable: true, get: function () { return loaders_1.sourceDir; } });
     Object.defineProperty(exports, "outputDir", { enumerable: true, get: function () { return loaders_1.outputDir; } });
-    let PxseedStatusDefault = {
-        lastBuildTime: 1,
-        lastSuccessBuildTime: 1,
-        lastBuildError: [],
-        currentBuildError: [],
-        subpackages: [],
-        loadersData: {},
-    };
     function makeDefaultStatus() {
-        return { ...PxseedStatusDefault, lastBuildError: [], currentBuildError: [], subpackages: [], loadersData: {} };
+        return {
+            lastBuildTime: 1,
+            lastSuccessBuildTime: 1,
+            lastBuildError: [],
+            currentBuildError: [],
+            subpackages: [],
+            loadersData: {}
+        };
     }
     async function processDirectory(dir, context) {
         await loaders_1.inited;
@@ -46,13 +45,12 @@ define("pxseedBuildScript/buildlib", ["require", "exports", "./loaders", "./util
         }
         else {
             let pxseedConfig = await util_1.__internal__.readJson(path.join(dir, 'pxseed.config.json'));
-            let pstat = { ...makeDefaultStatus() };
+            let pstat = makeDefaultStatus();
             try {
-                if (children.find(v => v.name == '.pxseed.status.json')) {
-                    Object.assign(pstat, await util_1.__internal__.readJson(path.join(dir, '.pxseed.status.json')));
-                }
+                Object.assign(pstat, await util_1.__internal__.readJson(path.join(loaders_1.outputDir, ...pxseedConfig.name.split('/'), '.pxseed.status.json')));
             }
             catch (err) { }
+            pstat.pxseedConfig = pxseedConfig;
             let loaders = pxseedConfig.loaders;
             for (let loaderConfig of loaders) {
                 try {
@@ -107,7 +105,8 @@ define("pxseedBuildScript/buildlib", ["require", "exports", "./loaders", "./util
                 util_1.console.info(pstat.lastBuildError);
             }
             pstat.currentBuildError = [];
-            await util_1.__internal__.writeJson(path.join(dir, '.pxseed.status.json'), pstat);
+            await fs.mkdir(path.join(loaders_1.outputDir, ...pxseedConfig.name.split('/')), { recursive: true });
+            await util_1.__internal__.writeJson(path.join(loaders_1.outputDir, ...pxseedConfig.name.split('/'), '.pxseed.status.json'), pstat);
         }
     }
     async function cleanBuildStatus(dir) {
@@ -120,7 +119,6 @@ define("pxseedBuildScript/buildlib", ["require", "exports", "./loaders", "./util
             }
             else if (t1.name == '.pxseed.status.json') {
                 try {
-                    let pstat = { ...makeDefaultStatus(), ...await util_1.__internal__.readJson(path.join(dir, t1.name)) };
                     //How to clean unused file?
                 }
                 catch (err) {

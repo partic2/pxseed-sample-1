@@ -1,8 +1,9 @@
-define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/pComponentUi/texteditor", "../pComponentUi/input", "partic2/pxseedMedia1/index1", "./tjseasyapi", "../pComponentUi/workspace"], function (require, exports, React, base_1, webutils_1, domui_1, window_1, texteditor_1, input_1, index1_1, tjseasyapi_1, workspace_1) {
+define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/pComponentUi/texteditor", "../pComponentUi/input", "partic2/pxseedMedia1/index1", "./tjseasyapi", "partic2/pComponentUi/workspace"], function (require, exports, React, base_1, webutils_1, domui_1, window_1, texteditor_1, input_1, index1_1, tjseasyapi_1, workspace_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__internal__ = exports.css1 = void 0;
     exports.openFileBrowserWindowForSimpleFileSystem = openFileBrowserWindowForSimpleFileSystem;
+    exports.openFileBrowserWindowForSimpleFileSystemToSelect = openFileBrowserWindowForSimpleFileSystemToSelect;
     var ReactDOM = React;
     var __name__ = 'partic2/JsNotebook/filebrowser';
     exports.css1 = {
@@ -304,6 +305,43 @@ define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "parti
                     this.renderFiles())));
         }
     }
+    class SelectFileBrowserComponent extends FileBrowserComponent {
+        DoSelect() {
+            this.props.onSelect(Array.from(this.state.selectedFiles));
+        }
+        renderAction() {
+            return React.createElement("div", null,
+                React.createElement("a", { href: "javascript:;", onClick: () => this.DoGoBack() }, "GoBack"),
+                "\u2003",
+                React.createElement("a", { href: "javascript:;", onClick: () => this.DoNew() }, "New"),
+                "\u2003",
+                React.createElement("a", { href: "javascript:;", onClick: () => this.DoRenameTo() }, "Rename"),
+                "\u2003",
+                React.createElement("a", { href: "javascript:;", onClick: () => this.DoDelete() }, "Delete"),
+                "\u2003",
+                React.createElement("a", { href: "javascript:;", onClick: () => this.DoUpload() }, "Upload"),
+                "\u2003",
+                React.createElement("a", { href: "javascript:;", onClick: () => this.DoCopy() }, "Copy"),
+                "\u2003",
+                React.createElement("a", { href: "javascript:;", onClick: () => this.DoCut() }, "Cut"),
+                "\u2003",
+                React.createElement("a", { href: "javascript:;", onClick: () => this.DoPaste() }, "Paste"),
+                "\u2003",
+                React.createElement("a", { href: "javascript:;", onClick: () => this.DoSelect() }, "Select"),
+                "\u2003");
+        }
+        async DoFileOpen(path, opt) {
+            let filetype = await this.props.fs.filetype(path);
+            if (filetype == 'file') {
+                this.state.selectedFiles.clear();
+                this.state.selectedFiles.add(path);
+                this.DoSelect();
+            }
+            else {
+                await super.DoFileOpen(path, opt);
+            }
+        }
+    }
     class WorkspaceFileBrowser2 extends FileBrowserComponent {
         constructor(props, context) {
             super(props, context);
@@ -330,6 +368,12 @@ define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "parti
                     await selectedHandle.open(path);
                 }
             }
+            else if (filetype == 'dir') {
+                if (this.props.context.startupProfile != null) {
+                    this.props.context.startupProfile.currPath = path;
+                    this.props.context.saveStartupProfile();
+                }
+            }
         }
         async promptForCurrentPath() {
             let newPathInput = new domui_1.ReactRefEx();
@@ -354,10 +398,23 @@ define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "parti
     }
     async function openFileBrowserWindowForSimpleFileSystem(p) {
         let ref = new domui_1.ReactRefEx();
-        await (0, workspace_1.openNewWindow)(React.createElement(FileBrowserComponent, { fs: p.fs, title: p.title, ref: ref }));
+        await (0, workspace_1.openNewWindow)(React.createElement(FileBrowserComponent, { fs: p.fs, ref: ref }), { title: p.title });
         if (p.initdir != undefined) {
             (await ref.waitValid()).DoFileOpen(p.initdir);
         }
+    }
+    async function openFileBrowserWindowForSimpleFileSystemToSelect(p) {
+        let ref = new domui_1.ReactRefEx();
+        let result = null;
+        let newWin = await (0, workspace_1.openNewWindow)(React.createElement(SelectFileBrowserComponent, { fs: p.fs, ref: ref, onSelect: (selected) => {
+                result = selected;
+                newWin.close();
+            } }), { title: p.title });
+        if (p.initdir != undefined) {
+            (await ref.waitValid()).DoFileOpen(p.initdir);
+        }
+        await newWin.waitClose();
+        p.selectFile.setResult(result);
     }
     var __internal__;
     (function (__internal__) {

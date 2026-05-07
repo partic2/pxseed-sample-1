@@ -266,10 +266,9 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
     async function updatePackagesDatabase(pkgNameOrPxseedConfig) {
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
         if (pkgNameOrPxseedConfig == undefined) {
-            for await (let pkg of listPackagesInDirectory(path.join(wwwroot, '..', 'source'))) {
+            for await (let pkg of listPackages()) {
                 try {
-                    (0, base_1.assert)(pkg.config != undefined);
-                    await updatePackagesDatabase(pkg.config);
+                    await updatePackagesDatabase(pkg);
                 }
                 catch (err) {
                     log.error(err.toString() + err.stack);
@@ -279,7 +278,7 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
         else {
             let pxseedConfig;
             if (typeof pkgNameOrPxseedConfig === 'string') {
-                pxseedConfig = await util_1.__internal__.readJson(path.join(await getSourceDirForPackage(pkgNameOrPxseedConfig), 'pxseed.config.json'));
+                pxseedConfig = (await getPxseedConfigForPackage(pkgNameOrPxseedConfig));
             }
             else {
                 pxseedConfig = pkgNameOrPxseedConfig;
@@ -306,6 +305,10 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
     async function getSourceDirForPackage(pkgname) {
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
         return path.join(wwwroot, '..', 'source', ...pkgname.split('/'));
+    }
+    async function getOutputDirForPakcage(pkgname) {
+        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
+        return path.join(wwwroot, ...pkgname.split('/'));
     }
     async function installLocalPackage(path2) {
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
@@ -389,17 +392,30 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
     }
     async function uninstallPackage(pkgname) {
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
+        let pkgcfg = await getPxseedConfigForPackage(pkgname);
+        if (pkgcfg != null) {
+            let pmopt = getPMOptFromPcfg(pkgcfg);
+            if (pmopt != null && pmopt.onUninstalling != undefined) {
+                try {
+                    await (await new Promise((resolve_6, reject_6) => { require([pmopt.onUninstalling.module], resolve_6, reject_6); }))[pmopt.onUninstalling.func]?.();
+                }
+                catch (err) { }
+                ;
+            }
+        }
         let dir1 = await getSourceDirForPackage(pkgname);
-        await (0, buildlib_1.cleanBuildStatus)(dir1);
-        await fs.rm(dir1, { recursive: true });
-        exports.listener.onUninstall.forEach((l) => new Promise((resolve_6, reject_6) => { require([l.module], resolve_6, reject_6); }).then(m => m[l.func](pkgname)));
+        await fs.rm(dir1, { recursive: true }).catch(_ => { });
+        dir1 = await getOutputDirForPakcage(pkgname);
+        await (0, buildlib_1.cleanBuildStatus)(dir1).catch(_ => { });
+        await fs.rm(dir1, { recursive: true }).catch(_ => { });
+        exports.listener.onUninstall.forEach((l) => new Promise((resolve_7, reject_7) => { require([l.module], resolve_7, reject_7); }).then(m => m[l.func](pkgname)));
     }
     async function getPxseedConfigForPackage(pkgname) {
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        let configFile = path.join(await getSourceDirForPackage(pkgname), 'pxseed.config.json');
+        let statusFile = path.join(await getOutputDirForPakcage(pkgname), '.pxseed.status.json');
         try {
-            await fs.access(configFile);
-            return await util_1.__internal__.readJson(configFile);
+            await fs.access(statusFile);
+            return (await util_1.__internal__.readJson(statusFile)).pxseedConfig;
         }
         catch (e) {
             return null;
@@ -408,8 +424,8 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
     async function* listPackagesInDirectory(dir) {
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
         let children = await fs.readdir(dir, { withFileTypes: true });
-        if (children.find(t1 => t1.name == 'pxseed.config.json')) {
-            yield { path: dir, config: await util_1.__internal__.readJson(path.join(dir, 'pxseed.config.json')) };
+        if (children.find(t1 => t1.name == '.pxseed.status.json')) {
+            yield { path: dir, config: (await util_1.__internal__.readJson(path.join(dir, '.pxseed.status.json'))).pxseedConfig };
         }
         else {
             for (let t1 of children) {
@@ -421,7 +437,7 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
     }
     async function* listPackages() {
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        for await (let t1 of listPackagesInDirectory(path.join(wwwroot, '..', 'source'))) {
+        for await (let t1 of listPackagesInDirectory(wwwroot)) {
             yield t1.config;
         }
     }
@@ -464,7 +480,7 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
         let pxseedConfig = await util_1.__internal__.readJson(path.join(pkgdir, 'pxseed.config.json'));
         let pmopt = getPMOptFromPcfg(pxseedConfig);
         if (pmopt?.onUpgrade != undefined) {
-            await (await new Promise((resolve_7, reject_7) => { require([pmopt.onUpgrade.module], resolve_7, reject_7); }))[pmopt.onUpgrade.func](pkgname, pkgdir);
+            await (await new Promise((resolve_8, reject_8) => { require([pmopt.onUpgrade.module], resolve_8, reject_8); }))[pmopt.onUpgrade.func](pkgname, pkgdir);
         }
         else {
             await fs.access(path.join(pkgdir, '.git'));
@@ -645,7 +661,7 @@ export function main(args:string){
         return result;
     }
     async function sendOnStartupEventForAllPackages() {
-        await Promise.allSettled((await getPackageListeners('onServerStartup')).map(t1 => new Promise((resolve_8, reject_8) => { require([t1.module], resolve_8, reject_8); }).then(t2 => t2[t1.func]())));
+        await Promise.allSettled((await getPackageListeners('onServerStartup')).map(t1 => new Promise((resolve_9, reject_9) => { require([t1.module], resolve_9, reject_9); }).then(t2 => t2[t1.func]())));
         await (0, JsEnviron_1.ensureDefaultFileSystem)();
         let startupNotebook = (0, JsEnviron_1.getSimpleFileSysteNormalizedWWWRoot)() + '/' + webutils_1.path.join(exports.__name__, '..', 'notebook', 'startup.ijsnb');
         if (await JsEnviron_1.defaultFileSystem.filetype(startupNotebook) == 'none') {

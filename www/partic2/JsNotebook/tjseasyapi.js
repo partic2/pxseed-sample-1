@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/tjshelper/tjsbuilder", "partic2/tjshelper/tjsutil", "partic2/jsutils1/base", "partic2/jsutils1/base", "partic2/pxprpcClient/registry", "partic2/CodeRunner/CodeContext", "partic2/CodeRunner/JsEnviron", "partic2/jsutils1/webutils", "pxprpc/extend", "pxprpc/base"], function (require, exports, jsutils2_1, tjsbuilder_1, tjsutil_1, base_1, base_2, registry_1, CodeContext_1, JsEnviron_1, webutils_1, extend_1, base_3) {
+define("partic2/JsNotebook/tjseasyapi", ["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/tjshelper/tjsbuilder", "partic2/tjshelper/tjsutil", "partic2/jsutils1/base", "partic2/jsutils1/base", "partic2/pxprpcClient/registry", "partic2/CodeRunner/CodeContext", "partic2/CodeRunner/JsEnviron", "pxprpc/extend", "pxprpc/base"], function (require, exports, jsutils2_1, tjsbuilder_1, tjsutil_1, base_1, base_2, registry_1, CodeContext_1, JsEnviron_1, extend_1, base_3) {
     "use strict";
     var _a;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -135,7 +135,7 @@ define(["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/tjshelper/
         tjs: null,
         simple: null,
         initmtx: new base_1.mutex(),
-        osPathSep: (0, webutils_1.getWWWRoot)().includes('\\') ? '\\' : '/',
+        osPathSep: '/',
         async init() {
             await this.initmtx.exec(async () => {
                 if (this.tjs == null) {
@@ -275,6 +275,20 @@ define(["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/tjshelper/
                 }
                 env.jsnotebook.callFunctionInNotebookWebui('partic2/JsNotebook/filebrowser', 'openFileBrowserWindowForSimpleFileSystem', [{ fs, title: 'File browser', initdir }]);
             }
+        },
+        async openFileBrowserWindowForSimpleFileSystemToSelect(fs, initdir) {
+            let fut = new base_2.future();
+            let env = CodeContext_1.TaskLocalEnv.get();
+            if (env?.jsnotebook?.callFunctionInNotebookWebui != undefined) {
+                if (fs[registry_1.RpcSerializeMagicMark] == undefined) {
+                    fs[registry_1.RpcSerializeMagicMark] = {};
+                }
+                if (fut[registry_1.RpcSerializeMagicMark] == undefined) {
+                    fut[registry_1.RpcSerializeMagicMark] = {};
+                }
+                await env.jsnotebook.callFunctionInNotebookWebui('partic2/JsNotebook/filebrowser', 'openFileBrowserWindowForSimpleFileSystemToSelect', [{ fs, title: 'File browser', initdir, selectFile: fut }]);
+                return fut.get();
+            }
         }
     };
     async function then(resolve) {
@@ -283,4 +297,3 @@ define(["require", "exports", "partic2/CodeRunner/jsutils2", "partic2/tjshelper/
         resolve(exports);
     }
 });
-//# sourceMappingURL=tjseasyapi.js.map
