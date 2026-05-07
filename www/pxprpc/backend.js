@@ -1,4 +1,4 @@
-define(["require", "exports"], function (require, exports) {
+define("pxprpc/backend", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.WebMessage = exports.WebSocketIo = void 0;
@@ -288,4 +288,3 @@ define(["require", "exports"], function (require, exports) {
         return { bind, unbind, Server, Connection, postMessageOptions };
     })();
 });
-//# sourceMappingURL=backend.js.map

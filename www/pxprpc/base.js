@@ -1,4 +1,4 @@
-define(["require", "exports"], function (require, exports) {
+define("pxprpc/base", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.Server = exports.PxpRef = exports.PxpRequest = exports.Client = exports.PxprpcRemoteError = exports.Serializer = void 0;
@@ -404,4 +404,3 @@ define(["require", "exports"], function (require, exports) {
     }
     exports.Server = Server;
 });
-//# sourceMappingURL=base.js.map

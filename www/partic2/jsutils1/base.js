@@ -1,4 +1,4 @@
-define(["require", "exports"], function (require, exports) {
+define("partic2/jsutils1/base", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.AssertError = exports.logger = exports.TaskLocalRef = exports.Ref2 = exports.requirejs = exports.amdContext = exports.mutex = exports.ArrayWrap2 = exports.CanceledError = exports.future = exports.Task = void 0;
@@ -759,4 +759,3 @@ define(["require", "exports"], function (require, exports) {
         }
     }
 });
-//# sourceMappingURL=base.js.map

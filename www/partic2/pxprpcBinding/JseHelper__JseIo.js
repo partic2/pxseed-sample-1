@@ -1,4 +1,4 @@
-define(["require", "exports", "./utils", "./rpcregistry"], function (require, exports, utils_1, rpcregistry_1) {
+define("partic2/pxprpcBinding/JseHelper__JseIo", ["require", "exports", "./utils", "./rpcregistry"], function (require, exports, utils_1, rpcregistry_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.defaultInvoker = exports.Invoker = void 0;
@@ -173,4 +173,3 @@ define(["require", "exports", "./utils", "./rpcregistry"], function (require, ex
         }
     }
 });
-//# sourceMappingURL=JseHelper__JseIo.js.map

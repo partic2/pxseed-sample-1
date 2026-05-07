@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/jsutils1/webutils"], function (require, exports, base_1, JsEnviron_1, webutils_1) {
+define("partic2/CodeRunner/Inspector", ["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/jsutils1/webutils"], function (require, exports, base_1, JsEnviron_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.defaultCompletionHandlers = exports.CodeCellListData = exports.builtInCompletionHandlers = exports.CustomFunctionParameterCompletionSymbol = exports.MiscObject = exports.UnidentifiedArray = exports.UnidentifiedObject = exports.CodeContextRemoteObjectFetcher = exports.serializingEscapeMark = void 0;
@@ -574,4 +574,3 @@ define(["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/j
         exports.builtInCompletionHandlers.customFunctionParameterCompletion,
     ];
 });
-//# sourceMappingURL=Inspector.js.map

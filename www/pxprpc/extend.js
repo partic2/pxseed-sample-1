@@ -1,4 +1,4 @@
-define(["require", "exports", "./base"], function (require, exports, base_1) {
+define("pxprpc/extend", ["require", "exports", "./base"], function (require, exports, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.TableSerializer = exports.RpcExtendServer1 = exports.defaultFuncMap = exports.RpcExtendServerCallable = exports.RpcExtendClient1 = exports.RpcExtendClientCallable = exports.RpcExtendClientObject = exports.RpcExtendError = void 0;
@@ -578,4 +578,3 @@ define(["require", "exports", "./base"], function (require, exports, base_1) {
     }
     exports.TableSerializer = TableSerializer;
 });
-//# sourceMappingURL=extend.js.map

@@ -1,5 +1,5 @@
 //build tjs interface on supported platform
-define(["require", "exports"], function (require, exports) {
+define("partic2/tjshelper/tjsbuilder", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.buildTjs = buildTjs;
@@ -36,4 +36,3 @@ define(["require", "exports"], function (require, exports) {
         return builtTjs;
     }
 });
-//# sourceMappingURL=tjsbuilder.js.map

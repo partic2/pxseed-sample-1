@@ -1,4 +1,4 @@
-define(["require", "exports"], function (require, exports) {
+define("partic2/pxprpcBinding/utils", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.getRpcLocalVariable = getRpcLocalVariable;
@@ -42,4 +42,3 @@ define(["require", "exports"], function (require, exports) {
         return ip['f:' + funcName];
     }
 });
-//# sourceMappingURL=utils.js.map

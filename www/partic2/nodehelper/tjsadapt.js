@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base", "os", "path", "fs/promises", "child_process", "./nodeio", "net"], function (require, exports, base_1, os_1, path_1, promises_1, child_process_1, nodeio_1, net_1) {
+define("partic2/nodehelper/tjsadapt", ["require", "exports", "partic2/jsutils1/base", "os", "path", "fs/promises", "child_process", "./nodeio", "net"], function (require, exports, base_1, os_1, path_1, promises_1, child_process_1, nodeio_1, net_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.tjsFrom = tjsFrom;
@@ -489,4 +489,3 @@ define(["require", "exports", "partic2/jsutils1/base", "os", "path", "fs/promise
         return tjsImpl;
     }
 });
-//# sourceMappingURL=tjsadapt.js.map

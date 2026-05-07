@@ -1,4 +1,4 @@
-define(["require", "exports", "partic2/jsutils1/base"], function (require, exports, base_1) {
+define("partic2/CodeRunner/jsutils2", ["require", "exports", "partic2/jsutils1/base"], function (require, exports, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.OnConsoleData = exports.CFuncCallProbe = exports.ThrottleCall = exports.DebounceCall = exports.Singleton = exports.ExtendStreamReader = exports.TaskLocalRef = void 0;
@@ -422,4 +422,3 @@ define(["require", "exports", "partic2/jsutils1/base"], function (require, expor
     ensureFunctionProbe(console, 'error').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('error', argv)));
     setupAsyncHook();
 });
-//# sourceMappingURL=jsutils2.js.map

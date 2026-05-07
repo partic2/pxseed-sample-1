@@ -1,5 +1,5 @@
 //Implement tjs base on pxprpc
-define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper__JseIo", "partic2/jsutils1/base"], function (require, exports, extend_1, JseHelper__JseIo_1, base_1) {
+define("partic2/tjshelper/tjsonjserpc", ["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper__JseIo", "partic2/jsutils1/base"], function (require, exports, extend_1, JseHelper__JseIo_1, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.tjsFrom = tjsFrom;
@@ -459,4 +459,3 @@ define(["require", "exports", "pxprpc/extend", "partic2/pxprpcBinding/JseHelper_
         (0, base_1.copy)(await tjsFrom(JseHelper__JseIo_1.defaultInvoker), tjsObject, 1);
     }
 });
-//# sourceMappingURL=tjsonjserpc.js.map
