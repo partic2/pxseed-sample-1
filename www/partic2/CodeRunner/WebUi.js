@@ -38,7 +38,7 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             }, 300);
             this.requestCodeComplete = new jsutils2_1.DebounceCall(async () => {
                 this.setState({
-                    codeCompleteCandidate: await this.codeContext.codeComplete(this.getCellInput(), this.rref.codeInput.current.getTextCaretOffset())
+                    codeCompleteCandidate: await (await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.codeContext)).requestCodeCompletion(this.getCellInput(), this.rref.codeInput.current.getTextCaretOffset())
                 });
             }, 200);
             this.__focusIn = 'blur';
@@ -59,7 +59,7 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                     this.setState({ cellOutput, resultVariable });
                 }
                 else {
-                    let cellOutput = await (0, Inspector_1.inspectCodeContextVariable)(new Inspector_1.CodeContextRemoteObjectFetcher(this.codeContext), [resultVariable], { maxDepth: 1 });
+                    let cellOutput = await (0, Inspector_1.inspectCodeContextVariable)(await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.codeContext), [resultVariable], { maxDepth: 1 });
                     this.setState({ cellOutput, resultVariable, errorCatched: runStatus.err });
                 }
             }
@@ -189,8 +189,8 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             this.setState({ focusingCompletionCandidate: 0, codeCompleteCandidate: null, extraTooltips: null });
         }
         insertCodeComplete(cc) {
-            let caret = this.rref.codeInput.current.getTextCaretOffset();
-            let delCount = caret - cc.replaceRange[0];
+            this.rref.codeInput.current.setTextCaretOffset(cc.replaceRange[1]);
+            let delCount = cc.replaceRange[1] - cc.replaceRange[0];
             this.rref.codeInput.current.deleteText(delCount);
             this.rref.codeInput.current.insertText(cc.candidate);
             this.props.onInputChange?.(this);
@@ -219,7 +219,7 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
         }
         async onBtnClearOutputs() {
             if (this.state.resultVariable != null) {
-                this.codeContext.jsExec(`delete codeContext.localScope['${this.state.resultVariable}']`).catch(() => { });
+                this.codeContext.callFunction('deleteVariables', [[this.state.resultVariable]]);
             }
             this.props.onClearOutputs?.();
             this.setCellOutput('', null);
@@ -293,7 +293,7 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
         async close() {
             if (this.state.resultVariable != null) {
                 try {
-                    await this.codeContext.jsExec(`delete codeContext.localScope['${this.state.resultVariable}']`);
+                    this.codeContext.callFunction('deleteVariables', [[this.state.resultVariable]]);
                 }
                 catch (e) { }
                 ;
@@ -329,6 +329,7 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 if (this.state.codeContext != null) {
                     this.state.codeContext.event.removeEventListener('console.data', this.onConsoleData);
                 }
+                (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.props.codeContext);
                 this.props.codeContext.event.addEventListener('console.data', this.onConsoleData);
                 this.setState({ codeContext: this.props.codeContext });
             }
@@ -407,7 +408,9 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                                 this.props.onRun?.(v.key);
                                 this.lastRunCellKey = v.key;
                                 if (v.key == this.state.list.at(-1)?.key) {
-                                    this.newCell(v.key);
+                                    await this.newCell(v.key);
+                                    let cc = await this.state.list.at(-1).ref.waitValid();
+                                    await cc.setAsEditTarget();
                                 }
                             }, onFocusChange: (focusin) => {
                                 if (focusin) {
@@ -426,9 +429,9 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
         }
         componentDidUpdate() {
             if (this.__initCellValue !== null && this.state.codeContext != null) {
-                this.__initCellValue.forEach((val, index) => {
+                this.__initCellValue.forEach(async (val, index) => {
                     this.state.list[index].ref.current.setCellInput(val.input);
-                    val.output[0] = (0, Inspector_1.fromSerializableObject)(val.output[0], { fetcher: new Inspector_1.CodeContextRemoteObjectFetcher(this.state.codeContext), accessPath: [val.output[1] ?? ''] });
+                    val.output[0] = (0, Inspector_1.fromSerializableObject)(val.output[0], { fetcher: await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.state.codeContext), accessPath: [val.output[1] ?? ''] });
                     this.state.list[index].ref.current.setCellOutput(...val.output);
                 });
                 this.__initCellValue = null;

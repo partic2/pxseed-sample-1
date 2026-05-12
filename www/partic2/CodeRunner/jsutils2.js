@@ -1,7 +1,7 @@
 define("partic2/CodeRunner/jsutils2", ["require", "exports", "partic2/jsutils1/base"], function (require, exports, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.OnConsoleData = exports.CFuncCallProbe = exports.ThrottleCall = exports.DebounceCall = exports.Singleton = exports.ExtendStreamReader = exports.TaskLocalRef = void 0;
+    exports.OnConsoleData = exports.CFuncCallProbe = exports.ArrayWrap3 = exports.ThrottleCall = exports.DebounceCall = exports.Singleton = exports.ExtendStreamReader = exports.TaskLocalRef = void 0;
     exports.utf8conv = utf8conv;
     exports.u8hexconv = u8hexconv;
     exports.FlattenArray = FlattenArray;
@@ -370,6 +370,101 @@ define("partic2/CodeRunner/jsutils2", ["require", "exports", "partic2/jsutils1/b
             };
         }
     }
+    class ArrayWrap3 extends base_1.ArrayWrap2 {
+        async forEach2(cb) {
+            let arr = this.arr();
+            let input = { index: 0, break2() { this.iterating = false; }, iterating: true };
+            for (let t1 = 0; t1 < arr.length && input.iterating; t1++) {
+                input.index = t1;
+                input.value = arr[t1];
+                await cb(input);
+            }
+        }
+        async map(cb) {
+            let arr = this.arr();
+            let r = new Array();
+            for (let t1 = 0; t1 < arr.length; t1++) {
+                r.push(await cb(arr[t1], t1, this));
+            }
+            return new this.constructor(r);
+        }
+        async forEach(cb) {
+            this.forEach2(async ({ value, index }) => {
+                await cb(value, index, this);
+            });
+        }
+        async filter(cb) {
+            let result = await this.findElements2(({ value, index }) => cb(value, index, this));
+            return new this.constructor(result.found);
+        }
+        async reduce(cb, initialValue) {
+            let r = initialValue;
+            await this.forEach2(async ({ value, index }) => {
+                r = await cb(r, value, index, this);
+            });
+            return r;
+        }
+        async findIndexs(condition) {
+            let found = new Array();
+            this.forEach2(async (i) => {
+                let b = await condition(i, found);
+                if (b && i.iterating) {
+                    found.push(i.index);
+                }
+            });
+            return found;
+        }
+        //indexs must be unique
+        deleteByIndexs(indexs) {
+            let indexs2 = [...indexs].sort();
+            let arr = this.arr();
+            indexs2.forEach((v, i) => { arr.splice(v - i, 1); });
+        }
+        insertBefore(indexs, e) {
+            let indexs2 = [...indexs].sort();
+            let arr = this.arr();
+            indexs2.forEach((v, i) => { arr.splice(v + i, 0, e); });
+        }
+        insertAfter(indexs, e) {
+            let indexs2 = [...indexs].sort();
+            let arr = this.arr();
+            indexs2.forEach((v, i) => { arr.splice(v + i + 1, 0, e); });
+        }
+        pickByIndexs(indexs) {
+            let arr = this.arr();
+            return indexs.map((v) => arr[v]);
+        }
+        async findElements2(condition, opt) {
+            let indexs = await this.findIndexs(async (c, f) => {
+                if (opt?.maxCount != undefined && f.length >= opt.maxCount) {
+                    c.break2();
+                    return false;
+                }
+                return condition(c);
+            });
+            return {
+                indexs,
+                found: this.pickByIndexs(indexs),
+                delete: () => this.deleteByIndexs(indexs),
+                insertBefore: (e) => this.insertBefore(indexs, e),
+                insertAfter: (e) => this.insertAfter(indexs, e),
+            };
+        }
+        async groupBy2(cb) {
+            let r = {};
+            this.forEach2(async (input) => {
+                let id = await cb(input);
+                if (input.iterating) {
+                    if (r[id] == undefined) {
+                        r[id] = new this.constructor([]);
+                    }
+                    r[id].arr().push(input.value);
+                }
+            });
+            return r;
+        }
+    }
+    exports.ArrayWrap3 = ArrayWrap3;
     class CFuncCallProbe {
         constructor(originalFunction) {
             this.originalFunction = originalFunction;

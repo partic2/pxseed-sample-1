@@ -1,4 +1,4 @@
-define("partic2/jsutils1/serviceworker", ["require", "exports", "./base", "./webutils"], function (require, exports, base_1, webutils_1) {
+define("partic2/jsutils1/serviceworker", ["require", "exports", "./webutils"], function (require, exports, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.onfetchHandlers = exports.__internal__ = exports.proxyMessageEventTarget = exports.ServiceWorkerId = exports.serviceWorkerServeRoot = void 0;
@@ -69,7 +69,7 @@ define("partic2/jsutils1/serviceworker", ["require", "exports", "./base", "./web
     }
     async function loadServiceWorkerModule(modName) {
         try {
-            let mod = await base_1.requirejs.promiseRequire(modName);
+            let mod = await new Promise((resolve_1, reject_1) => { require([modName], resolve_1, reject_1); });
             if (mod != undefined && ('asyncInit' in mod)) {
                 await mod.asyncInit();
             }

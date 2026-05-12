@@ -1,4 +1,4 @@
-define("pxseedServer2023/nodecli", ["require", "exports", "partic2/nodehelper/env", "partic2/jsutils1/base", "partic2/CodeRunner/simplecli", "partic2/nodehelper/nodeio", "./pxseedhttpserver"], function (require, exports, env_1, base_1, simplecli_1, nodeio_1) {
+define("pxseedServer2023/nodecli", ["require", "exports", "partic2/nodehelper/env", "partic2/jsutils1/base", "partic2/nodehelper/nodeio"], function (require, exports, env_1, base_1, nodeio_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.setCliOption = setCliOption;
@@ -14,25 +14,28 @@ define("pxseedServer2023/nodecli", ["require", "exports", "partic2/nodehelper/en
         }
     }
     async function cliMain() {
+        let { setupServerPxprpcClient } = await new Promise((resolve_1, reject_1) => { require(['pxseedServer2023/pxseedhttpserver'], resolve_1, reject_1); });
+        await setupServerPxprpcClient();
         let stdin = new ReadableStream(new nodeio_1.NodeReadableDataSource(process.stdin)).getReader();
         let stdout = new WritableStream(new nodeio_1.NodeWritableDataSink(process.stdout)).getWriter();
         let stderr = new WritableStream(new nodeio_1.NodeWritableDataSink(process.stdout)).getWriter();
-        let cli = new simplecli_1.SimpleCli(stdin, stdout, stderr);
+        let { SimpleCli } = await new Promise((resolve_2, reject_2) => { require(['partic2/CodeRunner/simplecli'], resolve_2, reject_2); });
+        let cli = new SimpleCli(stdin, stdout, stderr);
         await cli.initEnv();
         cli.codeContext.localScope.exit = (exitCode) => {
             cli.codeContext.close();
             process.exit(exitCode ?? 0);
         };
         cli.codeContext.localScope.startServer = async () => {
-            await new Promise((resolve_1, reject_1) => { require(['./nodeentry'], resolve_1, reject_1); });
+            await new Promise((resolve_3, reject_3) => { require(['./nodeentry'], resolve_3, reject_3); });
             setCliOption({ autoExitAfterAllCodeSettled: false });
         };
         cli.codeContext.localScope.buildAndStartServer = async () => {
-            let { processDirectory } = await new Promise((resolve_2, reject_2) => { require(['pxseedBuildScript/buildlib'], resolve_2, reject_2); });
-            let loader1 = await new Promise((resolve_3, reject_3) => { require(['pxseedBuildScript/loaders'], resolve_3, reject_3); });
+            let { processDirectory } = await new Promise((resolve_4, reject_4) => { require(['pxseedBuildScript/buildlib'], resolve_4, reject_4); });
+            let loader1 = await new Promise((resolve_5, reject_5) => { require(['pxseedBuildScript/loaders'], resolve_5, reject_5); });
             await loader1.inited;
             await processDirectory(loader1.sourceDir);
-            await new Promise((resolve_4, reject_4) => { require(['./nodeentry'], resolve_4, reject_4); });
+            await new Promise((resolve_6, reject_6) => { require(['./nodeentry'], resolve_6, reject_6); });
             setCliOption({ autoExitAfterAllCodeSettled: false });
         };
         let args = [...process.argv];

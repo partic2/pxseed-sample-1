@@ -1,13 +1,12 @@
 define("partic2/jsutils1/base", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.AssertError = exports.logger = exports.TaskLocalRef = exports.Ref2 = exports.requirejs = exports.amdContext = exports.mutex = exports.ArrayWrap2 = exports.CanceledError = exports.future = exports.Task = void 0;
+    exports.AssertError = exports.logger = exports.TaskLocalRef = exports.Ref2 = exports.requirejs = exports.mutex = exports.ArrayWrap2 = exports.CanceledError = exports.future = exports.Task = void 0;
     exports.throwIfAbortError = throwIfAbortError;
     exports.copy = copy;
     exports.clone = clone;
     exports.FormatDate = FormatDate;
     exports.ParseDate = ParseDate;
-    exports.GetBlobArrayBufferContent = GetBlobArrayBufferContent;
     exports.sleep = sleep;
     exports.GenerateRandomString = GenerateRandomString;
     exports.DateAdd = DateAdd;
@@ -268,22 +267,24 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         let millisecond = pos >= 0 ? Number.parseInt(dateStr.substring(pos, pos + 3)) : 0;
         return new Date(year, month, date, hour, minute, second, millisecond);
     }
-    function GetBlobArrayBufferContent(blob) {
-        return new Promise(function (resolve, reject) {
-            let reader = new FileReader();
-            reader.onload = function (ev) {
-                resolve(reader.result);
-            };
-            reader.onerror = function (ev) {
-                reject(ev);
-            };
-            reader.readAsArrayBuffer(blob);
-        });
-    }
-    function sleep(milliSeconds, arg) {
-        return new Promise(function (resolve, reject) {
-            setTimeout(resolve, milliSeconds, arg);
-        });
+    async function sleep(milliSeconds, arg) {
+        let defer = new Array();
+        return new Promise(((resolve, reject) => {
+            const onAbort = (ev) => { reject(ev.reason); };
+            let currentTask = Task.currentTask;
+            if (currentTask != undefined) {
+                if (currentTask.getAbortSignal().aborted) {
+                    reject(currentTask.getAbortSignal().reason);
+                }
+                else if (milliSeconds > 1000) {
+                    //Better performance?
+                    currentTask.getAbortSignal().addEventListener('abort', onAbort);
+                    defer.push(() => currentTask.getAbortSignal().removeEventListener);
+                }
+            }
+            const timer = setTimeout(() => resolve(arg), milliSeconds);
+            defer.push(() => clearTimeout(timer));
+        })).finally(() => defer.forEach((cb) => cb()));
     }
     class future {
         constructor() {
@@ -436,54 +437,30 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         }
     }
     exports.mutex = mutex;
-    exports.amdContext = {
-        require: null,
-        define: null,
-        requirejs: null
-    };
-    try {
-        exports.amdContext.require = require;
-        exports.amdContext.define = define;
-        exports.amdContext.requirejs = globalThis.requirejs;
-    }
-    catch (e) { /*Not AMD Environment*/ }
     exports.requirejs = {
         define: function (name, dependency, mod) {
-            exports.amdContext.define(name, dependency, mod);
-        },
-        require: function (dependency, callback, errback) {
-            exports.amdContext.require(dependency, callback, errback);
-        },
-        promiseRequire: function (implModName) {
-            let that = this;
-            return new Promise(function (resolve, reject) {
-                that.require([implModName], function (mod0) {
-                    resolve(mod0);
-                }, (err) => {
-                    reject(err);
-                });
-            });
+            define(name, dependency, mod);
         },
         getConfig: function () {
-            return exports.amdContext.require.getConfig();
+            return require.getConfig();
         },
         getDefined: async function () {
-            return exports.amdContext.require.getDefined();
+            return require.getDefined();
         },
         getFailed: async function () {
             //partic2-iamdee feature
-            return exports.amdContext.requirejs.getFailed();
+            return require.getFailed();
         },
         undef: async function (mod) {
-            exports.amdContext.requirejs.undef(mod);
+            require.undef(mod);
         },
         addScriptLoader(loader, beforeOthers) {
             //partic2-iamdee feature
             if (beforeOthers) {
-                exports.amdContext.define.amd.scriptLoaders.unshift(loader);
+                define.amd.scriptLoaders.unshift(loader);
             }
             else {
-                exports.amdContext.define.amd.scriptLoaders.push(loader);
+                define.amd.scriptLoaders.push(loader);
             }
         },
         getLocalRequireModule(localRequire) {
@@ -499,7 +476,7 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
                 if (onDefining != undefined) {
                     this.definingHook.push(onDefining);
                 }
-                exports.amdContext.requirejs.config({
+                require.config({
                     onDefining: (defineParameter) => {
                         if (this.definingHook != null) {
                             for (let t1 of this.definingHook) {
@@ -518,9 +495,7 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             maxRandLenX4 = 4;
         for (let i1 = 0; i1 < maxRandLenX4; i1++) {
             let part = Math.floor(Math.random() * 1679616).toString(36);
-            for (; part.length < 4; part = '0' + part)
-                ;
-            s += part;
+            s = s + part.padStart(4, '0');
         }
         return s;
     }

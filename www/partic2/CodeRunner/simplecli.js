@@ -40,9 +40,12 @@ await __t1(_ENV);
             this.stdout = stdout;
             this.stderr = stderr;
             this.codeContext = new CodeContext_1.LocalRunCodeContext();
-            this.remoteObjectFetcher = new Inspector_1.CodeContextRemoteObjectFetcher(this.codeContext);
+            this.__inited = (async () => {
+                this.remoteObjectFetcher = await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.codeContext);
+            })();
         }
         async evalInput(jscode) {
+            await this.__inited;
             try {
                 let result = await this.codeContext.runCode(jscode, '_');
                 if (result.err != null) {
@@ -78,6 +81,7 @@ await __t1(_ENV);
             await this.stdout.write(encode('\n>'));
         }
         async initEnv() {
+            await this.__inited;
             let { config } = await getConfig();
             for (let script of Object.values(config.initScript)) {
                 try {
@@ -91,6 +95,7 @@ await __t1(_ENV);
             }
         }
         async repl() {
+            await this.__inited;
             this.stdout.write(encode('>'));
             while (true) {
                 let input1 = await this.stdin.read();

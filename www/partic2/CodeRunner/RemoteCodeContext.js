@@ -7,11 +7,6 @@ define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeCon
     exports.connectToRemoteCodeContext = connectToRemoteCodeContext;
     (0, jsutils2_1.setupAsyncHook)();
     exports.__name__ = 'partic2/CodeRunner/RemoteCodeContext';
-    /*
-    remote code call like this
-    */
-    async function __temp1(arg, lib) {
-    }
     class RunCodeContextConnector {
         constructor(value) {
             this.value = value;
@@ -39,16 +34,13 @@ define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeCon
         async runCode(source, resultVariable) {
             return this.value.runCode(source, resultVariable);
         }
-        async codeComplete(code, caret) {
-            return this.value.codeComplete(code, caret);
-        }
-        async jsExec(source) {
-            return this.value.jsExec(source);
+        async callFunction(name, args) {
+            return this.value.callFunction(name, args);
         }
     }
     exports.RunCodeContextConnector = RunCodeContextConnector;
     async function createConnectorWithNewRunCodeContext() {
-        let codeContext = new CodeContext_1.jsExecLib.LocalRunCodeContext();
+        let codeContext = new CodeContext_1.LocalRunCodeContext();
         let t1 = new RunCodeContextConnector(codeContext);
         t1.close = () => codeContext.close();
         return t1;
@@ -117,13 +109,9 @@ define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeCon
             await this.inited.get();
             return await this._remoteContext.runCode(source, resultVariable);
         }
-        async codeComplete(code, caret) {
+        async callFunction(name, args) {
             await this.inited.get();
-            return await this._remoteContext.codeComplete(code, caret);
-        }
-        async jsExec(source) {
-            await this.inited.get();
-            return await this._remoteContext.jsExec(source);
+            return await this._remoteContext.callFunction(name, args);
         }
         close() {
             let t1 = this._remoteContext;
@@ -139,7 +127,7 @@ define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeCon
     }
     exports.RemoteRunCodeContext = RemoteRunCodeContext;
     async function connectToCodeContextFromCode(connectCode) {
-        let r = await (new Function('lib', `return (async ()=>{${connectCode}})()`)(CodeContext_1.jsExecLib));
+        let r = await (new Function('lib', `return (async ()=>{${connectCode}})()`)({ importModule: (moduleName) => new Promise((resolve_1, reject_1) => { require([moduleName], resolve_1, reject_1); }) }));
         return r;
     }
     /*

@@ -237,6 +237,12 @@ define("partic2/pComponentUi/texteditor", ["require", "exports", "partic2/jsutil
         scrollToBottom() {
             this.rref.div1.current.scrollTop = this.rref.div1.current.scrollHeight;
         }
+        isEditing() {
+            return document.activeElement != null &&
+                this.rref.div1.current != null &&
+                ((document.activeElement === this.rref.div1.current) ||
+                    ((document.activeElement.compareDocumentPosition(this.rref.div1.current) & Node.DOCUMENT_POSITION_CONTAINS) != 0));
+        }
     }
     exports.TextEditor = TextEditor;
     class PlainTextEditorInput extends TextEditor {

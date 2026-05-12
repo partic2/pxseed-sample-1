@@ -1,53 +1,13 @@
-define("pxseedServer2023/nodeentry", ["require", "exports", "partic2/nodehelper/env", "./pxseedhttpserver", "partic2/jsutils1/base", "pxprpc/base", "stream", "http", "path", "partic2/jsutils1/webutils", "child_process", "ws", "partic2/nodehelper/nodeio", "pxprpc/extend", "pxprpc/backend", "./pxseedhttpserver"], function (require, exports, env_1, pxseedhttpserver_1, base_1, base_2, stream_1, http_1, path_1, webutils_1, child_process_1, ws_1, nodeio_1, extend_1, backend_1, pxseedhttpserver_2) {
+define("pxseedServer2023/nodeentry", ["require", "exports", "partic2/nodehelper/env", "./pxseedhttpserver", "partic2/jsutils1/base", "pxprpc/base", "stream", "http", "path", "partic2/jsutils1/webutils", "child_process", "partic2/nodehelper/nodeio", "pxprpc/extend", "pxprpc/backend", "./pxseedhttpserver", "partic2/tjshelper/httpprot", "partic2/CodeRunner/jsutils2"], function (require, exports, env_1, pxseedhttpserver_1, base_1, base_2, stream_1, http_1, path_1, webutils_1, child_process_1, nodeio_1, extend_1, backend_1, pxseedhttpserver_2, httpprot_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.__inited__ = exports.httpOnRequest = exports.httpServ = exports.WsServer = exports.ensureInit = exports.config = exports.__name__ = void 0;
+    exports.__inited__ = exports.httpOnRequest = exports.httpServ = exports.ensureInit = exports.config = exports.__name__ = void 0;
     exports.nodeRun = nodeRun;
     exports.createNewEntryUrlWithPxprpcKey = createNewEntryUrlWithPxprpcKey;
     exports.startServer = startServer;
     Object.defineProperty(exports, "config", { enumerable: true, get: function () { return pxseedhttpserver_1.config; } });
     exports.__name__ = base_1.requirejs.getLocalRequireModule(require);
     exports.ensureInit = new base_1.future();
-    exports.WsServer = {
-        ws: new ws_1.WebSocketServer({ noServer: true }),
-        handle: async function (req, socket, head) {
-            let url = new URL(req.url, `http://${req.headers.host}`);
-            let request = new Request(url, {
-                method: req.method,
-                headers: Object.entries(req.headers).map(t1 => {
-                    if (typeof t1[1] !== 'string') {
-                        return [t1[0], (t1[1] ?? '').toString()];
-                    }
-                    else {
-                        return t1;
-                    }
-                })
-            });
-            let accepted = false;
-            await pxseedhttpserver_2.defaultHttpHandler.onwebsocket({
-                request,
-                accept: async () => {
-                    accepted = true;
-                    return new Promise((resolve) => this.ws.handleUpgrade(req, socket, head, (client) => {
-                        resolve(new nodeio_1.NodeWsConnectionAdapter2(client));
-                    }));
-                }
-            });
-            if (!accepted) {
-                if (url.pathname in this.router) {
-                    this.ws.handleUpgrade(req, socket, head, (client, req) => {
-                        this.router[url.pathname](new nodeio_1.NodeWsConnectionAdapter2(client), req.url, req.headers);
-                    });
-                }
-                else {
-                    socket.end();
-                }
-            }
-        },
-        //compatibility ONLY
-        router: {}
-    };
-    exports.WsServer.ws.on('error', (err) => console.log(err));
     exports.httpServ = new http_1.Server();
     //To keep compatibility with old Koa server, koa server can override it and deligate request to default handler.
     exports.httpOnRequest = new base_1.Ref2(async (nodereq, noderes) => {
@@ -129,8 +89,57 @@ define("pxseedServer2023/nodeentry", ["require", "exports", "partic2/nodehelper/
         //(await import('inspector')).open(9229,'127.0.0.1',true);
         console.info('argv', process.argv);
         await (0, pxseedhttpserver_1.loadConfig)();
-        exports.httpServ.on('upgrade', (req, socket, head) => {
-            exports.WsServer.handle(req, socket, head);
+        exports.httpServ.on('upgrade', async (nodereq, socket, head) => {
+            if (nodereq.headers['upgrade']?.toLowerCase() === 'websocket') {
+                let stream = {
+                    r: new jsutils2_1.ExtendStreamReader(new ReadableStream(new nodeio_1.NodeReadableDataSource(socket)).getReader()),
+                    w: new WritableStream(new nodeio_1.NodeWritableDataSink(socket)).getWriter()
+                };
+                stream.r.unshiftBuffer(new Uint8Array(head.buffer, head.byteOffset, head.byteLength));
+                let url = new URL(nodereq.url, `http://${nodereq.headers.host}`);
+                let req = new Request(url, {
+                    method: nodereq.method,
+                    headers: Object.entries(nodereq.headers).map(t1 => {
+                        if (typeof t1[1] !== 'string') {
+                            return [t1[0], (t1[1] ?? '').toString()];
+                        }
+                        else {
+                            return t1;
+                        }
+                    }),
+                });
+                async function simpleWriteResponse(resp) {
+                    let headersString = new Array();
+                    resp.headers.forEach((val, key) => {
+                        headersString.push(`${key}: ${val}`);
+                    });
+                    await stream.w.write((0, jsutils2_1.utf8conv)([
+                        `HTTP/1.1 ${resp.status} ${resp.statusText}`,
+                        ...headersString,
+                        '\r\n'
+                    ].join('\r\n')));
+                }
+                let p = {
+                    _ws: null,
+                    request: req,
+                    accept: async function () {
+                        if (this._ws == null) {
+                            this._ws = new httpprot_1.WebSocketServerStreamHandler(stream.r, stream.w);
+                            let resp = await this._ws.switchToWebsocketResponse(req);
+                            await simpleWriteResponse(resp);
+                        }
+                        return this._ws;
+                    }
+                };
+                await pxseedhttpserver_2.defaultHttpHandler.onwebsocket(p);
+                if (p._ws == null) {
+                    await simpleWriteResponse(new Response("Unsupported", { status: 426 }));
+                    socket.destroy();
+                }
+                else {
+                    await p._ws.closed.get();
+                }
+            }
         });
         exports.httpServ.on('request', (req, res) => {
             exports.httpOnRequest.get()(req, res);

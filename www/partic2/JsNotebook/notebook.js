@@ -84,7 +84,6 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
                 for (let codeCell of copy) {
                     let input1 = await codeCell.rref.codeInput.waitValid();
                     let code = input1.getPlainText();
-                    let caret = input1.getTextCaretOffset();
                     if (code.length > 10000)
                         continue;
                     await exports.__inited__;
@@ -97,9 +96,14 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
                                 hlcode += '<div><br/></div>';
                             }
                         }
-                        //if(/[^\n]\n$/.test(hlcode))hlcode+='\n';
+                        let caret = null;
+                        if (input1.isEditing()) {
+                            caret = input1.getTextCaretOffset();
+                        }
                         input1.setHtml(hlcode);
-                        input1.setTextCaretOffset(caret);
+                        if (caret != null) {
+                            input1.setTextCaretOffset(caret);
+                        }
                     }
                 }
             }, 200);
@@ -207,7 +211,7 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             await this.props.context.fs.writeAll(this.props.path, (0, jsutils2_1.utf8conv)(JSON.stringify(saved)));
         }
         async callFunctionInNotebookWebui(module, fnName, args) {
-            let fn = (await base_1.requirejs.promiseRequire(module))[fnName];
+            let fn = (await new Promise((resolve_1, reject_1) => { require([module], resolve_1, reject_1); }))[fnName];
             fn(...args, { rpc: this.state.rpc, codeCellList: this.rref.ccl, codeContext: this.state.codeContext });
         }
         async updateNotebookCodeCellsData(cellsData) {
@@ -265,7 +269,6 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
                 container: new domui_1.ReactRefEx()
             };
             this.autoScrollToBottom = true;
-            this.savedScrollHight = 0;
             this.codeCellHighlightQueue = new Set();
             this.DoCodeCellsHightlight = new jsutils2_1.DebounceCall(async () => {
                 let copy = Array.from(this.codeCellHighlightQueue);
@@ -275,33 +278,34 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
                     let code = input1.getPlainText();
                     if (code.length > 10000)
                         continue;
-                    let caret = input1.getTextCaretOffset();
                     await exports.__inited__;
                     let hlcode = await webworkercall.prismHighlightJS(code);
                     if (/[^\n]\n$/.test(hlcode))
                         hlcode += '\n';
+                    let caret = null;
+                    if (input1.isEditing()) {
+                        caret = input1.getTextCaretOffset();
+                    }
                     input1.setHtml(hlcode);
-                    input1.setTextCaretOffset(caret);
+                    if (caret != null) {
+                        input1.setTextCaretOffset(caret);
+                    }
                 }
             }, 200);
-            this.inited = false;
+            this._scrollTask = null;
+            this.onContainerScroll = new jsutils2_1.DebounceCall(async () => {
+                let cont = await this.rref.container.waitValid();
+                console.info('#1 scrollState' + (cont.scrollHeight - (cont.scrollTop + cont.clientHeight)));
+                if (cont.scrollHeight - (cont.scrollTop + cont.clientHeight) < 15) {
+                    this.autoScrollToBottom = true;
+                }
+            }, 300);
         }
         async onCellRun(cellKey) {
-            let cellList = (await this.rref.list.waitValid()).getCellList();
+            let ccl = await this.rref.list.waitValid();
+            let cellList = ccl.getCellList();
             if (cellList.length >= (this.props.maxCellCount ?? 100)) {
-                (await this.rref.list.waitValid()).deleteCell(cellList.at(0).key);
-            }
-            if (cellList.at(-1)?.key == cellKey) {
-                this.autoScrollToBottom = true;
-            }
-            let runCellAt = cellList.findIndex(t1 => t1.key === cellKey);
-            if (runCellAt == cellList.length - 1) {
-                let nextCell = await (await this.rref.list.waitValid()).newCell(cellKey);
-                (await this.rref.list.waitValid()).setCurrentEditing(nextCell);
-            }
-            else {
-                let nextCell = cellList[runCellAt + 1].key;
-                (await this.rref.list.waitValid()).setCurrentEditing(nextCell);
+                ccl.deleteCell(cellList.at(0).key);
             }
         }
         async doRunCode(code) {
@@ -314,32 +318,37 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             cc.setCellInput(code);
             await cc.runCode();
         }
-        async _keepScrollState() {
-            let cont = await this.rref.container.waitValid();
+        *_keepScrollState() {
+            let cont = yield* base_1.Task.yieldWrap(this.rref.container.waitValid());
             while (this.rref.container.current != null) {
-                if (this.autoScrollToBottom && cont.scrollHeight != this.savedScrollHight) {
+                if (this.autoScrollToBottom) {
                     cont = this.rref.container.current;
                     cont.scrollTo({ top: cont.scrollHeight, behavior: 'smooth' });
-                    this.savedScrollHight = cont.scrollHeight;
                 }
-                await (0, base_1.sleep)(100);
+                yield (0, base_1.sleep)(200);
             }
+        }
+        componentWillUnmount() {
+            this._scrollTask?.abort();
+            this._scrollTask = null;
         }
         async onCellInputChange(codeCell) {
             this.codeCellHighlightQueue.add(codeCell);
             this.DoCodeCellsHightlight.call();
         }
         async beforeRender() {
-            if (!this.inited) {
-                this.inited = true;
-                this._keepScrollState();
+            if (this._scrollTask == null) {
+                let that = this;
+                this._scrollTask = base_1.Task.fork(function* () {
+                    yield* that._keepScrollState();
+                }).run();
             }
         }
         render(props, state, context) {
             this.beforeRender();
             return React.createElement("div", { ref: this.rref.container, style: {
                     overflowY: 'auto', border: '0px', padding: '0px', margin: '0px', width: '100%', height: '100%', ...this.props.containerStyle
-                }, onMouseDown: () => this.autoScrollToBottom = false, onTouchStart: () => this.autoScrollToBottom = false, onWheel: () => this.autoScrollToBottom = false },
+                }, onPointerDown: () => this.autoScrollToBottom = false, onScroll: () => this.onContainerScroll.call() },
                 React.createElement(WebUi_1.CodeCellList, { codeContext: this.props.codeContext, onRun: (key) => this.onCellRun(key), ref: this.rref.list, cellProps: {
                         runCodeKey: 'Enter',
                         onInputChange: (target) => this.onCellInputChange(target)

@@ -1,8 +1,10 @@
 define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/pxprpcClient/registry", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/input", "partic2/pComponentUi/window", "partic2/CodeRunner/jsutils2", "partic2/JsNotebook/workspace", "partic2/pComponentUi/texteditor", "partic2/pComponentUi/workspace", "partic2/pxseedMedia1/index1", "partic2/pComponentUi/transform"], function (require, exports, React, domui_1, registry_1, base_1, webutils_1, input_1, window_1, jsutils2_1, workspace_1, texteditor_1, workspace_2, index1_1, transform_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.webuiStartupExecuteFunction = exports.renderPackagePanel = exports.__name__ = void 0;
+    exports.webuiStartupExecuteFunction = exports.config = exports.floatTaskListView = exports.__name__ = void 0;
     exports.startWebuiForPackage = startWebuiForPackage;
+    exports.disableFloatTaskListView = disableFloatTaskListView;
+    exports.setFloatTaskListViewVisible = setFloatTaskListViewVisible;
     exports.openPackageMainWindow = openPackageMainWindow;
     exports.main = main;
     var registryModuleName = 'partic2/packageManager/registry';
@@ -224,7 +226,7 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
             let selected = await (0, webutils_1.selectFile)();
             if (selected != null && selected.length > 0) {
                 let registry = await remoteModule.registry.get();
-                registry.importPackagesInstallation(JSON.parse(new TextDecoder().decode((await (0, base_1.GetBlobArrayBufferContent)(selected.item(0))))));
+                registry.importPackagesInstallation(JSON.parse((0, jsutils2_1.utf8conv)(new Uint8Array(await selected.item(0).arrayBuffer()))));
             }
         }
         async requestListPackage() {
@@ -508,13 +510,34 @@ import2env('partic2/packageManager/registry');`,
             ];
         }
     }
-    let renderPackagePanel = async () => {
-        (0, webutils_1.useDeviceWidth)();
-        (0, workspace_2.openNewWindow)(React.createElement(PackagePanel, null), { title: i18n.packageManager, layoutHint: exports.__name__ + '.PackagePanel', windowOptions: { closeIcon: null } });
-        (0, window_1.appendFloatWindow)(React.createElement(window_1.WindowComponent, { keepTop: true, noTitleBar: true, noResizeHandle: true, windowDivClassName: window_1.css.borderlessWindowDiv },
-            React.createElement(WindowListIcon, null)));
+    exports.floatTaskListView = {
+        ref: new domui_1.ReactRefEx(),
+        component: null,
+        event: new EventTarget()
     };
-    exports.renderPackagePanel = renderPackagePanel;
+    let renderPackagePanel = async () => {
+        (0, workspace_2.openNewWindow)(React.createElement(PackagePanel, null), { title: i18n.packageManager, layoutHint: exports.__name__ + '.PackagePanel', windowOptions: { closeIcon: null } });
+        if (exports.floatTaskListView.ref != null) {
+            exports.floatTaskListView.component = React.createElement(window_1.WindowComponent, { keepTop: true, ref: exports.floatTaskListView.ref, noTitleBar: true, noResizeHandle: true, windowDivClassName: window_1.css.borderlessWindowDiv },
+                React.createElement(WindowListIcon, null));
+            (0, window_1.appendFloatWindow)(exports.floatTaskListView.component);
+        }
+    };
+    function disableFloatTaskListView() {
+        if (exports.floatTaskListView.component != null) {
+            (0, window_1.removeFloatWindow)(exports.floatTaskListView.component);
+        }
+        exports.floatTaskListView.ref = null;
+        exports.floatTaskListView.component = null;
+    }
+    function setFloatTaskListViewVisible(visible) {
+        if (visible) {
+            exports.floatTaskListView.ref?.current?.activate();
+        }
+        else {
+            exports.floatTaskListView.ref?.current?.hide();
+        }
+    }
     async function openPackageMainWindow(appInfo, ...args) {
         if (args[1] == undefined) {
             args[1] = {};
@@ -545,34 +568,48 @@ import2env('partic2/packageManager/registry');`,
         windowHandler = await (0, workspace_2.openNewWindow)(...args);
         return windowHandler;
     }
-    let config = {};
+    exports.config = {};
     exports.webuiStartupExecuteFunction = {
         async add(id, functionInfo) {
-            config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
-            config.startupExecuteFunction = config.startupExecuteFunction ?? {};
-            config.startupExecuteFunction[id] = functionInfo;
+            exports.config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
+            exports.config.startupExecuteFunction = exports.config.startupExecuteFunction ?? {};
+            exports.config.startupExecuteFunction[id] = functionInfo;
             await (0, webutils_1.SavePersistentConfig)(exports.__name__);
         },
         async delete(id) {
-            config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
-            config.startupExecuteFunction = config.startupExecuteFunction ?? {};
-            delete config.startupExecuteFunction[id];
+            exports.config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
+            exports.config.startupExecuteFunction = exports.config.startupExecuteFunction ?? {};
+            delete exports.config.startupExecuteFunction[id];
             await (0, webutils_1.SavePersistentConfig)(exports.__name__);
         },
         async get(id) {
-            config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
-            return config.startupExecuteFunction?.[id];
+            exports.config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
+            return exports.config.startupExecuteFunction?.[id];
         },
         async iter() {
-            config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
-            config.startupExecuteFunction = config.startupExecuteFunction ?? {};
-            return Object.entries(config.startupExecuteFunction);
+            exports.config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
+            exports.config.startupExecuteFunction = exports.config.startupExecuteFunction ?? {};
+            return Object.entries(exports.config.startupExecuteFunction);
         }
     };
     async function main(cmd) {
         if (cmd == 'webui') {
-            (0, exports.renderPackagePanel)();
-            config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
+            (0, webutils_1.useDeviceWidth)();
+            exports.config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
+            (0, window_1.ensureRootWindowContainer)();
+            if (exports.config.mobileMode == undefined) {
+                let windowWidth = (await (await window_1.rootWindowsList.waitValid()).container.waitValid()).offsetWidth;
+                exports.config.mobileMode = windowWidth < 800;
+            }
+            if (exports.config.mobileMode) {
+                let setMobileDefaultFullScreenName = exports.__name__ + '.setMobileDefaultFullScreen';
+                if (workspace_2.openNewWindowPipeline.arr().find(t1 => t1.name == setMobileDefaultFullScreenName) == undefined) {
+                    workspace_2.openNewWindowPipeline.arr().push({ name: setMobileDefaultFullScreenName, handler: async (context) => {
+                            (await context.result.windowRef.waitValid()).setMaximized(true);
+                        } });
+                }
+            }
+            renderPackagePanel();
             for (let t1 of await exports.webuiStartupExecuteFunction.iter()) {
                 new Promise((resolve_3, reject_3) => { require([t1[1].module], resolve_3, reject_3); }).then(mod => mod[t1[1].functionName](...(t1[1].arguments ?? []))).catch(() => { });
                 if (t1[1].once) {

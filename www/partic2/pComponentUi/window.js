@@ -1,7 +1,7 @@
 define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./transform", "partic2/pxseedMedia1/index1"], function (require, exports, React, domui_1, base_1, webutils_1, transform_1, index1_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.WindowsList = exports.WindowsListContext = exports.WindowComponent = exports.DefaultWindowComponent = exports.css = void 0;
+    exports.rootWindowsList = exports.WindowsList = exports.WindowsListContext = exports.WindowComponent = exports.DefaultWindowComponent = exports.css = void 0;
     exports.setDefaultWindowComponentImplemention = setDefaultWindowComponentImplemention;
     exports.ensureRootWindowContainer = ensureRootWindowContainer;
     exports.appendFloatWindow = appendFloatWindow;
@@ -78,8 +78,8 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
                 }
                 if (stableCount >= 3)
                     break;
-                let wndWidth = (rootWindowsList.current?.container.current?.offsetWidth) ?? 0;
-                let wndHeight = (rootWindowsList.current?.container.current?.offsetHeight) ?? 0;
+                let wndWidth = (exports.rootWindowsList.current?.container.current?.offsetWidth) ?? 0;
+                let wndHeight = (exports.rootWindowsList.current?.container.current?.offsetHeight) ?? 0;
                 if (width > wndWidth - 5)
                     width = wndWidth - 5;
                 if (height > wndHeight - 5)
@@ -138,16 +138,26 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
             this.props.onClose?.();
         }
         async onMaximizeClick() {
-            if (this.beforeMaximizeSize != null) {
-                this.setState({ layout: { ...this.beforeMaximizeSize } });
-                this.beforeMaximizeSize = null;
-            }
-            else {
+            await this.setMaximized(!this.getMaximized());
+        }
+        getMaximized() {
+            return this.beforeMaximizeSize != null;
+        }
+        async setMaximized(maximized) {
+            if (maximized) {
                 this.beforeMaximizeSize = { ...this.state.layout };
                 let containerDiv = await this.rref.container.waitValid();
                 this.setState({ layout: { left: 0, top: 0,
                         width: containerDiv.offsetParent.offsetWidth,
                         height: containerDiv.offsetParent.offsetHeight } });
+                this._triggerResize();
+            }
+            else {
+                if (this.beforeMaximizeSize != null) {
+                    this.setState({ layout: { ...this.beforeMaximizeSize } });
+                    this._triggerResize();
+                }
+                this.beforeMaximizeSize = null;
             }
         }
         renderWindowMain() {
@@ -257,7 +267,7 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
         }
     }
     exports.WindowsList = WindowsList;
-    let rootWindowsList = new domui_1.ReactRefEx();
+    exports.rootWindowsList = new domui_1.ReactRefEx();
     let windowDomRootComponent = null;
     function ensureRootWindowContainer() {
         if (windowDomRootComponent == null) {
@@ -271,24 +281,24 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
             div.style.top = '0px';
             div.style.pointerEvents = 'none';
             domui_1.DomRootComponent.addChild(windowDomRootComponent).then(() => domui_1.DomRootComponent.update());
-            (0, domui_1.ReactRender)(React.createElement(WindowsList, { ref: rootWindowsList }), windowDomRootComponent);
+            (0, domui_1.ReactRender)(React.createElement(WindowsList, { ref: exports.rootWindowsList }), windowDomRootComponent);
         }
     }
     function appendFloatWindow(window, active) {
         ensureRootWindowContainer();
-        rootWindowsList.current?.appendFloatWindow(window, active);
+        exports.rootWindowsList.current?.appendFloatWindow(window, active);
     }
     function removeFloatWindow(window) {
         ensureRootWindowContainer();
-        rootWindowsList.current?.removeFloatWindow(window);
+        exports.rootWindowsList.current?.removeFloatWindow(window);
     }
     async function windowsContainerForceUpdate() {
         ensureRootWindowContainer();
-        return new Promise((resolve) => rootWindowsList.current?.forceUpdate(resolve));
+        return new Promise((resolve) => exports.rootWindowsList.current?.forceUpdate(resolve));
     }
     function getFloatWindowVNodeList() {
         ensureRootWindowContainer();
-        return rootWindowsList.current?.state.floatWindowVNodes ?? [];
+        return exports.rootWindowsList.current?.state.floatWindowVNodes ?? [];
     }
     let i18n = {
         caution: 'caution',
@@ -304,7 +314,7 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
         let result = new base_1.future();
         let windowRef = new domui_1.ReactRefEx();
         let floatWindow1 = React.createElement(exports.WindowComponent, { key: (0, base_1.GenerateRandomString)(), ref: windowRef, title: title ?? i18n.caution, onClose: () => result.setResult(null) },
-            React.createElement("div", { style: { minWidth: Math.min((rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
+            React.createElement("div", { style: { minWidth: Math.min((exports.rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
                 message,
                 React.createElement("div", { className: domui_1.css.flexRow },
                     React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult(null), value: i18n.ok }))));
@@ -317,7 +327,7 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
         let result = new base_1.future();
         let windowRef = new domui_1.ReactRefEx();
         let floatWindow1 = React.createElement(exports.WindowComponent, { key: (0, base_1.GenerateRandomString)(), ref: windowRef, title: title ?? i18n.caution, onClose: () => result.setResult('cancel') },
-            React.createElement("div", { style: { minWidth: Math.min((rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
+            React.createElement("div", { style: { minWidth: Math.min((exports.rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
                 message,
                 React.createElement("div", { className: domui_1.css.flexRow },
                     React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult('ok'), value: i18n.ok }),

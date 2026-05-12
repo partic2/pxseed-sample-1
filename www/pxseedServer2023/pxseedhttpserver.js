@@ -2,6 +2,7 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.serverCommandRegistry = exports.wsPipe = exports.defaultHttpHandler = exports.defaultRouter = exports.rootConfig = exports.config = exports.subprocessMagic = exports.__name__ = void 0;
+    exports.setupServerPxprpcClient = setupServerPxprpcClient;
     exports.loadConfig = loadConfig;
     exports.saveConfig = saveConfig;
     exports.setupHttpServerHandler = setupHttpServerHandler;
@@ -30,7 +31,12 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
     };
     exports.rootConfig = { ...exports.config };
     let blockFileMatchRegex = new Array();
+    async function setupServerPxprpcClient() {
+        await (0, registry_1.addClient)('pxseedjs:' + exports.__name__ + '.getConnectionForServerHost', registry_1.ServerHostRpcName);
+        await (0, registry_1.addClient)('webworker:partic2/pxprpcClient/registry/worker/1', registry_1.ServerHostWorker1RpcName);
+    }
     async function loadConfig() {
+        await setupServerPxprpcClient();
         let tjs = await (0, tjsbuilder_1.buildTjs)();
         try {
             let configData = await tjs.readFile((0, webutils_1.getWWWRoot)() + '/pxseedServer2023/config.json');
@@ -242,7 +248,7 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
             wrapConsole.warn = (...msg) => records.push(msg);
             wrapConsole.error = (...msg) => records.push(msg);
             await withConsole(wrapConsole, async () => {
-                await cleanBuildStatus(path.join(wwwroot, '..', 'source'));
+                await cleanBuildStatus(path.join(wwwroot));
                 await processDirectory(path.join(wwwroot, '..', 'source'));
             });
             return records.map(t1 => t1.join(' ')).join('\n');
@@ -262,9 +268,9 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
         },
     };
     function pxseedRunStartupModules() {
-        Promise.allSettled(exports.config.initModule.map(mod => base_2.requirejs.promiseRequire(mod)));
+        Promise.allSettled(exports.config.initModule.map(mod => new Promise((resolve_7, reject_7) => { require([mod], resolve_7, reject_7); })));
         if (exports.config.subprocessIndex == undefined)
-            new Promise((resolve_7, reject_7) => { require(['partic2/packageManager/onServerStartup'], resolve_7, reject_7); });
+            new Promise((resolve_8, reject_8) => { require(['partic2/packageManager/onServerStartup'], resolve_8, reject_8); });
     }
     async function serverCommand(cmd, param) {
         if (exports.serverCommandRegistry[cmd] != undefined) {
@@ -284,11 +290,6 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
             return parent;
         }
     }
-    ;
-    (async () => {
-        await (0, registry_1.addClient)('pxseedjs:' + exports.__name__ + '.getConnectionForServerHost', registry_1.ServerHostRpcName);
-        await (0, registry_1.addClient)('webworker:partic2/pxprpcClient/registry/worker/1', registry_1.ServerHostWorker1RpcName);
-    })();
     async function initNotebookCodeEnv(_ENV) {
         Object.assign(_ENV, exports.serverCommandRegistry);
     }

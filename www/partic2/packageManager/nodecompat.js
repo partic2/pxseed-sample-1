@@ -202,7 +202,7 @@ define("partic2/packageManager/nodecompat", ["require", "exports", "partic2/Code
         }
         let importTyescriptSucc = false;
         try {
-            let ts = await base_1.requirejs.promiseRequire('typescript');
+            let ts = await new Promise((resolve_5, reject_5) => { require(['typescript'], resolve_5, reject_5); });
             importTyescriptSucc = true;
             cachedTypescriptModule = ts.default ?? ts;
             return cachedTypescriptModule;
@@ -211,7 +211,7 @@ define("partic2/packageManager/nodecompat", ["require", "exports", "partic2/Code
             await Promise.all(Object.keys(await base_1.requirejs.getFailed()).map((t1) => base_1.requirejs.undef(t1)));
         }
         try {
-            let ts = await base_1.requirejs.promiseRequire('partic2/packageManager/typescript4tjs');
+            let ts = await new Promise((resolve_6, reject_6) => { require(['partic2/packageManager/typescript4tjs'], resolve_6, reject_6); });
             importTyescriptSucc = true;
             cachedTypescriptModule = ts.default ?? ts;
             return cachedTypescriptModule;
@@ -228,7 +228,7 @@ define("partic2/packageManager/nodecompat", ["require", "exports", "partic2/Code
             await fs.promises.writeFile(path.join(wwwroot, 'partic2', 'packageManager', 'typescript4tjs.js'), new TextEncoder().encode(tstxt));
         }
         {
-            let ts = await base_1.requirejs.promiseRequire('partic2/packageManager/typescript4tjs');
+            let ts = await new Promise((resolve_7, reject_7) => { require(['partic2/packageManager/typescript4tjs'], resolve_7, reject_7); });
             importTyescriptSucc = true;
             cachedTypescriptModule = ts.default ?? ts;
             return cachedTypescriptModule;

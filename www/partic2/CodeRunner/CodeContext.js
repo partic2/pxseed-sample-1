@@ -1,7 +1,7 @@
-define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./Inspector", "./pxseedLoader", "./jsutils2"], function (require, exports, acornWalk, acorn, base_1, jsutils1, Inspector_1, pxseedLoader_1, jsutils2_1) {
+define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./pxseedLoader", "./jsutils2"], function (require, exports, acornWalk, acorn, base_1, jsutils1, pxseedLoader_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.jsExecLib = exports.LocalRunCodeContext = exports.__internal__ = exports.CodeContextEvent = exports.CodeContextEventTarget = exports.TaskLocalEnv = void 0;
+    exports.LocalRunCodeContext = exports.__internal__ = exports.CodeContextEvent = exports.CodeContextEventTarget = exports.TaskLocalEnv = void 0;
     exports.enableDebugger = enableDebugger;
     acorn.defaultOptions.allowAwaitOutsideFunction = true;
     acorn.defaultOptions.ecmaVersion = 'latest';
@@ -30,16 +30,12 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
         removeEventListener(type, callback, options) {
             super.removeEventListener(type, callback);
         }
+        //The original dispatchEvent on EventTarget. To trigger listener only.
         _dispatchEventOnEventTarget(event) {
             return super.dispatchEvent(event);
         }
     }
     exports.CodeContextEventTarget = CodeContextEventTarget;
-    //RunCodeContext.jsExec run code like this
-    async function __jsExecSample(lib, codeContext) {
-        //Your code
-        return '';
-    }
     class CodeContextEvent extends Event {
         constructor(type, initDict) {
             super(type ?? __name__ + '.CodeContextEvent', {});
@@ -68,58 +64,44 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
     class LocalRunCodeContext {
         constructor() {
             this.importHandler = async (source) => {
-                return base_1.requirejs.promiseRequire(source);
+                return new Promise((resolve_2, reject_2) => { require([source], resolve_2, reject_2); });
             };
             this.event = new CodeContextEventTarget();
             this.localScope = {
                 //this CodeContext
                 __priv_codeContext: undefined,
                 //import implemention
-                __priv_import: (module) => {
-                    let imp = this.importHandler(module);
+                __priv_import: async (module) => {
+                    let imp = await this.importHandler(module);
                     return imp;
                 },
                 __topLevelTranspileDirective: {},
                 __transpile__: (directive, source) => source,
                 //some utils provide by codeContext
-                __priv_jsExecLib: exports.jsExecLib,
                 //custom source processor for 'runCode' _ENV.__priv_processSource, run before builtin processor.
                 __priv_sourceProcessors: [{ name: __name__ + '.defaultCodeTranspilingProcessor', process: defaultCodeTranspilingProcessor }],
+                callModuleFunction: async (module, func, args) => {
+                    let imp = await this.importHandler(module);
+                    return await imp[func](...args);
+                },
                 event: this.event,
                 CodeContextEvent,
                 Task: jsutils1.Task,
                 tasks: {},
                 //Will be close when LocalRunCodeContext is closing.
                 autoClosable: {},
+                deleteVariables: (names) => {
+                    for (let n of names) {
+                        delete this.localScope[n];
+                    }
+                },
                 close: () => {
                     this.close();
                 }
             };
-            this.onConsoleLogListener = (level, argv) => {
-                let outputTexts = [];
-                for (let t1 of argv) {
-                    if (typeof t1 == 'object') {
-                        outputTexts.push(JSON.stringify((0, Inspector_1.toSerializableObject)(t1, {})));
-                    }
-                    else {
-                        outputTexts.push(t1);
-                    }
-                }
-                let evt = new CodeContextEvent('console.data', {
-                    data: {
-                        level,
-                        message: outputTexts.join(' ')
-                    }
-                });
-                this.event.dispatchEvent(evt);
-            };
-            this.completionHandlers = [
-                ...Inspector_1.defaultCompletionHandlers
-            ];
-            jsutils2_1.OnConsoleData.add(this.onConsoleLogListener);
             this.localScope.__priv_codeContext = this;
             this.localScope._ENV = this.localScope;
-            this.localScope.console = { ...console };
+            this.localScope.console = console;
             this.localScopeProxy = new Proxy(this.localScope, {
                 has: () => true,
                 get: (target, p) => {
@@ -137,7 +119,6 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
             });
         }
         close() {
-            jsutils2_1.OnConsoleData.delete(this.onConsoleLogListener);
             this.event.dispatchEvent(new CodeContextEvent('close'));
             for (let [k1, v1] of Object.entries(this.localScope.autoClosable)) {
                 if (v1.close != undefined) {
@@ -145,17 +126,28 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
                 }
             }
         }
-        async jsExec(code) {
-            let r = new Function('lib', 'codeContext', `return (async ()=>{${code}})();`)(exports.jsExecLib, this);
-            if (r instanceof Promise) {
-                r = await r;
-            }
-            if ((typeof r) === 'string') {
-                return r;
-            }
-            return '';
+        async callFunction(name, args) {
+            let taskName = __name__ + '.task-' + jsutils1.GenerateRandomString();
+            let that = this;
+            let t = jsutils1.Task.fork(function* () {
+                let curtask = jsutils1.Task.currentTask;
+                curtask.name = taskName;
+                that.localScope.tasks[taskName] = curtask;
+                exports.TaskLocalEnv.set(that.localScope);
+                try {
+                    let r = that.localScope[name](...args);
+                    if (typeof r === 'object' && 'then' in r) {
+                        r = yield r;
+                    }
+                    return r;
+                }
+                finally {
+                    delete that.localScope.tasks[taskName];
+                }
+            }).run();
+            return await t;
         }
-        processSource(source) {
+        async processSource(source) {
             let replacePlan = new pxseedLoader_1.JsSourceReplacePlan(source);
             let result = acorn.parse(source, { allowAwaitOutsideFunction: true, ecmaVersion: 'latest', allowReturnOutsideFunction: true });
             replacePlan.parsedAst = result;
@@ -282,15 +274,17 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
                 }
             }).run();
             source = processContext.source;
-            let proc1 = this.processSource(source);
+            let proc1 = await this.processSource(source);
             try {
                 let result = await this.runCodeInScope(proc1.modifiedSource);
-                this.localScope[resultVariable] = result;
+                if (resultVariable !== '')
+                    this.localScope[resultVariable] = result;
                 let stringResult = (typeof (result) === 'string') ? result : null;
                 return { stringResult, err: null };
             }
             catch (e) {
-                this.localScope[resultVariable] = e;
+                if (resultVariable !== '')
+                    this.localScope[resultVariable] = e;
                 return { stringResult: null, err: e.toString() };
             }
         }
@@ -314,35 +308,6 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
             }).run();
             return await r;
         }
-        async codeComplete(code, caret) {
-            let completeContext = {
-                code, caret, codeContext: this, completionItems: []
-            };
-            for (let t1 of this.completionHandlers) {
-                //Mute error
-                try {
-                    await t1(completeContext);
-                }
-                catch (e) {
-                    jsutils1.throwIfAbortError(e);
-                }
-            }
-            return completeContext.completionItems;
-        }
     }
     exports.LocalRunCodeContext = LocalRunCodeContext;
-    exports.jsExecLib = {
-        jsutils1, LocalRunCodeContext, toSerializableObject: Inspector_1.toSerializableObject, fromSerializableObject: Inspector_1.fromSerializableObject, importModule: (name) => new Promise((resolve_2, reject_2) => { require([name], resolve_2, reject_2); }),
-        enableDebugger,
-        iteratorNext: async (iterator, count) => {
-            let arr = [];
-            for (let t1 = 0; t1 < count; t1++) {
-                let itr = await iterator.next();
-                if (itr.done)
-                    break;
-                arr.push(itr.value);
-            }
-            return arr;
-        }
-    };
 });

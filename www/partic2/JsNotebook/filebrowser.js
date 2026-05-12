@@ -186,7 +186,7 @@ define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "parti
             let selected = await (0, webutils_1.selectFile)();
             if (selected != null) {
                 for (let t1 = 0; t1 < selected.length; t1++) {
-                    let data = await (0, base_1.GetBlobArrayBufferContent)(selected.item(t1));
+                    let data = await selected.item(t1).arrayBuffer();
                     let name = selected.item(t1).name;
                     await this.props.fs.writeAll(this.state.currPath + '/' + name, new Uint8Array(data));
                 }

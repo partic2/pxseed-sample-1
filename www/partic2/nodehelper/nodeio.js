@@ -1,9 +1,10 @@
-define("partic2/nodehelper/nodeio", ["require", "exports", "partic2/jsutils1/base", "net", "ws"], function (require, exports, base_1, net_1, ws_1) {
+define("partic2/nodehelper/nodeio", ["require", "exports", "stream", "partic2/jsutils1/base", "net", "tls"], function (require, exports, stream_1, base_1, net_1, tls_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.NodeWritableDataSink = exports.NodeReadableDataSource = exports.NodeWsConnectionAdapter2 = exports.PxprpcTcpServer = exports.PxprpcIoFromSocket = exports.wrappedStreams = void 0;
+    exports.TlsStream = exports.NodeWritableDataSink = exports.NodeReadableDataSource = exports.PxprpcTcpServer = exports.PxprpcIoFromSocket = exports.wrappedStreams = void 0;
     exports.wrapReadable = wrapReadable;
     exports.createIoPxseedJsUrl = createIoPxseedJsUrl;
+    exports.newHttpClientForNodeJs = newHttpClientForNodeJs;
     exports.wrappedStreams = Symbol('wrappedStreams');
     function wrapReadable(r) {
         let wrapped = {};
@@ -168,71 +169,18 @@ define("partic2/nodehelper/nodeio", ["require", "exports", "partic2/jsutils1/bas
         let bus = await new Promise((resolve_1, reject_1) => { require(['partic2/pxprpcClient/bus'], resolve_1, reject_1); });
         return bus.createIoPxseedJsUrl(url);
     }
-    class NodeWsConnectionAdapter2 {
-        constructor(ws) {
-            this.ws = ws;
-            this.priv__cached = new base_1.ArrayWrap2();
-            this.closed = false;
-            this.ws.on('message', (data, isbin) => {
-                let chunk;
-                if (data instanceof ArrayBuffer) {
-                    chunk = new Uint8Array(data);
-                }
-                else if (data instanceof Buffer) {
-                    chunk = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-                }
-                else if (data instanceof Array) {
-                    chunk = new Uint8Array((0, base_1.ArrayBufferConcat)(data));
-                }
-                else {
-                    chunk = data;
-                }
-                this.priv__cached.queueSignalPush(chunk);
-            });
-            ws.on('close', (code, reason) => {
-                this.closed = true;
-                this.priv__cached.cancelWaiting();
-            });
-        }
-        async send(obj) {
-            if (obj instanceof Array) {
-                obj = new Uint8Array((0, base_1.ArrayBufferConcat)(obj));
-            }
-            return new Promise((resolve, reject) => this.ws.send(obj, (err) => {
-                if (err == null)
-                    resolve();
-                reject(err);
-            }));
-        }
-        async receive() {
-            try {
-                let wsdata = await this.priv__cached.queueBlockShift();
-                return wsdata;
-            }
-            catch (e) {
-                if (e instanceof base_1.CanceledError && this.closed) {
-                    this.ws.close();
-                    throw new Error('closed.');
-                }
-                else {
-                    this.ws.close();
-                    throw e;
-                }
-            }
-        }
-        close() {
-            this.ws.close();
-        }
-    }
-    exports.NodeWsConnectionAdapter2 = NodeWsConnectionAdapter2;
-    globalThis.WebSocket = ws_1.WebSocket;
+    globalThis.WebSocket = WebSocket;
     class NodeReadableDataSource {
         constructor(nodeReadable) {
             this.nodeReadable = nodeReadable;
         }
         start(controller) {
             this.nodeReadable.on('data', (chunk) => controller.enqueue(chunk));
-            this.nodeReadable.on('error', (err) => { controller.error(); controller.close(); });
+            this.nodeReadable.on('error', (err) => { try {
+                controller.error(err);
+                controller.close();
+            }
+            catch (err) { } });
             this.nodeReadable.on('end', () => controller.close());
         }
     }
@@ -246,4 +194,38 @@ define("partic2/nodehelper/nodeio", ["require", "exports", "partic2/jsutils1/bas
         }
     }
     exports.NodeWritableDataSink = NodeWritableDataSink;
+    class TlsStream {
+        constructor(underlying, servername) {
+            this.underlying = underlying;
+            this.servername = servername;
+            this.r = new ReadableStream();
+            this.w = new WritableStream();
+            this.closed = false;
+        }
+        async connect() {
+            this.nodeDuplex = stream_1.Duplex.fromWeb({ readable: this.underlying.r, writable: this.underlying.w });
+            this.tlsConn = tls_1.default.connect({ servername: this.servername, socket: this.nodeDuplex });
+            this.r = new ReadableStream(new NodeReadableDataSource(this.tlsConn));
+            this.w = new WritableStream(new NodeWritableDataSink(this.tlsConn));
+            return this;
+        }
+        close() {
+            if (!this.closed) {
+                this.closed = true;
+                this.underlying.w.close();
+                this.underlying.r.cancel();
+                this.w?.close();
+                this.tlsConn?.destroy();
+            }
+        }
+    }
+    exports.TlsStream = TlsStream;
+    async function newHttpClientForNodeJs() {
+        let { HttpClient } = await new Promise((resolve_2, reject_2) => { require(['partic2/tjshelper/httpprot'], resolve_2, reject_2); });
+        let { buildTjs } = await new Promise((resolve_3, reject_3) => { require(['partic2/tjshelper/tjsbuilder'], resolve_3, reject_3); });
+        let client = new HttpClient();
+        client.setConnectorTjs((await buildTjs()).connect);
+        client.makeSsl = async (underlying, servername) => new TlsStream(underlying, servername).connect();
+        return client;
+    }
 });

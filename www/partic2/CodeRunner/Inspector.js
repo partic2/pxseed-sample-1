@@ -1,13 +1,15 @@
-define("partic2/CodeRunner/Inspector", ["require", "exports", "partic2/jsutils1/base", "./JsEnviron", "partic2/jsutils1/webutils"], function (require, exports, base_1, JsEnviron_1, webutils_1) {
+define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "partic2/jsutils1/base", "./JsEnviron", "partic2/jsutils1/webutils", "./jsutils2"], function (require, exports, CodeContext_1, base_1, JsEnviron_1, webutils_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.defaultCompletionHandlers = exports.CodeCellListData = exports.builtInCompletionHandlers = exports.CustomFunctionParameterCompletionSymbol = exports.MiscObject = exports.UnidentifiedArray = exports.UnidentifiedObject = exports.CodeContextRemoteObjectFetcher = exports.serializingEscapeMark = void 0;
+    exports.defaultCompletionHandlers = exports.CodeCellListData = exports.builtInCompletionHandlers = exports.CustomFunctionParameterCompletionSymbol = exports.MiscObject = exports.UnidentifiedArray = exports.UnidentifiedObject = exports.RemoteCodeContextInspector = exports.serializingEscapeMark = void 0;
     exports.toSerializableObject = toSerializableObject;
     exports.fromSerializableObject = fromSerializableObject;
     exports.inspectCodeContextVariable = inspectCodeContextVariable;
     exports.importNameCompletion = importNameCompletion;
     exports.filepathCompletion = filepathCompletion;
     exports.makeFunctionCompletionWithFilePathArg0 = makeFunctionCompletionWithFilePathArg0;
+    exports.installJavascriptInspectorForCodeContext = installJavascriptInspectorForCodeContext;
+    exports.ensureJavascriptInspectorForCodeContextInstalled = ensureJavascriptInspectorForCodeContextInstalled;
     const __name__ = base_1.requirejs.getLocalRequireModule(require);
     let DefaultSerializingOption = {
         maxDepth: 6,
@@ -118,40 +120,24 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "partic2/jsutils1/
             }
         }
     }
-    class CodeContextRemoteObjectFetcher {
+    let remoteName = {
+        accessVariableAsSerializableObject: '__priv_' + __name__ + '.accessVariableAsSerializableObject',
+        requestCodeCompletion: '__priv_' + __name__ + '.requestCodeCompletion'
+    };
+    class RemoteCodeContextInspector {
         constructor(codeContext) {
             this.codeContext = codeContext;
         }
-        async fetch(accessPath, opt) {
-            let accessChain = accessPath.map(v => typeof (v) === 'string' ? `['${v}']` : `[${v}]`).join('');
-            let resp = await this.codeContext.jsExec(`
-            return JSON.stringify(
-                lib.toSerializableObject(
-                    codeContext.localScope${accessChain},
-                    ${JSON.stringify(opt)}
-                ))`);
-            return fromSerializableObject(JSON.parse(resp), { fetcher: this, accessPath });
+        async fetchObject(accessPath, opt) {
+            let resp = await this.codeContext.callFunction(remoteName.accessVariableAsSerializableObject, [accessPath, opt]);
+            return fromSerializableObject(resp, { fetcher: this, accessPath });
         }
-        async invoke(accessPath, args) {
-            let accessChain = accessPath.map(v => typeof (v) === 'string' ? `['${v}']` : `[${v}]`).join('');
-            let resp = await this.codeContext.jsExec(`
-            return JSON.stringify(
-                lib.toSerializableObject(
-                    codeContext.localScope${accessChain}(...lib.fromSerializableObject(${JSON.stringify(toSerializableObject(args, {
-                maxDepth: 0x7ffffffff,
-                maxKeyCount: 0x7fffffff,
-                enumerateMode: 'for in'
-            }))},{})),
-                    ${JSON.stringify({
-                maxDepth: 0x7fffffff,
-                maxKeyCount: 0x7fffffff,
-                enumerateMode: 'for in'
-            })}
-                ))`);
-            return JSON.parse(resp);
+        async requestCodeCompletion(code, caret) {
+            let resp = await this.codeContext.callFunction(remoteName.requestCodeCompletion, [code, caret]);
+            return resp;
         }
     }
-    exports.CodeContextRemoteObjectFetcher = CodeContextRemoteObjectFetcher;
+    exports.RemoteCodeContextInspector = RemoteCodeContextInspector;
     class UnidentifiedObject {
         constructor() {
             //keyCount=-1 for non array iteratable.
@@ -160,7 +146,7 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "partic2/jsutils1/
         }
         async identify(opt) {
             opt = { ...DefaultSerializingOption, ...opt };
-            return await this.fetcher?.fetch(this.accessPath, { ...opt });
+            return await this.fetcher?.fetchObject(this.accessPath, { ...opt });
         }
         toJSON(key) {
             return {
@@ -504,7 +490,9 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "partic2/jsutils1/
                 replaceRange[1] = replaceRange[0] + importExpr[2].length;
                 let importName = importExpr[2];
                 let t1 = await importNameCompletion(importName);
-                context.completionItems.push(...t1.map(v => ({ type: 'literal', candidate: v, replaceRange })));
+                let lastSlashOffset = importName.lastIndexOf('/') + 1;
+                replaceRange[0] += lastSlashOffset;
+                context.completionItems.push(...t1.map(v => ({ type: 'literal', candidate: v.substring(lastSlashOffset), replaceRange })));
             }
             importExpr = behind.match(/import\s.*from\s*(['"])([^'"]+)$/);
             if (importExpr != null) {
@@ -512,7 +500,9 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "partic2/jsutils1/
                 replaceRange[1] = replaceRange[0] + importExpr[2].length;
                 let importName = importExpr[2];
                 let t1 = await importNameCompletion(importName);
-                context.completionItems.push(...t1.map(v => ({ type: 'literal', candidate: v, replaceRange })));
+                let lastSlashOffset = importName.lastIndexOf('/') + 1;
+                replaceRange[0] += lastSlashOffset;
+                context.completionItems.push(...t1.map(v => ({ type: 'literal', candidate: v.substring(lastSlashOffset), replaceRange })));
             }
         },
         customFunctionParameterCompletion: async (context) => {
@@ -552,6 +542,79 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "partic2/jsutils1/
             }
         }
     };
+    function jsonStringifyResolveCircular(obj) {
+        let seen = new Map();
+        let path = [];
+        return JSON.stringify(obj, (key, value) => {
+            if (value && typeof value === 'object') {
+                if (seen.has(value)) {
+                    return `[Circular -> ${seen.get(value).join('.')}]`;
+                }
+                seen.set(value, [...path, key]);
+            }
+            return value;
+        });
+    }
+    async function installJavascriptInspectorForCodeContext(codeContext) {
+        if (codeContext.localScope.autoClosable[__name__ + '.consoleDataHookForCodeContext'] == undefined) {
+            const onConsoleLogListener = (level, argv) => {
+                let outputTexts = [];
+                for (let t1 of argv) {
+                    if (typeof t1 == 'object') {
+                        outputTexts.push(jsonStringifyResolveCircular(t1));
+                    }
+                    else {
+                        outputTexts.push(t1);
+                    }
+                }
+                let evt = new CodeContext_1.CodeContextEvent('console.data', {
+                    data: {
+                        level,
+                        message: outputTexts.join(' ')
+                    }
+                });
+                codeContext.event.dispatchEvent(evt);
+            };
+            codeContext.localScope.autoClosable[__name__ + '.consoleDataHookForCodeContext'] = { close: () => {
+                    jsutils2_1.OnConsoleData.delete(onConsoleLogListener);
+                } };
+            jsutils2_1.OnConsoleData.add(onConsoleLogListener);
+        }
+        if (codeContext.localScope[remoteName.accessVariableAsSerializableObject] == undefined) {
+            codeContext.localScope[remoteName.accessVariableAsSerializableObject] = (accessPath, serializeOption) => {
+                let obj = CodeContext_1.TaskLocalEnv.get();
+                for (let t1 of accessPath) {
+                    obj = obj[t1];
+                }
+                return toSerializableObject(obj, serializeOption);
+            };
+        }
+        if (codeContext.localScope[remoteName.requestCodeCompletion] == undefined) {
+            codeContext.localScope[remoteName.requestCodeCompletion] = async (code, caret) => {
+                let completeContext = {
+                    code, caret, codeContext: codeContext, completionItems: []
+                };
+                for (let t1 of exports.defaultCompletionHandlers) {
+                    //Mute error
+                    try {
+                        await t1(completeContext);
+                    }
+                    catch (e) {
+                        (0, base_1.throwIfAbortError)(e);
+                    }
+                }
+                return completeContext.completionItems;
+            };
+        }
+    }
+    let codeContextAttachedInspector = Symbol(__name__ + '.codeContextAttachedInspector');
+    async function ensureJavascriptInspectorForCodeContextInstalled(codeContext) {
+        if (codeContext[codeContextAttachedInspector] == undefined) {
+            await codeContext.runCode(`(await import('${__name__}')).installJavascriptInspectorForCodeContext(__priv_codeContext)`, '');
+            codeContext[codeContextAttachedInspector] = new RemoteCodeContextInspector(codeContext);
+        }
+        return codeContext[codeContextAttachedInspector];
+    }
     class CodeCellListData {
         constructor() {
             this.cellList = new Array();
