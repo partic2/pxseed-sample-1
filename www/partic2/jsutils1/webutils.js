@@ -390,26 +390,17 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
             await kvdbinitmutex.unlock();
         }
     }
-    var cachedPersistentConfig = {};
-    async function GetPersistentConfig(modname) {
-        if (cachedPersistentConfig[modname] == undefined) {
-            cachedPersistentConfig[modname] = {};
-        }
+    async function GetPersistentConfig(name) {
         let kvs = await kvStore();
-        let cfg = await kvs.getItem(modname + '/config');
-        let ccfg = cachedPersistentConfig[modname];
-        for (let t1 in ccfg) {
-            delete ccfg[t1];
+        let cfg = await kvs.getItem(name + '/config');
+        if (cfg == undefined) {
+            cfg = {};
         }
-        ;
-        Object.assign(ccfg, cfg);
-        return ccfg;
+        return cfg;
     }
-    async function SavePersistentConfig(modname) {
-        if (cachedPersistentConfig[modname] != undefined) {
-            let kvs = await kvStore();
-            return await kvs.setItem(modname + '/config', cachedPersistentConfig[modname]);
-        }
+    async function SavePersistentConfig(name, config) {
+        let kvs = await kvStore();
+        return await kvs.setItem(name + '/config', config);
     }
     //WorkerThread feature require a custom AMD loader https://github.com/partic2/partic2-iamdee
     exports.WorkerThreadMessageMark = '__messageMark_WorkerThread';
@@ -606,6 +597,26 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
                 (0, base_1.assert)(resp.ok, 'fetch failed with error HTTP error:' + resp.status + ' ' + resp.statusText);
                 (0, base_1.assert)(resp.body != null);
                 return resp.body;
+            },
+            async getConfig(path2) {
+                path2 = path2 ?? '.';
+                if (path2.startsWith('/')) {
+                    path2 = path2.substring(1);
+                }
+                else {
+                    path2 = exports.path.join(modNameOrLocalRequire, path2);
+                }
+                return await GetPersistentConfig(path2);
+            },
+            async saveConfig(config, path2) {
+                path2 = path2 ?? '.';
+                if (path2.startsWith('/')) {
+                    path2 = path2.substring(1);
+                }
+                else {
+                    path2 = exports.path.join(modNameOrLocalRequire, path2);
+                }
+                return await SavePersistentConfig(path2, config);
             }
         };
     };

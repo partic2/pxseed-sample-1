@@ -31,7 +31,7 @@ await __t1(_ENV);
 `;
         return {
             config: config,
-            save: () => (0, webutils_1.SavePersistentConfig)(__name__)
+            save: () => (0, webutils_1.SavePersistentConfig)(__name__, config)
         };
     }
     class SimpleCli {

@@ -142,6 +142,7 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
         async doAdd() {
             let addCard = new domui_1.ReactRefEx();
             let dlg = await (0, window_1.prompt)(React.createElement(AddCard, { ref: addCard }), 'New rpc client');
+            (await addCard.waitValid()).setAddClientInfo({ name: 'user:', url: '' });
             if (await dlg.response.get() === 'ok') {
                 let { url, name } = (await addCard.waitValid()).getAddClientInfo();
                 await (0, registry_1.addClient)(url, name);
@@ -208,7 +209,7 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
                 config = await (0, webutils_1.GetPersistentConfig)(__name__);
             }
             config.lastFilter = newFilter;
-            await (0, webutils_1.SavePersistentConfig)(__name__);
+            await (0, webutils_1.SavePersistentConfig)(__name__, config);
             this.setState({ filter: newFilter });
         }
         render(props, state, context) {

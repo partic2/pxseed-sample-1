@@ -21,8 +21,9 @@ define("pxseedServer2023/webentry", ["require", "exports", "partic2/jsutils1/bas
         if (pxprpcKey === undefined) {
             pxprpcKey = (0, webutils_1.GetUrlQueryVariable)('__pxprpcKey');
         }
-        (await (0, webutils_1.GetPersistentConfig)(exports.__name__)).pxprpcKey = pxprpcKey;
-        await (0, webutils_1.SavePersistentConfig)(exports.__name__);
+        let config1 = (await (0, webutils_1.GetPersistentConfig)(exports.__name__));
+        config1.pxprpcKey = pxprpcKey;
+        await (0, webutils_1.SavePersistentConfig)(exports.__name__, config1);
         if ((0, registry_1.getRegistered)(registry_1.ServerHostRpcName) != null) {
             await (0, registry_1.removeClient)(registry_1.ServerHostRpcName);
         }

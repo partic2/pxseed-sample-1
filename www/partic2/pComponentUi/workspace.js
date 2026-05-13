@@ -54,7 +54,7 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
                 async forgetWindowPosition() {
                     config1 = await (0, webutils_1.GetPersistentConfig)(__name__);
                     delete config1.savedWindowLayout[options.layoutHint];
-                    await (0, webutils_1.SavePersistentConfig)(__name__);
+                    await (0, webutils_1.SavePersistentConfig)(__name__, config1);
                 },
                 windowRef, windowVNode: null,
                 children: new Set()
@@ -89,7 +89,7 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
             if (options.layoutHint != undefined && config1.savedWindowLayout[options.layoutHint] != undefined) {
                 layout1 = (0, base_1.partial)(config1.savedWindowLayout[options.layoutHint], ['left', 'top', 'width', 'height']);
                 config1.savedWindowLayout[options.layoutHint].time = (0, base_1.GetCurrentTime)().getTime();
-                await (0, webutils_1.SavePersistentConfig)(__name__);
+                await (0, webutils_1.SavePersistentConfig)(__name__, config1);
             }
             if (layout1 == null) {
                 layout1 = { top: 0, left: 0 };
@@ -125,7 +125,7 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
                             delete config1.savedWindowLayout[allEnt[t1][0]];
                         }
                     }
-                    await (0, webutils_1.SavePersistentConfig)(__name__);
+                    await (0, webutils_1.SavePersistentConfig)(__name__, config1);
                 };
                 let saveLayout = new jsutils2_1.DebounceCall(() => context.result.saveWindowPosition(), 3000);
                 let onWindowLayoutChange = () => { saveLayout.call(); };

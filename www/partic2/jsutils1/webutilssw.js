@@ -126,7 +126,7 @@ define("partic2/jsutils1/webutilssw", ["require", "exports", "./base", "./webuti
         let startupModules = new Set(swconfig.startupModules ?? []);
         startupModules.add(s);
         swconfig.startupModules = Array.from(startupModules);
-        await (0, webutils_1.SavePersistentConfig)(serviceworkerName);
+        await (0, webutils_1.SavePersistentConfig)(serviceworkerName, swconfig);
         worker.call(serviceworkerName, 'loadServiceWorkerModule', [s]);
     }
     async function unregisterServiceWorkerStartupModule(s) {
@@ -134,7 +134,7 @@ define("partic2/jsutils1/webutilssw", ["require", "exports", "./base", "./webuti
         let startupModules = new Set(swconfig.startupModules ?? []);
         startupModules.delete(s);
         swconfig.startupModules = Array.from(startupModules);
-        await (0, webutils_1.SavePersistentConfig)(serviceworkerName);
+        await (0, webutils_1.SavePersistentConfig)(serviceworkerName, swconfig);
     }
     async function reloadServiceWorkerAndCache() {
         //Maybe we should call function in service worker instead?
@@ -271,7 +271,7 @@ define("partic2/jsutils1/webutilssw", ["require", "exports", "./base", "./webuti
             else {
                 found.policy = policy;
             }
-            (0, webutils_1.SavePersistentConfig)(__name__);
+            (0, webutils_1.SavePersistentConfig)(__name__, config);
         },
         getAllCachePolicy: async function () {
             await this.ensurePersitentConfigLoaded();

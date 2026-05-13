@@ -661,7 +661,7 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
         save: async function () {
             let config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
             config.registered = Array.from(registered.entries()).map(v => ({ name: v[0], url: v[1].url }));
-            await (0, webutils_1.SavePersistentConfig)(exports.__name__);
+            await (0, webutils_1.SavePersistentConfig)(exports.__name__, config);
         },
         load: async function () {
             let config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);

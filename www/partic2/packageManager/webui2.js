@@ -574,13 +574,13 @@ import2env('partic2/packageManager/registry');`,
             exports.config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
             exports.config.startupExecuteFunction = exports.config.startupExecuteFunction ?? {};
             exports.config.startupExecuteFunction[id] = functionInfo;
-            await (0, webutils_1.SavePersistentConfig)(exports.__name__);
+            await (0, webutils_1.SavePersistentConfig)(exports.__name__, exports.config);
         },
         async delete(id) {
             exports.config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
             exports.config.startupExecuteFunction = exports.config.startupExecuteFunction ?? {};
             delete exports.config.startupExecuteFunction[id];
-            await (0, webutils_1.SavePersistentConfig)(exports.__name__);
+            await (0, webutils_1.SavePersistentConfig)(exports.__name__, exports.config);
         },
         async get(id) {
             exports.config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
