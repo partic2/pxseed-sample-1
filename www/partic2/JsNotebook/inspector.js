@@ -57,7 +57,7 @@ define("partic2/JsNotebook/inspector", ["require", "exports", "partic2/jsutils1/
                 }
             };
             _ENV.fs.loadScript[Inspector_1.CustomFunctionParameterCompletionSymbol] = makeFunctionCompletionWithFilePathArg0(webutils_1.path.dirname(_ENV.fs.codePath ?? ''));
-            _ENV.fs.runNotebook[Inspector_1.CustomFunctionParameterCompletionSymbol] = makeFunctionCompletionWithFilePathArg0(webutils_1.path.dirname(_ENV.fs.codePath ?? ''));
+            _ENV.fs.loadNotebook[Inspector_1.CustomFunctionParameterCompletionSymbol] = makeFunctionCompletionWithFilePathArg0(webutils_1.path.dirname(_ENV.fs.codePath ?? ''));
             if (_ENV.fs.simple != undefined) {
                 _ENV.fs.simple.readAll[Inspector_1.CustomFunctionParameterCompletionSymbol] = makeFunctionCompletionWithFilePathArg0(undefined);
                 _ENV.fs.simple.read[Inspector_1.CustomFunctionParameterCompletionSymbol] = makeFunctionCompletionWithFilePathArg0(undefined);
@@ -70,6 +70,7 @@ define("partic2/JsNotebook/inspector", ["require", "exports", "partic2/jsutils1/
                 _ENV.fs.simple.rename[Inspector_1.CustomFunctionParameterCompletionSymbol] = makeFunctionCompletionWithFilePathArg0(undefined);
             }
         }
-        catch (err) { }
+        catch (err) {
+        }
     }
 });

@@ -46,11 +46,12 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
                             resolve(rpc);
                             (0, window_1.removeFloatWindow)(wnd2);
                         }, rpc: rpc }),
-                    "Or ",
-                    React.createElement("a", { href: "javascript:;", onClick: (ev) => {
-                            resolve('<No RPC>');
-                            (0, window_1.removeFloatWindow)(wnd2);
-                        } }, "Don't use RPC")));
+                    React.createElement("h2", null,
+                        "Or ",
+                        React.createElement("a", { href: "javascript:;", onClick: (ev) => {
+                                resolve('<No RPC>');
+                                (0, window_1.removeFloatWindow)(wnd2);
+                            } }, "Don't use RPC"))));
             (0, window_1.appendFloatWindow)(wnd2);
         });
     }
@@ -137,6 +138,7 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
                     let connector = await this.notebookFile.ensureRunCodeContextConnector();
                     this.codeContext = new RemoteCodeContext_1.RemoteRunCodeContext(await this.props.context.rpc.ensureConnected(), connector);
                     this.codeContext.event.addEventListener(`${exports.__name__}.NotebookViewer`, this.__notebookViewerEventHandler);
+                    await this.codeContext.runCode(`(await import('partic2/JsNotebook/inspector')).setupInspectorHelper(_ENV)`, '');
                     if (rpc != undefined) {
                         this.setState({ usingRpcName: rpc.name });
                     }
@@ -157,7 +159,7 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
         async doLoad() {
             try {
                 let workerinit = await (0, registry_1.importRemoteModule)(await this.props.context.rpc.ensureConnected(), 'partic2/JsNotebook/workerinit');
-                this.notebookFile = await workerinit.openNotebookFile(this.props.path, { setupInspectorHelper: true });
+                this.notebookFile = await workerinit.openNotebookFile(this.props.path, {});
                 let usingRpcName = await this.notebookFile.getRpcName();
                 await this.useRpc();
                 this.setState({ usingRpcName });

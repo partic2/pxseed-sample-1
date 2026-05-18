@@ -237,9 +237,6 @@ return JSON.stringify({startupScript:jsnotebook.startupScript})
             onbf.waitClose().then(() => {
                 exports.runningRunCodeContextForNotebookFile.delete(notebookFilePath);
             });
-            if (opt?.setupInspectorHelper === true) {
-                c1.runCode(`(await import('partic2/JsNotebook/inspector')).setupInspectorHelper(cc.localScope)`, '');
-            }
         }
         return exports.runningRunCodeContextForNotebookFile.get(notebookFilePath);
     }

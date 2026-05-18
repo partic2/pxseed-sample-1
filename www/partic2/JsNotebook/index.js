@@ -9,10 +9,11 @@ define("partic2/JsNotebook/index", ["require", "exports", "partic2/jsutils1/webu
         renderChooser() {
             return React.createElement("div", { style: { border: 'solid 1px black' } },
                 React.createElement(RpcChooser, { onChoose: async (rpc) => { this.openWorkspaceForRpc(rpc); } }),
-                "Or ",
-                React.createElement("a", { href: "javascript:;", onClick: (ev) => {
-                        this.openWorkspaceForRpc('<No RPC>');
-                    } }, "Don't use RPC"));
+                React.createElement("h2", null,
+                    "Or ",
+                    React.createElement("a", { href: "javascript:;", onClick: (ev) => {
+                            this.openWorkspaceForRpc('<No RPC>');
+                        } }, "Don't use RPC")));
         }
         openWorkspaceForRpc(rpc) {
             if (rpc == '<No RPC>') {
