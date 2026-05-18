@@ -1,7 +1,7 @@
 define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/jsutils1/base", "./rpcworker", "partic2/jsutils1/webutils"], function (require, exports, React, registry_1, domui_1, window_1, base_1, rpcworker_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.RegistryUI = void 0;
+    exports.RegistryUI = exports.RegistryInfoProvider = void 0;
     let css2 = {
         rpcClientCard: (0, base_1.GenerateRandomString)()
     };
@@ -64,6 +64,9 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
         }
     }
     let config = null;
+    class RegistryInfoProvider {
+    }
+    exports.RegistryInfoProvider = RegistryInfoProvider;
     async function pullFromServerHost() {
         let rpc = await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName);
         if (rpc != undefined && !await (0, registry_1.isServerHost)()) {
@@ -123,14 +126,14 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
             this.rref = { div: React.createRef() };
         }
         async doLoadConfig() {
-            await (0, registry_1.listPersistentRegistered)();
             if (config == null) {
                 config = await (0, webutils_1.GetPersistentConfig)(__name__);
                 if (config.lastFilter != undefined) {
                     this.setState({ filter: config.lastFilter });
                 }
             }
-            this.forceUpdate(() => {
+            let r = await this._getRegistyModule();
+            this.setState({ clients: await r.listPersistentRegistered() }, () => {
                 let div = this.rref.div.current;
                 div?.dispatchEvent(new Event(domui_1.event.layout, { bubbles: true }));
             });
@@ -139,17 +142,25 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
             this.doLoadConfig();
             this.setState({ selected: null, filter: '' });
         }
+        async _getRegistyModule() {
+            if (this.props.rpc == undefined) {
+                return await new Promise((resolve_1, reject_1) => { require(['./registry'], resolve_1, reject_1); });
+            }
+            else {
+                return await (0, registry_1.importRemoteModule)(this.props.rpc, webutils_1.path.join(__name__, '..', 'registry'));
+            }
+        }
         async doAdd() {
             let addCard = new domui_1.ReactRefEx();
             let dlg = await (0, window_1.prompt)(React.createElement(AddCard, { ref: addCard }), 'New rpc client');
-            (await addCard.waitValid()).setAddClientInfo({ name: 'user:', url: '' });
+            (await addCard.waitValid()).setAddClientInfo({ name: 'user.', url: '' });
             if (await dlg.response.get() === 'ok') {
                 let { url, name } = (await addCard.waitValid()).getAddClientInfo();
-                await (0, registry_1.addClient)(url, name);
+                let r = await this._getRegistyModule();
+                await r.addClient(url, name);
             }
             dlg.close();
-            await registry_1.persistent.save();
-            this.forceUpdate();
+            await this.doLoadConfig();
         }
         async doEdit() {
             let selected = this.state.selected;
@@ -157,21 +168,21 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
             let dlg = await (0, window_1.prompt)(React.createElement(AddCard, { ref: addCard }), 'New rpc client');
             (await addCard.waitValid()).setAddClientInfo({
                 name: selected,
-                url: (0, registry_1.getRegistered)(selected)?.url ?? ''
+                url: this.state.clients.find(t1 => t1[0] == selected)[1].url
             });
             if (await dlg.response.get() === 'ok') {
                 let { url, name } = (await addCard.waitValid()).getAddClientInfo();
-                await (0, registry_1.removeClient)(selected);
-                await (0, registry_1.addClient)(url, name);
+                let r = await this._getRegistyModule();
+                await r.removeClient(selected);
+                await r.addClient(url, name);
             }
             dlg.close();
-            await registry_1.persistent.save();
-            this.forceUpdate();
+            await this.doLoadConfig();
         }
         async doRemove() {
-            await (0, registry_1.removeClient)(this.state.selected);
-            await registry_1.persistent.save();
-            this.forceUpdate();
+            let r = await this._getRegistyModule();
+            await r.removeClient(this.state.selected);
+            await this.doLoadConfig();
         }
         async doSelect(selected) {
             this.setState({ selected });
@@ -179,13 +190,13 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
         async doDisconnect() {
             let conn = (0, registry_1.getRegistered)(this.state.selected);
             await conn.disconnect();
-            this.forceUpdate();
+            await this.doLoadConfig();
         }
         async doSyncWithServer() {
             try {
                 await pullFromServerHost();
                 await pushToServerHost();
-                this.forceUpdate();
+                await this.doLoadConfig();
             }
             catch (err) {
                 (0, window_1.alert)(err.toString() + err.stack);
@@ -199,7 +210,7 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
             catch (e) {
                 await (0, window_1.alert)(e.toString());
             }
-            this.forceUpdate();
+            await this.doLoadConfig();
         }
         getSelected() {
             return this.state.selected;
@@ -216,18 +227,22 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
             let btns = [];
             let sel2 = (0, registry_1.getRegistered)(this.state.selected ?? '');
             if (sel2) {
-                if (sel2.connected()) {
-                    btns.push({ label: 'Disconnect', handler: () => this.doDisconnect() });
+                if (this.props.rpc == undefined) {
+                    if (sel2.connected()) {
+                        btns.push({ label: 'Disconnect', handler: () => this.doDisconnect() });
+                    }
+                    else {
+                        btns.push({ label: 'Connect', handler: () => this.doConnect() });
+                    }
                 }
-                else {
-                    btns.push({ label: 'Connect', handler: () => this.doConnect() });
-                }
-                btns.push({ label: 'Edit', handler: () => this.doEdit() });
+                btns.push({ label: 'Edit/Copy', handler: () => this.doEdit() });
                 btns.push({ label: 'Remove', handler: () => this.doRemove() });
             }
             btns.push({ label: 'Add', handler: () => this.doAdd() });
-            btns.push({ label: 'SyncWithServer', handler: () => this.doSyncWithServer() });
-            let allClients = Array.from((0, registry_1.listRegistered)());
+            if (this.props.rpc == undefined) {
+                btns.push({ label: 'SyncWithServer', handler: () => this.doSyncWithServer() });
+            }
+            let allClients = (this.state.clients ?? []);
             allClients.sort((a, b) => (a[0] < b[0]) ? -1 : (a[0] === b[0] ? 0 : 1));
             return React.createElement("div", { className: [domui_1.css.simpleCard, domui_1.css.flexColumn].join(' '), ref: this.rref.div },
                 React.createElement("div", { className: domui_1.css.flexRow },
@@ -244,12 +259,12 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
                         React.createElement("hr", null),
                         React.createElement("div", null, ent[1].url.toString()),
                         React.createElement("hr", null),
-                        React.createElement("div", null, ent[1].connected() ? 'connected' : 'disconnected'));
+                        this.props.rpc == undefined ? React.createElement("div", null, ent[1].connected() ? 'connected' : 'disconnected') : '');
                 }),
                 React.createElement("hr", null),
-                React.createElement("div", { style: { wordBreak: 'break-all' } },
-                    "RPC id for this scope:",
-                    rpcworker_1.rpcId.get()));
+                this.props.rpc == undefined ? React.createElement("div", { style: { wordBreak: 'break-all' } },
+                    "RPC id:",
+                    rpcworker_1.rpcId.get()) : '');
         }
     }
     exports.RegistryUI = RegistryUI;

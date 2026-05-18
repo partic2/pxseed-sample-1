@@ -73,6 +73,7 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
         bytesArray.forEach((val) => ser.putBytes(val));
         return ser.build();
     }
+    let proxyDefault = {};
     extend_1.defaultFuncMap[exports.__name__ + '.callJsonFunction'] = new extend_1.RpcExtendServerCallable(async (requestJson, extraBytes, objectPool) => {
         try {
             let extraBytesArray = unpackExtraBytesArray(extraBytes);
@@ -117,6 +118,8 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
                 thisObject = objectPool.get(request.object);
             }
             extraBytesArray = new Array();
+            let callable = thisObject[request.method];
+            (0, base_1.assert)(typeof callable === 'function', thisObject.constructor.name + '.' + request.method + ' is not callable');
             return [
                 JSON.stringify({ result: (await thisObject[request.method](...request.params)) ?? null }, (key, value) => {
                     if (value instanceof Uint8Array) {
@@ -133,13 +136,11 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
                     }
                     else if (typeof value === 'object' && value !== null && value[exports.RpcSerializeMagicMark] != undefined) {
                         let markProp = value[exports.RpcSerializeMagicMark];
-                        if (markProp.id === undefined) {
-                            markProp.id = (0, base_1.GenerateRandomString)(8);
-                        }
+                        let id = (0, base_1.GenerateRandomString)();
                         if (objectPool != null) {
-                            objectPool.set(markProp.id, value);
+                            objectPool.set(id, value);
                         }
-                        return { [exports.RpcSerializeMagicMark]: { t: 'RpcRemoteObject', ...markProp } };
+                        return { [exports.RpcSerializeMagicMark]: { t: 'RpcRemoteObject', ...markProp, id } };
                     }
                     else {
                         return value;
@@ -387,16 +388,19 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
                         let funcs = this;
                         if (markProp.t === 'RpcRemoteObject') {
                             let p = new Proxy(value, {
-                                get(target, p) {
+                                get(target, prop) {
+                                    if (prop === exports.RpcSerializeMagicMark)
+                                        return target[prop];
                                     //Avoid triggle by Promise.resolve
-                                    if (p === 'then')
-                                        return undefined;
-                                    if (p === exports.RpcSerializeMagicMark)
-                                        return target[p];
-                                    if (p === 'close')
+                                    if (prop === 'then')
+                                        return target[prop];
+                                    //Avoid triggle by JSON.stringify
+                                    if (prop === 'toJSON')
+                                        return target[prop];
+                                    if (prop === 'close')
                                         return async () => funcs.freeObjectInRemoteObjectPool(target);
                                     return async (...params) => {
-                                        return await funcs.callJsonFunction(target, p, params);
+                                        return await funcs.callJsonFunction(target, prop, params);
                                     };
                                 }
                             });
@@ -686,12 +690,17 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
         let funcs = null;
         funcs = await getAttachedRemoteRigstryFunction(rpc);
         let proxyModule = new Proxy({}, {
-            get(target, p) {
+            get(target, prop) {
                 //Avoid triggle by Promise.resolve
-                if (p === 'then')
+                if (prop === 'then')
                     return undefined;
+                //Avoid triggle by JSON.stringify
+                if (prop === 'toJSON')
+                    return undefined;
+                if (prop === 'close')
+                    return async () => { };
                 return async (...params) => {
-                    return await funcs.callJsonFunction(moduleName, p, params);
+                    return await funcs.callJsonFunction(moduleName, prop, params);
                 };
             }
         });

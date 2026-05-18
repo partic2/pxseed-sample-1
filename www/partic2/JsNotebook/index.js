@@ -8,10 +8,14 @@ define("partic2/JsNotebook/index", ["require", "exports", "partic2/jsutils1/webu
     class MainView extends React.Component {
         renderChooser() {
             return React.createElement("div", { style: { border: 'solid 1px black' } },
-                React.createElement(RpcChooser, { onChoose: async (rpc) => { this.openWorkspaceForRpc(rpc); } }));
+                React.createElement(RpcChooser, { onChoose: async (rpc) => { this.openWorkspaceForRpc(rpc); } }),
+                "Or ",
+                React.createElement("a", { href: "javascript:;", onClick: (ev) => {
+                        this.openWorkspaceForRpc('<No RPC>');
+                    } }, "Don't use RPC"));
         }
         openWorkspaceForRpc(rpc) {
-            if (rpc == 'local window') {
+            if (rpc == '<No RPC>') {
                 return (0, workspace_2.openWorkspaceWindowFor)('local window');
             }
             else if (rpc instanceof registry_1.ClientInfo) {

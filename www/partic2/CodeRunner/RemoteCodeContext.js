@@ -3,8 +3,6 @@ define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeCon
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.RemoteRunCodeContext = exports.RunCodeContextConnector = exports.__name__ = void 0;
     exports.createConnectorWithNewRunCodeContext = createConnectorWithNewRunCodeContext;
-    exports.connectToCodeContextFromCode = connectToCodeContextFromCode;
-    exports.connectToRemoteCodeContext = connectToRemoteCodeContext;
     (0, jsutils2_1.setupAsyncHook)();
     exports.__name__ = 'partic2/CodeRunner/RemoteCodeContext';
     class RunCodeContextConnector {
@@ -90,9 +88,7 @@ define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeCon
             try {
                 await (await (0, registry_1.getAttachedRemoteRigstryFunction)(this.client1)).loadModule(exports.__name__);
                 if (this._remoteContext == undefined) {
-                    this._remoteContext = await (0, registry_1.easyCallRemoteJsonFunction)(this.client1, exports.__name__, 'connectToCodeContextFromCode', [
-                        `return (await lib.importModule('partic2/CodeRunner/RemoteCodeContext')).createConnectorWithNewRunCodeContext()`
-                    ]);
+                    this._remoteContext = await (0, registry_1.easyCallRemoteJsonFunction)(this.client1, exports.__name__, 'createConnectorWithNewRunCodeContext', []);
                 }
                 this.inited.setResult(true);
                 this.pullEventLoop();
@@ -126,15 +122,4 @@ define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeCon
         ;
     }
     exports.RemoteRunCodeContext = RemoteRunCodeContext;
-    async function connectToCodeContextFromCode(connectCode) {
-        let r = await (new Function('lib', `return (async ()=>{${connectCode}})()`)({ importModule: (moduleName) => new Promise((resolve_1, reject_1) => { require([moduleName], resolve_1, reject_1); }) }));
-        return r;
-    }
-    /*
-        client1:The pxprpc client.
-        connectCode: The remote code to get the RunCodeContexConnector. eg: `return (await lib.importModule('partic2/CodeRunner/RemoteCodeContext')).createConnectorWithNewRunCodeContext()`
-    */
-    async function connectToRemoteCodeContext(client1, connectCode) {
-        return new RemoteRunCodeContext(client1, await (0, registry_1.easyCallRemoteJsonFunction)(client1, exports.__name__, 'connectToCodeContextFromCode', [connectCode]));
-    }
 });

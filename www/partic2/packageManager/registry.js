@@ -1,4 +1,4 @@
-define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/webutils", "partic2/jsutils1/base", "pxseedBuildScript/util", "partic2/CodeRunner/JsEnviron", "partic2/JsNotebook/workerinit", "partic2/CodeRunner/Inspector", "partic2/pxprpcClient/registry", "./pkgfetcher"], function (require, exports, buildlib_1, webutils_1, base_1, util_1, JsEnviron_1, workerinit_1, Inspector_1, registry_1, pkgfetcher_1) {
+define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/webutils", "partic2/jsutils1/base", "pxseedBuildScript/util", "partic2/CodeRunner/JsEnviron", "partic2/JsNotebook/workerinit", "partic2/pxprpcClient/registry", "./pkgfetcher", "partic2/CodeRunner/CodeContext"], function (require, exports, buildlib_1, webutils_1, base_1, util_1, JsEnviron_1, workerinit_1, registry_1, pkgfetcher_1, CodeContext_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.listener = exports.__name__ = void 0;
@@ -666,7 +666,7 @@ export function main(args:string){
         let startupNotebook = (0, JsEnviron_1.getSimpleFileSysteNormalizedWWWRoot)() + '/' + webutils_1.path.join(exports.__name__, '..', 'notebook', 'startup.ijsnb');
         if (await JsEnviron_1.defaultFileSystem.filetype(startupNotebook) == 'none') {
             let nbd = new workerinit_1.NotebookFileData();
-            let ccld = new Inspector_1.CodeCellListData();
+            let ccld = CodeContext_1.newCodeCellListData.get()();
             ccld.cellList.push({ cellInput: `//All cells in this notebook will be executed when server(and packageManager) started.`, cellOutput: [null, ''], key: (0, base_1.GenerateRandomString)() });
             nbd.setCellsData(ccld);
             nbd.rpc = registry_1.ServerHostWorker1RpcName;

@@ -117,6 +117,8 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
             if (options.layoutHint != undefined) {
                 context.result.saveWindowPosition = async () => {
                     config1 = await (0, webutils_1.GetPersistentConfig)(__name__);
+                    if (config1.savedWindowLayout == undefined)
+                        config1.savedWindowLayout = {};
                     config1.savedWindowLayout[options.layoutHint] = { time: (0, base_1.GetCurrentTime)().getTime(), ...(await windowRef.waitValid()).state.layout };
                     let allEnt = Array.from(Object.entries(config1.savedWindowLayout));
                     if (allEnt.length > 16) {

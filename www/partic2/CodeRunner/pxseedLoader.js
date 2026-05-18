@@ -123,7 +123,7 @@ define("partic2/CodeRunner/pxseedLoader", ["require", "exports", "acorn", "acorn
                 replacePlan.plan.push({
                     start: node.start,
                     end: node.start,
-                    newString: (ancestors.at(-2)?.type === 'ExpressionStatement' ? ';' : '') + '(await '
+                    newString: '(await '
                 });
                 replacePlan.plan.push({
                     start: node.end,

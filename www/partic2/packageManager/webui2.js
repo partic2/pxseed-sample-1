@@ -1,4 +1,4 @@
-define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/pxprpcClient/registry", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/input", "partic2/pComponentUi/window", "partic2/CodeRunner/jsutils2", "partic2/JsNotebook/workspace", "partic2/pComponentUi/texteditor", "partic2/pComponentUi/workspace", "partic2/pxseedMedia1/index1", "partic2/pComponentUi/transform"], function (require, exports, React, domui_1, registry_1, base_1, webutils_1, input_1, window_1, jsutils2_1, workspace_1, texteditor_1, workspace_2, index1_1, transform_1) {
+define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic2/pComponentUi/domui", "partic2/pxprpcClient/registry", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "partic2/pComponentUi/input", "partic2/pComponentUi/window", "partic2/CodeRunner/jsutils2", "partic2/pComponentUi/texteditor", "partic2/pComponentUi/workspace", "partic2/pxseedMedia1/index1", "partic2/pComponentUi/transform"], function (require, exports, React, domui_1, registry_1, base_1, webutils_1, input_1, window_1, jsutils2_1, texteditor_1, workspace_1, index1_1, transform_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.webuiStartupExecuteFunction = exports.config = exports.floatTaskListView = exports.__name__ = void 0;
@@ -60,8 +60,8 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
             this.mounted = false;
             this.onWindowListChange = async () => {
                 let windows = new Array();
-                for (let t2 = 0; t2 < workspace_2.NewWindowHandleLists.value.length; t2++) {
-                    let t1 = workspace_2.NewWindowHandleLists.value[t2];
+                for (let t2 = 0; t2 < workspace_1.NewWindowHandleLists.value.length; t2++) {
+                    let t1 = workspace_1.NewWindowHandleLists.value[t2];
                     if (t1.parentWindow == undefined) {
                         windows.push({ title: t1.title ?? 'Untitle', visible: !await t1.isHidden(), index: t2 });
                     }
@@ -85,24 +85,24 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
         async componentDidMount() {
             this.setState({ listWidth: Math.min(250, window.innerWidth), listHeight: Math.min(320, window.innerHeight - 32) });
             this.mounted = true;
-            workspace_2.NewWindowHandleLists.addEventListener('change', this.onWindowListChange);
+            workspace_1.NewWindowHandleLists.addEventListener('change', this.onWindowListChange);
             window.addEventListener('resize', this.onWindowResize);
         }
         componentWillUnmount() {
             this.mounted = false;
-            workspace_2.NewWindowHandleLists.removeEventListener('change', this.onWindowListChange);
+            workspace_1.NewWindowHandleLists.removeEventListener('change', this.onWindowListChange);
             window.removeEventListener('resize', this.onWindowResize);
         }
         render(props, state, context) {
             return React.createElement("div", { style: { display: 'inline-block', position: 'absolute', pointerEvents: 'none' }, ref: this.drag.draggedRef({ left: window.innerWidth - this.state.listWidth - 10, top: window.innerHeight - this.state.listHeight - 40 }) },
                 React.createElement("div", { style: { width: this.state.listWidth + 'px', height: this.state.listHeight + 'px', display: 'flex', flexDirection: 'column-reverse' } }, this.state.hideList ? null : React.createElement("div", null, this.state.windows.map((t1) => React.createElement("div", { className: [domui_1.css.flexRow, domui_1.css.simpleCard].join(' '), style: { pointerEvents: 'auto' } },
-                    React.createElement("div", { style: { display: 'flex', flexGrow: '1', wordBreak: 'break-all' }, onClick: () => workspace_2.NewWindowHandleLists.value[t1.index].activate() }, t1.title),
+                    React.createElement("div", { style: { display: 'flex', flexGrow: '1', wordBreak: 'break-all' }, onClick: () => workspace_1.NewWindowHandleLists.value[t1.index].activate() }, t1.title),
                     React.createElement("img", { draggable: false, src: t1.visible ? (0, index1_1.getIconUrl)('eye.svg') : (0, index1_1.getIconUrl)('eye-off.svg'), onClick: () => {
                             if (t1.visible) {
-                                workspace_2.NewWindowHandleLists.value[t1.index].hide();
+                                workspace_1.NewWindowHandleLists.value[t1.index].hide();
                             }
                             else {
-                                workspace_2.NewWindowHandleLists.value[t1.index].activate();
+                                workspace_1.NewWindowHandleLists.value[t1.index].activate();
                             }
                         } }))))),
                 React.createElement("div", { className: domui_1.css.flexRow },
@@ -418,7 +418,8 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
         }
         async openNotebook() {
             try {
-                let nbw = await workspace_1.openWorkspaceWithProfile.openJSNotebookFirstProfileWorkspace({
+                let { openWorkspaceWithProfile } = await new Promise((resolve_3, reject_3) => { require(['partic2/JsNotebook/workspace'], resolve_3, reject_3); });
+                let nbw = await openWorkspaceWithProfile.openJSNotebookFirstProfileWorkspace({
                     defaultRpc: registry_1.ServerHostWorker1RpcName,
                     defaultStartupScript: `import2env('partic2/jsutils1/base');
 import2env('partic2/jsutils1/webutils');
@@ -489,7 +490,7 @@ import2env('partic2/packageManager/registry');`,
         }
         render(props, state, context) {
             return [
-                React.createElement(workspace_2.WorkspaceWindowContext.Consumer, null, (v) => {
+                React.createElement(workspace_1.WorkspaceWindowContext.Consumer, null, (v) => {
                     this.lastWindow = v.lastWindow;
                     return null;
                 }),
@@ -516,7 +517,7 @@ import2env('partic2/packageManager/registry');`,
         event: new EventTarget()
     };
     let renderPackagePanel = async () => {
-        (0, workspace_2.openNewWindow)(React.createElement(PackagePanel, null), { title: i18n.packageManager, layoutHint: exports.__name__ + '.PackagePanel', windowOptions: { closeIcon: null } });
+        (0, workspace_1.openNewWindow)(React.createElement(PackagePanel, null), { title: i18n.packageManager, layoutHint: exports.__name__ + '.PackagePanel', windowOptions: { closeIcon: null } });
         if (exports.floatTaskListView.ref != null) {
             exports.floatTaskListView.component = React.createElement(window_1.WindowComponent, { keepTop: true, ref: exports.floatTaskListView.ref, noTitleBar: true, noResizeHandle: true, windowDivClassName: window_1.css.borderlessWindowDiv },
                 React.createElement(WindowListIcon, null));
@@ -565,7 +566,7 @@ import2env('partic2/packageManager/registry');`,
                 startWebuiForPackage(appInfo.pkgName);
             }
         });
-        windowHandler = await (0, workspace_2.openNewWindow)(...args);
+        windowHandler = await (0, workspace_1.openNewWindow)(...args);
         return windowHandler;
     }
     exports.config = {};
@@ -603,15 +604,15 @@ import2env('partic2/packageManager/registry');`,
             }
             if (exports.config.mobileMode) {
                 let setMobileDefaultFullScreenName = exports.__name__ + '.setMobileDefaultFullScreen';
-                if (workspace_2.openNewWindowPipeline.arr().find(t1 => t1.name == setMobileDefaultFullScreenName) == undefined) {
-                    workspace_2.openNewWindowPipeline.arr().push({ name: setMobileDefaultFullScreenName, handler: async (context) => {
+                if (workspace_1.openNewWindowPipeline.arr().find(t1 => t1.name == setMobileDefaultFullScreenName) == undefined) {
+                    workspace_1.openNewWindowPipeline.arr().push({ name: setMobileDefaultFullScreenName, handler: async (context) => {
                             (await context.result.windowRef.waitValid()).setMaximized(true);
                         } });
                 }
             }
             renderPackagePanel();
             for (let t1 of await exports.webuiStartupExecuteFunction.iter()) {
-                new Promise((resolve_3, reject_3) => { require([t1[1].module], resolve_3, reject_3); }).then(mod => mod[t1[1].functionName](...(t1[1].arguments ?? []))).catch(() => { });
+                new Promise((resolve_4, reject_4) => { require([t1[1].module], resolve_4, reject_4); }).then(mod => mod[t1[1].functionName](...(t1[1].arguments ?? []))).catch(() => { });
                 if (t1[1].once) {
                     await exports.webuiStartupExecuteFunction.delete(t1[0]);
                 }

@@ -1,4 +1,4 @@
-define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/domui", "preact", "partic2/jsutils1/webutils", "partic2/pComponentUi/texteditor", "./Inspector", "./Component1", "partic2/pComponentUi/utils", "./jsutils2"], function (require, exports, base_1, domui_1, React, webutils_1, texteditor_1, Inspector_1, Component1_1, utils_1, jsutils2_1) {
+define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base", "partic2/pComponentUi/domui", "./CodeContext", "preact", "partic2/jsutils1/webutils", "partic2/pComponentUi/texteditor", "./Inspector", "./Component1", "partic2/pComponentUi/utils", "./jsutils2"], function (require, exports, base_1, domui_1, CodeContext_1, React, webutils_1, texteditor_1, Inspector_1, Component1_1, utils_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.CodeCellList = exports.DefaultCodeCellList = exports.CodeCell = exports.css = void 0;
@@ -37,8 +37,15 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 }
             }, 300);
             this.requestCodeComplete = new jsutils2_1.DebounceCall(async () => {
+                let codeCompleteCandidate = await (await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.codeContext)).requestCodeCompletion(this.getCellInput(), this.rref.codeInput.current.getTextCaretOffset());
                 this.setState({
-                    codeCompleteCandidate: await (await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.codeContext)).requestCodeCompletion(this.getCellInput(), this.rref.codeInput.current.getTextCaretOffset())
+                    codeCompleteCandidate
+                });
+            }, 200);
+            this.requestTooltips = new jsutils2_1.DebounceCall(async () => {
+                let extraTooltips = await (await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.codeContext)).requestExtraTooltips(this.getCellInput(), this.rref.codeInput.current.getTextCaretOffset());
+                this.setState({
+                    extraTooltips
                 });
             }, 200);
             this.__focusIn = 'blur';
@@ -169,6 +176,12 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             }
             if ((inputData.char != null && inputData.char.search(/[a-zA-Z_\.\/]/) >= 0) || inputData.type === 'deleteContentBackward') {
                 this.requestCodeComplete.call();
+            }
+            if (inputData.char == '(') {
+                this.requestTooltips.call();
+            }
+            else {
+                this.setState({ extraTooltips: null });
             }
             this.props.onInputChange?.(this);
         }
@@ -438,10 +451,10 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             }
         }
         saveTo() {
-            let cellData = new Inspector_1.CodeCellListData();
+            let cellData = CodeContext_1.newCodeCellListData.get()();
             cellData.cellList = this.state.list.map((cell, index) => ({
                 cellInput: cell.ref.current.getCellInput(),
-                cellOutput: cell.ref.current.getCellOutput(),
+                cellOutput: (0, Inspector_1.toSerializableObject)(cell.ref.current.getCellOutput(), {}),
                 key: cell.key
             }));
             cellData.consoleOutput = this.state.consoleOutput;
@@ -449,7 +462,7 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
         }
         async loadFrom(data) {
             try {
-                let cellData = new Inspector_1.CodeCellListData();
+                let cellData = CodeContext_1.newCodeCellListData.get()();
                 cellData.loadFrom(data);
                 ;
                 while (this.state.list.length < cellData.cellList.length) {

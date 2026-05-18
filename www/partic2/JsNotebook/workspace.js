@@ -1,4 +1,4 @@
-define("partic2/JsNotebook/workspace", ["require", "exports", "partic2/pComponentUi/domui", "preact", "./filebrowser", "partic2/pComponentUi/workspace", "partic2/pxprpcClient/registry", "./notebook", "./fileviewer", "partic2/CodeRunner/JsEnviron", "partic2/tjshelper/tjsonjserpc", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2", "./workerinit", "partic2/pComponentUi/input", "partic2/pComponentUi/window", "partic2/jsutils1/base", "partic2/CodeRunner/Inspector", "./workerinit"], function (require, exports, domui_1, React, filebrowser_1, workspace_1, registry_1, notebook_1, fileviewer_1, JsEnviron_1, tjsonjserpc_1, webutils_1, jsutils2_1, workerinit_1, input_1, window_1, base_1, Inspector_1) {
+define("partic2/JsNotebook/workspace", ["require", "exports", "partic2/pComponentUi/domui", "preact", "./filebrowser", "partic2/pComponentUi/workspace", "partic2/pxprpcClient/registry", "./notebook", "./fileviewer", "partic2/CodeRunner/JsEnviron", "partic2/tjshelper/tjsonjserpc", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2", "./workerinit", "partic2/pComponentUi/input", "partic2/pComponentUi/window", "partic2/jsutils1/base", "../CodeRunner/CodeContext", "./workerinit"], function (require, exports, domui_1, React, filebrowser_1, workspace_1, registry_1, notebook_1, fileviewer_1, JsEnviron_1, tjsonjserpc_1, webutils_1, jsutils2_1, workerinit_1, input_1, window_1, base_1, CodeContext_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.openWorkspaceWithProfile = exports.WorkspaceContext = void 0;
@@ -114,7 +114,7 @@ define("partic2/JsNotebook/workspace", ["require", "exports", "partic2/pComponen
                 let t1 = webutils_1.path.join(currPath, 'notebook.ijsnb');
                 this.startupProfile = { currPath, openedFiles: [t1] };
                 if (await this.fs.filetype(t1) === 'none') {
-                    let ccld = new Inspector_1.CodeCellListData();
+                    let ccld = CodeContext_1.newCodeCellListData.get()();
                     ccld.cellList.push({ 'cellInput': '//_ENV is the default "global" context for Code Cell \n_ENV',
                         'cellOutput': ['', null],
                         'key': 'rnd12rjykngi1ufte7uq' }, { 'cellInput': '//Also globalThis are available \nglobalThis',
@@ -199,9 +199,9 @@ console.info(Array.from(jsutils2.u8hexconv(u8)))`,
                 let openedFiles = [];
                 if (opt.sampleCode != undefined && await workspace.fs.filetype(nbdir + '/sample.ijsnb') == 'none') {
                     let nbfdata = new workerinit_1.NotebookFileData();
-                    nbfdata.rpc = rpc1;
+                    nbfdata.rpc = rpc1.name;
                     nbfdata.startupScript = opt.defaultStartupScript ?? '';
-                    let ccldata = new Inspector_1.CodeCellListData();
+                    let ccldata = CodeContext_1.newCodeCellListData.get()();
                     ccldata.cellList.push(...opt.sampleCode.map(t1 => ({
                         cellInput: t1,
                         cellOutput: [null, null], key: (0, base_1.GenerateRandomString)()
