@@ -152,9 +152,6 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             this.doLoad();
         }
         componentWillUnmount() {
-            if (this.codeContext != null) {
-                this.codeContext.close();
-            }
         }
         async doLoad() {
             try {
@@ -269,7 +266,6 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             this._scrollTask = null;
             this.onContainerScroll = new jsutils2_1.DebounceCall(async () => {
                 let cont = await this.rref.container.waitValid();
-                console.info('#1 scrollState' + (cont.scrollHeight - (cont.scrollTop + cont.clientHeight)));
                 if (cont.scrollHeight - (cont.scrollTop + cont.clientHeight) < 15) {
                     this.autoScrollToBottom = true;
                 }

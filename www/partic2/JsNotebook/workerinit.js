@@ -140,6 +140,7 @@ define("partic2/JsNotebook/workerinit", ["require", "exports", "partic2/CodeRunn
             await cc.runCode(opt.startupScript, '');
         }
     }
+    let log = base_1.logger.getLogger(exports.__name__);
     class OpenedJsNotebookFile {
         constructor(notebookFilePath, opt) {
             this.notebookFilePath = notebookFilePath;
@@ -147,7 +148,7 @@ define("partic2/JsNotebook/workerinit", ["require", "exports", "partic2/CodeRunn
             this[_a] = {};
             this.connector = null;
             this.notebookFileData = new NotebookFileData();
-            this.closed = new base_1.future();
+            this.codeContextclosed = new base_1.future();
         }
         ;
         async loadFromFile() {
@@ -193,6 +194,7 @@ return JSON.stringify({startupScript:jsnotebook.startupScript})
             if (this.connector != null) {
                 let c1 = this.connector;
                 this.connector = null;
+                this.codeContextclosed = new base_1.future();
                 c1.close?.();
             }
             this.notebookFileData.rpc = name ?? undefined;
@@ -201,14 +203,18 @@ return JSON.stringify({startupScript:jsnotebook.startupScript})
             }
             else {
                 let client = await (0, registry_1.getPersistentRegistered)(this.notebookFileData.rpc);
-                (0, base_1.assert)(client != undefined);
-                this.connector = await (0, registry_1.easyCallRemoteJsonFunction)(await client.ensureConnected(), 'partic2/CodeRunner/RemoteCodeContext', 'createConnectorWithNewRunCodeContext', []);
-            }
-            this.connector.runCode(`return new Promise((resolve)=>event.addEventListener('close',()=>resolve(${this.connector.connectorId})))`, '').then((r) => {
-                if (this.connector?.connectorId === r.stringResult) {
-                    this.closed.setResult();
+                if (client == undefined) {
+                    this.notebookFileData.rpc = undefined;
+                    this.connector = await (0, RemoteCodeContext_1.createConnectorWithNewRunCodeContext)();
                 }
-            }).catch((err) => console.warn(err.stack));
+                else {
+                    this.connector = await (0, registry_1.easyCallRemoteJsonFunction)(await client.ensureConnected(), 'partic2/CodeRunner/RemoteCodeContext', 'createConnectorWithNewRunCodeContext', []);
+                }
+            }
+            let codeContextClosed = this.codeContextclosed;
+            this.connector.runCode(`return new Promise((resolve)=>event.addEventListener('close',()=>resolve('close')))`, '').then((r) => {
+                codeContextClosed.setResult();
+            }).catch((err) => log.warning(err.stack));
             await this.connector.runCode(`await (await import('partic2/JsNotebook/workerinit')).initNotebookCodeEnv(_ENV,${JSON.stringify({ codePath: this.notebookFilePath, startupScript: this.notebookFileData.startupScript })});`, '');
         }
         async setRawCellsData(data) {
@@ -221,7 +227,9 @@ return JSON.stringify({startupScript:jsnotebook.startupScript})
             return this.notebookFileData.cells;
         }
         async waitClose() {
-            await this.closed.get();
+            for (let t1 = 0; t1 < 1000000 && !this.codeContextclosed.done; t1++) {
+                await this.codeContextclosed.get();
+            }
         }
     }
     exports.OpenedJsNotebookFile = OpenedJsNotebookFile;
@@ -232,7 +240,7 @@ return JSON.stringify({startupScript:jsnotebook.startupScript})
             await (0, JsEnviron_1.ensureDefaultFileSystem)();
             let onbf = new OpenedJsNotebookFile(notebookFilePath, { noRpc: opt?.noRpc });
             await onbf.loadFromFile();
-            let c1 = await onbf.ensureRunCodeContextConnector();
+            await onbf.ensureRunCodeContextConnector();
             exports.runningRunCodeContextForNotebookFile.set(notebookFilePath, onbf);
             onbf.waitClose().then(() => {
                 exports.runningRunCodeContextForNotebookFile.delete(notebookFilePath);

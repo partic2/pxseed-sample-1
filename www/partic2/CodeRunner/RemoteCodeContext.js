@@ -1,5 +1,6 @@
 define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeContext", "partic2/jsutils1/base", "partic2/pxprpcClient/registry", "./jsutils2"], function (require, exports, CodeContext_1, base_1, registry_1, jsutils2_1) {
     "use strict";
+    var _a;
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.RemoteRunCodeContext = exports.RunCodeContextConnector = exports.__name__ = void 0;
     exports.createConnectorWithNewRunCodeContext = createConnectorWithNewRunCodeContext;
@@ -8,8 +9,7 @@ define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeCon
     class RunCodeContextConnector {
         constructor(value) {
             this.value = value;
-            this.connectorId = (0, base_1.GenerateRandomString)();
-            this[registry_1.RpcSerializeMagicMark] = {};
+            this[_a] = {};
         }
         ;
         async pullCodeContextEvent(seqGt) {
@@ -37,6 +37,7 @@ define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeCon
         }
     }
     exports.RunCodeContextConnector = RunCodeContextConnector;
+    _a = registry_1.RpcSerializeMagicMark;
     async function createConnectorWithNewRunCodeContext() {
         let codeContext = new CodeContext_1.LocalRunCodeContext();
         let t1 = new RunCodeContextConnector(codeContext);

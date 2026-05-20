@@ -199,7 +199,6 @@ console.info(Array.from(jsutils2.u8hexconv(u8)))`,
                 let openedFiles = [];
                 if (opt.sampleCode != undefined && await workspace.fs.filetype(nbdir + '/sample.ijsnb') == 'none') {
                     let nbfdata = new workerinit_1.NotebookFileData();
-                    nbfdata.rpc = rpc1.name;
                     nbfdata.startupScript = opt.defaultStartupScript ?? '';
                     let ccldata = CodeContext_1.newCodeCellListData.get()();
                     ccldata.cellList.push(...opt.sampleCode.map(t1 => ({

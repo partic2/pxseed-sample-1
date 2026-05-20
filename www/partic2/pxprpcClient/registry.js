@@ -39,7 +39,7 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
     class RemoteObjectPoolDefaultImpl extends Map {
         delete(key) {
             let t1 = this.get(key);
-            if (t1 != null && typeof t1.close === 'function') {
+            if (t1 != undefined && t1[exports.RpcSerializeMagicMark].autoClose === true && typeof t1.close === 'function') {
                 t1.close();
             }
             return super.delete(key);
