@@ -279,7 +279,7 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
                 else if (milliSeconds > 1000) {
                     //Better performance?
                     currentTask.getAbortSignal().addEventListener('abort', onAbort);
-                    defer.push(() => currentTask.getAbortSignal().removeEventListener);
+                    defer.push(() => currentTask.getAbortSignal().removeEventListener('abort', onAbort));
                 }
             }
             const timer = setTimeout(() => resolve(arg), milliSeconds);
@@ -643,6 +643,9 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         b64lookup[b64chars.charCodeAt(i)] = i;
     }
     function ArrayBufferToBase64(buffer) {
+        if (typeof buffer.toBase64 === 'function') {
+            return buffer.toBase64();
+        }
         let bytes;
         if (buffer instanceof ArrayBuffer) {
             bytes = new Uint8Array(buffer);
@@ -667,6 +670,9 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
     }
     ;
     function Base64ToArrayBuffer(base64) {
+        if (typeof Uint8Array.fromBase64 === 'function') {
+            return Uint8Array.fromBase64(base64).buffer;
+        }
         for (let i = 0; i < b64chars.length; i++) {
             b64lookup[b64chars.charCodeAt(i)] = i;
         }

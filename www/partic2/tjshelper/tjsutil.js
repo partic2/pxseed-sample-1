@@ -102,11 +102,12 @@ define("partic2/tjshelper/tjsutil", ["require", "exports", "partic2/jsutils1/bas
             this.tjstlsc = new TjsTlsClient(this.servername);
             let w2 = this.underlying.w.getWriter();
             let r2 = this.underlying.r.getReader();
-            this.abortControl.signal.addEventListener('abort', (ev) => {
+            let onAbort = (ev) => {
                 let err = new Error();
                 err.name = 'AbortError';
                 this.pumpSignal.setException(err);
-            });
+            };
+            this.abortControl.signal.addEventListener('abort', onAbort);
             ;
             (async () => {
                 while (!this.abortControl.signal.aborted) {
@@ -162,6 +163,7 @@ define("partic2/tjshelper/tjsutil", ["require", "exports", "partic2/jsutils1/bas
             }
             finally {
                 this.close();
+                this.abortControl.signal.removeEventListener('abort', onAbort);
             }
         }
         close() {

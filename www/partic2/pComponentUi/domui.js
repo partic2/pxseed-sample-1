@@ -1,7 +1,7 @@
 define("partic2/pComponentUi/domui", ["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutils1/webutils"], function (require, exports, React, base_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.FloatLayerComponent = exports.ReactRefEx = exports.floatLayerZIndexBase = exports.event = exports.css = exports.ReactEventTarget = exports.__inited__ = exports.DomRootComponent = exports.DomDivComponent = exports.DomComponentGroup = exports.DomComponent = void 0;
+    exports.FloatLayerComponent = exports.ReactRefEx = exports.floatLayerZIndexBase = exports.event = exports.ReactEventTarget = exports.__inited__ = exports.css = exports.DomRootComponent = exports.DomDivComponent = exports.DomComponentGroup = exports.DomComponent = void 0;
     exports.ReactRender = ReactRender;
     exports.SetComponentFullScreen = SetComponentFullScreen;
     exports.RequestUserAgentPrint = RequestUserAgentPrint;
@@ -131,8 +131,26 @@ define("partic2/pComponentUi/domui", ["require", "exports", "preact", "partic2/j
             return this.get().removeChild(comp);
         }
     }
+    exports.css = {
+        flexRow: (0, base_1.GenerateRandomString)(),
+        flexColumn: (0, base_1.GenerateRandomString)(),
+        selected: (0, base_1.GenerateRandomString)(),
+        simpleCard: (0, base_1.GenerateRandomString)(),
+        simpleTable: (0, base_1.GenerateRandomString)(),
+        simpleTableCell: (0, base_1.GenerateRandomString)(),
+        selectable: (0, base_1.GenerateRandomString)(),
+        floatLayer: (0, base_1.GenerateRandomString)()
+    };
     exports.__inited__ = (async () => {
         if (globalThis.document != undefined) {
+            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.flexRow, ['display:flex', 'flex-direction:row']);
+            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.flexColumn, ['display:flex', 'flex-direction:column']);
+            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.selectable + ':hover', ['background-color:rgb(200,200,200)']);
+            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.selected, ['background-color:rgb(150,150,255)']);
+            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleCard, ['display:inline-block', 'border:solid black 2px', 'margin:2px', 'padding:2px', 'background-color:white']);
+            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleTable, ['border-collapse:collapse']);
+            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleTableCell, ['border:solid black 2px']);
+            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.floatLayer, ['position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
             exports.DomRootComponent = new DomRootComponentProxy(new CDomRootComponent());
             //To fix preact BUG
             try {
@@ -162,24 +180,6 @@ define("partic2/pComponentUi/domui", ["require", "exports", "preact", "partic2/j
         }
     }
     exports.ReactEventTarget = ReactEventTarget;
-    exports.css = {
-        flexRow: (0, base_1.GenerateRandomString)(),
-        flexColumn: (0, base_1.GenerateRandomString)(),
-        selected: (0, base_1.GenerateRandomString)(),
-        simpleCard: (0, base_1.GenerateRandomString)(),
-        simpleTable: (0, base_1.GenerateRandomString)(),
-        simpleTableCell: (0, base_1.GenerateRandomString)(),
-        selectable: (0, base_1.GenerateRandomString)(),
-        floatLayer: (0, base_1.GenerateRandomString)()
-    };
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.flexRow, ['display:flex', 'flex-direction:row']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.flexColumn, ['display:flex', 'flex-direction:column']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.selectable + ':hover', ['background-color:rgb(200,200,200)']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.selected, ['background-color:rgb(150,150,255)']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleCard, ['display:inline-block', 'border:solid black 2px', 'margin:2px', 'padding:2px', 'background-color:white']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleTable, ['border-collapse:collapse']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleTableCell, ['border:solid black 2px']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.floatLayer, ['position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
     exports.event = {
         layout: 'partic2-layout'
     };
