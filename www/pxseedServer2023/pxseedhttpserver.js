@@ -1,7 +1,7 @@
 define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/extend", "pxprpc/base", "partic2/pxprpcClient/registry", "partic2/jsutils1/webutils", "partic2/tjshelper/httpprot", "partic2/tjshelper/tjsbuilder", "partic2/jsutils1/base", "partic2/CodeRunner/JsEnviron", "partic2/pxprpcClient/rpcworker"], function (require, exports, extend_1, base_1, registry_1, webutils_1, httpprot_1, tjsbuilder_1, base_2, JsEnviron_1, rpcworker_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.serverCommandRegistry = exports.wsPipe = exports.defaultHttpHandler = exports.defaultRouter = exports.rootConfig = exports.config = exports.subprocessMagic = exports.__name__ = void 0;
+    exports.serverCommandRegistry = exports.wsPipe = exports.defaultHttpHandler = exports.defaultRouter = exports.blockStaticFileAccessIf = exports.rootConfig = exports.config = exports.subprocessMagic = exports.__name__ = void 0;
     exports.setupServerPxprpcClient = setupServerPxprpcClient;
     exports.loadConfig = loadConfig;
     exports.saveConfig = saveConfig;
@@ -25,12 +25,11 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
             enabled: false,
             subprocessConfig: []
         },
-        //pxprpcKey should be secret.
-        blockFilesMatch: ['^/+www/+pxseedServer2023/+config\\.json$'],
         serveSourceDirectory: false
     };
     exports.rootConfig = { ...exports.config };
-    let blockFileMatchRegex = new Array();
+    exports.blockStaticFileAccessIf = new Map();
+    exports.blockStaticFileAccessIf.set(exports.__name__ + '.keepPxprpcKeySecret', async (path) => /^\/+www\/+pxseedServer2023\/+config\.json$/.test(path));
     async function setupServerPxprpcClient() {
         await (0, registry_1.addClient)('pxseedjs:' + exports.__name__ + '.getConnectionForServerHost', registry_1.ServerHostRpcName);
         await (0, registry_1.addClient)('webworker:partic2/pxprpcClient/registry/worker/1', registry_1.ServerHostWorker1RpcName);
@@ -44,7 +43,6 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
             let readinConfig = JSON.parse(new TextDecoder().decode(configData));
             exports.rootConfig = Object.assign(readinConfig);
             Object.assign(exports.config, exports.rootConfig);
-            blockFileMatchRegex = exports.config.blockFilesMatch?.map(t1 => new RegExp(t1)) ?? [];
         }
         catch (e) {
             console.warn(`config file not found, write to ${(0, webutils_1.getWWWRoot)() + '/pxseedServer2023/config.json'}`);
@@ -138,8 +136,8 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
         fileServer.pathStartAt = (exports.config.pxseedBase + '/www').length;
         fileServer.interceptor = async (path) => {
             path = '/www' + path;
-            for (let t1 of blockFileMatchRegex) {
-                if (t1.test(path)) {
+            for (let t1 of exports.blockStaticFileAccessIf.values()) {
+                if (await t1(path)) {
                     return new Response(null, { status: 403 });
                 }
             }

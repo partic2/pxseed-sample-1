@@ -26,7 +26,7 @@ define("partic2/packageManager/webui", ["require", "exports", "partic2/jsutils1/
             try {
                 if (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName) != null) {
                     bus_1.RemotePxseedJsIoServer.serve(`/pxprpc/pxseed_webui/${__name__.replace(/\//g, '.')}/${rpcworker_1.rpcId.get()}`, {
-                        onConnect: (io) => new extend_1.RpcExtendServer1(new base_2.Server(io))
+                        onConnect: (io) => new extend_1.RpcExtendServer1(new base_2.Server(io)).serve()
                     }).catch((err) => console.warn(err.message, err.stack));
                 }
                 let shw1 = await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName);

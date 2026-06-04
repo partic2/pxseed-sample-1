@@ -106,17 +106,22 @@ define("partic2/CodeRunner/Component1", ["require", "exports", "preact", "./Insp
                         if (this.props.object instanceof Array) {
                             let newArr = new Array();
                             let arrayElemUpdated = false;
-                            for (let t1 of this.props.object) {
-                                if (t1 instanceof Inspector_1.UnidentifiedObject && t1.keyCount < 10) {
-                                    newArr.push(await t1.identify({ maxDepth: 1 }));
-                                    arrayElemUpdated = true;
+                            try {
+                                for (let t1 of this.props.object) {
+                                    if (t1 instanceof Inspector_1.UnidentifiedObject && t1.keyCount < 10) {
+                                        newArr.push(await t1.identify({ maxDepth: 1 }));
+                                        arrayElemUpdated = true;
+                                    }
+                                    else {
+                                        newArr.push(t1);
+                                    }
                                 }
-                                else {
-                                    newArr.push(t1);
+                                if (arrayElemUpdated) {
+                                    this.setState({ displayModel: newArr });
                                 }
                             }
-                            if (arrayElemUpdated) {
-                                this.setState({ displayModel: newArr });
+                            catch (e) {
+                                this.setState({ displayModel: [e.message, e.stack] });
                             }
                         }
                     }
@@ -131,12 +136,17 @@ define("partic2/CodeRunner/Component1", ["require", "exports", "preact", "./Insp
                         if (robj.find(t1 => t1 instanceof Inspector_1.UnidentifiedObject) != undefined) {
                             return React.createElement("a", { style: { color: 'blue' }, onClick: async () => {
                                     let newArr = [];
-                                    for (let t1 of robj) {
-                                        if (t1 instanceof Inspector_1.UnidentifiedObject) {
-                                            newArr.push(await t1.identify({ maxDepth: 1 }));
+                                    try {
+                                        for (let t1 of robj) {
+                                            if (t1 instanceof Inspector_1.UnidentifiedObject) {
+                                                newArr.push(await t1.identify({ maxDepth: 1 }));
+                                            }
                                         }
+                                        this.setState({ displayModel: newArr });
                                     }
-                                    this.setState({ displayModel: newArr });
+                                    catch (e) {
+                                        this.setState({ displayModel: [e.message, e.stack] });
+                                    }
                                 } }, "(Expand Children)");
                         }
                     }
@@ -144,12 +154,20 @@ define("partic2/CodeRunner/Component1", ["require", "exports", "preact", "./Insp
                         if (Object.values(robj).find(t1 => t1 instanceof Inspector_1.UnidentifiedObject) != undefined) {
                             return React.createElement("a", { style: { color: 'blue' }, onClick: async () => {
                                     let newObj = {};
-                                    for (let t1 in robj) {
-                                        if (robj[t1] instanceof Inspector_1.UnidentifiedObject) {
-                                            newObj[t1] = await robj[t1].identify({ maxDepth: 1 });
+                                    try {
+                                        for (let t1 in robj) {
+                                            if (robj[t1] instanceof Inspector_1.UnidentifiedObject) {
+                                                newObj[t1] = await robj[t1].identify({ maxDepth: 1 });
+                                            }
+                                            else {
+                                                newObj[t1] = robj[t1];
+                                            }
                                         }
+                                        this.setState({ displayModel: newObj });
                                     }
-                                    this.setState({ displayModel: newObj });
+                                    catch (e) {
+                                        this.setState({ displayModel: [e.message, e.stack] });
+                                    }
                                 } }, "(Expand Children)");
                         }
                     }
@@ -201,7 +219,7 @@ define("partic2/CodeRunner/Component1", ["require", "exports", "preact", "./Insp
                             React.createElement("a", { className: exports.css1.propName, onClick: () => this.toggleFolding() },
                                 this.state.folded ? '+' : '-',
                                 " ",
-                                this.props.name,
+                                (this.props.variableName ?? '') + this.props.name,
                                 " (",
                                 robj.length,
                                 ")"),
@@ -217,7 +235,7 @@ define("partic2/CodeRunner/Component1", ["require", "exports", "preact", "./Insp
                             React.createElement("a", { className: exports.css1.propName, onClick: () => this.toggleFolding() },
                                 this.state.folded ? '+' : '-',
                                 " ",
-                                this.props.name,
+                                (this.props.variableName ?? '') + this.props.name,
                                 " (",
                                 robj.keyCount,
                                 ")"));
@@ -273,7 +291,7 @@ define("partic2/CodeRunner/Component1", ["require", "exports", "preact", "./Insp
                         return React.createElement("div", null,
                             React.createElement("a", { className: exports.css1.propName, onClick: () => this.toggleFolding() },
                                 this.state.folded ? '+' : '-',
-                                this.props.name,
+                                (this.props.variableName ?? '') + this.props.name,
                                 " (",
                                 keys.length,
                                 ")"),

@@ -1,7 +1,7 @@
 define("partic2/CodeRunner/JsEnviron", ["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./jsutils2", "partic2/tjshelper/tjsbuilder"], function (require, exports, base_1, webutils_1, jsutils2_1, tjsbuilder_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.installedRequirejsResourceProvider = exports.simpleFileSystemHelper = exports.DirAsRootFS = exports.defaultFileSystem = exports.LocalWindowSFS = exports.KVDbBasedFs = exports.TjsSfs = void 0;
+    exports.installedRequirejsResourceProvider = exports.simpleFileSystemHelper = exports.DirAsRootFS = exports.PathRewriteFs = exports.defaultFileSystem = exports.LocalWindowSFS = exports.KVDbBasedFs = exports.TjsSfs = void 0;
     exports.getSimpleFileSystemFromPxprpc = getSimpleFileSystemFromPxprpc;
     exports.ensureDefaultFileSystem = ensureDefaultFileSystem;
     exports.setDefaultFileSystem = setDefaultFileSystem;
@@ -576,8 +576,54 @@ define("partic2/CodeRunner/JsEnviron", ["require", "exports", "partic2/jsutils1/
     function setDefaultFileSystem(fs) {
         exports.defaultFileSystem = fs;
     }
-    class DirAsRootFS {
+    class PathRewriteFs {
+        constructor(fs) {
+            this.fs = fs;
+        }
+        async ensureInited() {
+            return await this.fs.ensureInited();
+        }
+        async writeAll(path, data) {
+            return this.fs.writeAll(await this.rewritePath(path), data);
+        }
+        async readAll(path) {
+            return this.fs.readAll(await this.rewritePath(path));
+        }
+        async read(path, offset, buf) {
+            return this.fs.read(await this.rewritePath(path), offset, buf);
+        }
+        async write(path, offset, buf) {
+            return this.fs.write(await this.rewritePath(path), offset, buf);
+        }
+        async delete2(path) {
+            return this.fs.delete2(await this.rewritePath(path));
+        }
+        async listdir(path) {
+            return this.fs.listdir(await this.rewritePath(path));
+        }
+        async filetype(path) {
+            return this.fs.filetype(await this.rewritePath(path));
+        }
+        async mkdir(path) {
+            return this.fs.mkdir(await this.rewritePath(path));
+        }
+        async rename(path, newPath) {
+            return this.fs.rename(await this.rewritePath(path), await this.rewritePath(newPath));
+        }
+        async dataDir() {
+            return '';
+        }
+        async stat(path) {
+            return this.fs.stat(await this.rewritePath(path));
+        }
+        async truncate(path, newSize) {
+            return this.fs.truncate(await this.rewritePath(path), newSize);
+        }
+    }
+    exports.PathRewriteFs = PathRewriteFs;
+    class DirAsRootFS extends PathRewriteFs {
         constructor(fs, rootDir) {
+            super(fs);
             this.fs = fs;
             this.rootDir = rootDir;
             if (!this.rootDir.endsWith('/')) {
@@ -587,49 +633,13 @@ define("partic2/CodeRunner/JsEnviron", ["require", "exports", "partic2/jsutils1/
         async ensureInited() {
             return await this.fs.ensureInited();
         }
-        pConvertPath(path) {
+        async rewritePath(path) {
             if (path.startsWith('/')) {
                 return this.rootDir + path.substring(1);
             }
             else {
                 return this.rootDir + path;
             }
-        }
-        async writeAll(path, data) {
-            return this.fs.writeAll(this.pConvertPath(path), data);
-        }
-        async readAll(path) {
-            return this.fs.readAll(this.pConvertPath(path));
-        }
-        async read(path, offset, buf) {
-            return this.fs.read(this.pConvertPath(path), offset, buf);
-        }
-        async write(path, offset, buf) {
-            return this.fs.write(this.pConvertPath(path), offset, buf);
-        }
-        async delete2(path) {
-            return this.fs.delete2(this.pConvertPath(path));
-        }
-        async listdir(path) {
-            return this.fs.listdir(this.pConvertPath(path));
-        }
-        async filetype(path) {
-            return this.fs.filetype(this.pConvertPath(path));
-        }
-        async mkdir(path) {
-            return this.fs.mkdir(this.pConvertPath(path));
-        }
-        async rename(path, newPath) {
-            return this.fs.rename(this.pConvertPath(path), this.pConvertPath(newPath));
-        }
-        async dataDir() {
-            return '';
-        }
-        async stat(path) {
-            return this.fs.stat(this.pConvertPath(path));
-        }
-        async truncate(path, newSize) {
-            return this.fs.truncate(this.pConvertPath(path), newSize);
         }
     }
     exports.DirAsRootFS = DirAsRootFS;
@@ -638,9 +648,12 @@ define("partic2/CodeRunner/JsEnviron", ["require", "exports", "partic2/jsutils1/
             this.fs = fs;
             this.path = path;
             this.readPos = 0;
+            this.bufferSize = 64 * 1024;
+            this.inited = null;
         }
         async pull(controller) {
-            let readBuffer = new Uint8Array(64 * 1024);
+            await this.inited;
+            let readBuffer = new Uint8Array(this.bufferSize);
             let bytesRead = await this.fs.read(this.path, this.readPos, readBuffer);
             if (bytesRead == 0) {
                 controller.close();
@@ -650,8 +663,11 @@ define("partic2/CodeRunner/JsEnviron", ["require", "exports", "partic2/jsutils1/
             controller.enqueue(new Uint8Array(readBuffer.buffer, 0, bytesRead));
         }
     }
-    function getFileSystemReadableStream(fs, path, initialSeek) {
+    function getFileSystemReadableStream(fs, path, initialSeek, opt) {
         let dataSource = new SimpleFileSystemDataSource(fs, path);
+        if (opt?.bufferSize != undefined) {
+            dataSource.bufferSize = opt.bufferSize;
+        }
         if (initialSeek != undefined)
             dataSource.readPos = initialSeek;
         return new ReadableStream(dataSource);
@@ -661,16 +677,25 @@ define("partic2/CodeRunner/JsEnviron", ["require", "exports", "partic2/jsutils1/
             this.fs = fs;
             this.path = path;
             this.writePos = 0;
+            this.inited = null;
         }
         async write(chunk, controller) {
+            await this.inited;
             let writeCount = await this.fs.write(this.path, this.writePos, chunk);
             this.writePos += writeCount;
         }
     }
     function getFileSystemWritableStream(fs, path, initialSeek) {
         let dataSink = new SimpleFileSystemDataSink(fs, path);
-        if (initialSeek != undefined)
-            dataSink.writePos = initialSeek;
+        dataSink.inited = (async () => {
+            if (initialSeek != undefined) {
+                if (initialSeek === 'end') {
+                    let { size } = await fs.stat(path);
+                    initialSeek = size;
+                }
+                dataSink.writePos = initialSeek;
+            }
+        })();
         return new WritableStream(dataSink);
     }
     exports.simpleFileSystemHelper = {

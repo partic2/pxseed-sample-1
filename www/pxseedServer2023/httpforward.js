@@ -4,6 +4,7 @@ define("pxseedServer2023/httpforward", ["require", "exports", "partic2/jsutils1/
     exports.HttpRequestForwardOnRpc = void 0;
     exports.__serverHostForwardHttpRequestToRpcWorker = __serverHostForwardHttpRequestToRpcWorker;
     exports.forwardHttpRequestToRpcWorker = forwardHttpRequestToRpcWorker;
+    exports.getServerHostHttpRequestHandler = getServerHostHttpRequestHandler;
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
     class HttpSession {
         constructor() {
@@ -112,7 +113,10 @@ define("pxseedServer2023/httpforward", ["require", "exports", "partic2/jsutils1/
         }
     }).typedecl('o->b');
     extend_1.defaultFuncMap[__name__ + '.readHttpResponseBody'] = new extend_1.RpcExtendServerCallable(async (session) => {
-        if (session.protocol === 'http') {
+        if (session.closed) {
+            throw new Error('Http session closed');
+        }
+        else if (session.protocol === 'http') {
             if (session.responseBody == null) {
                 return new Uint8Array(0);
             }
@@ -178,7 +182,7 @@ define("pxseedServer2023/httpforward", ["require", "exports", "partic2/jsutils1/
             catch (err) {
                 abortCtl.abort();
                 httpSession.free();
-                throw err;
+                return new Response(err.toString(), { status: 504 });
             }
         }
         async websocket(ctl) {
@@ -225,5 +229,12 @@ define("pxseedServer2023/httpforward", ["require", "exports", "partic2/jsutils1/
     async function forwardHttpRequestToRpcWorker(prefix, rpc) {
         let httpforward = await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName)).ensureConnected(), __name__);
         httpforward.__serverHostForwardHttpRequestToRpcWorker(prefix, rpc);
+    }
+    let serverHostHttpRequestHandler = null;
+    async function getServerHostHttpRequestHandler() {
+        if (serverHostHttpRequestHandler == null) {
+            serverHostHttpRequestHandler = new HttpRequestForwardOnRpc(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName)).ensureConnected());
+        }
+        return serverHostHttpRequestHandler;
     }
 });

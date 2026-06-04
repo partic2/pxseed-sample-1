@@ -18,7 +18,7 @@ define("partic2/tjshelper/jseiorpcserver", ["require", "exports", "pxprpc/extend
             return writeResult;
         }).typedecl('olb->i');
         extend_1.defaultFuncMap['JseHelper.JseIo.fhClose'] = new extend_1.RpcExtendServerCallable(async (fh) => fh.close()).typedecl('o->');
-        extend_1.defaultFuncMap['JseHelper.JseIo.fhTruncate'] = new extend_1.RpcExtendServerCallable(async (fh, offset) => fh.truncate(Number(offset))).typedecl('sl->');
+        extend_1.defaultFuncMap['JseHelper.JseIo.fhTruncate'] = new extend_1.RpcExtendServerCallable(async (fh, offset) => fh.truncate(Number(offset))).typedecl('ol->');
         extend_1.defaultFuncMap['JseHelper.JseIo.stat'] = new extend_1.RpcExtendServerCallable(async (path) => {
             let fileStat = await tjs.stat(path);
             let type = 'unknown';

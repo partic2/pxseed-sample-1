@@ -1,7 +1,8 @@
-define("partic2/packageManager/modtools", ["require", "exports", "partic2/pxprpcClient/registry", "partic2/CodeRunner/jsutils2", "partic2/jsutils1/base"], function (require, exports, registry_1, jsutils2_1, base_1) {
+define("partic2/packageManager/modtools", ["require", "exports", "partic2/pxprpcClient/registry", "partic2/CodeRunner/jsutils2", "partic2/jsutils1/base", "pxprpc/extend", "pxprpc/base", "partic2/pxprpcClient/bus"], function (require, exports, registry_1, jsutils2_1, base_1, extend_1, base_2, bus_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.HotModuleReload = exports.CHotModuleReload = void 0;
+    exports.getConnectedPxseedWebuiRpcClientFromServerHostUrl = getConnectedPxseedWebuiRpcClientFromServerHostUrl;
     let remoteMisc = new jsutils2_1.Singleton(async () => {
         return await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName)).ensureConnected(), 'partic2/packageManager/misc');
     });
@@ -68,4 +69,17 @@ define("partic2/packageManager/modtools", ["require", "exports", "partic2/pxprpc
     }
     exports.CHotModuleReload = CHotModuleReload;
     exports.HotModuleReload = new CHotModuleReload();
+    async function getConnectedPxseedWebuiRpcClientFromServerHostUrl(serverHostUrl, index) {
+        let conn = await (0, registry_1.getConnectionFromUrl)(serverHostUrl);
+        (0, base_1.assert)(conn != null);
+        let prefix = `/pxprpc/pxseed_webui/partic2.packageManager.webui/`;
+        let client = await new extend_1.RpcExtendClient1(new base_2.Client(conn)).init();
+        let lookupresult = await bus_1.RemotePxseedJsIoServer.prefixQuery(prefix, client);
+        index = index ?? 0;
+        let choice = lookupresult.at(index);
+        if (choice == undefined) {
+            return null;
+        }
+        return await new extend_1.RpcExtendClient1(new base_2.Client(await bus_1.RemotePxseedJsIoServer.connect(choice, client))).init();
+    }
 });

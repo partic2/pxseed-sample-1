@@ -169,7 +169,6 @@ define("partic2/nodehelper/nodeio", ["require", "exports", "stream", "partic2/js
         let bus = await new Promise((resolve_1, reject_1) => { require(['partic2/pxprpcClient/bus'], resolve_1, reject_1); });
         return bus.createIoPxseedJsUrl(url);
     }
-    globalThis.WebSocket = WebSocket;
     class NodeReadableDataSource {
         constructor(nodeReadable) {
             this.nodeReadable = nodeReadable;

@@ -216,17 +216,18 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             this.DoCodeCellsHightlight.call();
         }
         render() {
-            return React.createElement("div", { style: { width: '100%', overflow: 'auto' }, onKeyDown: (ev) => this.onKeyDown(ev), ref: this.rref.container },
-                React.createElement("div", null,
+            return React.createElement("div", { style: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }, onKeyDown: (ev) => this.onKeyDown(ev), ref: this.rref.container },
+                React.createElement("div", { style: { flexGrow: '0', flexShrink: '0' } },
                     React.createElement("a", { href: "javascript:;", onClick: () => this.openRpcChooser() },
                         "RPC:",
                         this.state.usingRpcName ?? '<No RPC>'),
                     React.createElement("span", null, "\u00A0\u00A0"),
                     React.createElement("a", { onClick: () => this.doSave(), href: "javascript:;" }, "Save")),
                 (this.codeContext != undefined) ?
-                    React.createElement(WebUi_1.CodeCellList, { codeContext: this.codeContext, ref: this.rref.ccl, cellProps: {
-                            onInputChange: (target) => this.onCellInputChange(target)
-                        } }) :
+                    React.createElement("div", { style: { flexShrink: 1, minHeight: '0px' } },
+                        React.createElement(WebUi_1.CodeCellList, { codeContext: this.codeContext, ref: this.rref.ccl, cellProps: {
+                                onInputChange: (target) => this.onCellInputChange(target)
+                            } })) :
                     'No CodeContext');
         }
     }
@@ -237,7 +238,6 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             super(...arguments);
             this.rref = {
                 list: new domui_1.ReactRefEx(),
-                container: new domui_1.ReactRefEx()
             };
             this.autoScrollToBottom = true;
             this.codeCellHighlightQueue = new Set();
@@ -263,13 +263,6 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
                     }
                 }
             }, 200);
-            this._scrollTask = null;
-            this.onContainerScroll = new jsutils2_1.DebounceCall(async () => {
-                let cont = await this.rref.container.waitValid();
-                if (cont.scrollHeight - (cont.scrollTop + cont.clientHeight) < 15) {
-                    this.autoScrollToBottom = true;
-                }
-            }, 300);
         }
         async onCellRun(cellKey) {
             let ccl = await this.rref.list.waitValid();
@@ -288,41 +281,20 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             cc.setCellInput(code);
             await cc.runCode();
         }
-        *_keepScrollState() {
-            let cont = yield* base_1.Task.yieldWrap(this.rref.container.waitValid());
-            while (this.rref.container.current != null) {
-                if (this.autoScrollToBottom) {
-                    cont = this.rref.container.current;
-                    cont.scrollTo({ top: cont.scrollHeight, behavior: 'smooth' });
-                }
-                yield (0, base_1.sleep)(200);
-            }
-        }
         componentWillUnmount() {
-            this._scrollTask?.abort();
-            this._scrollTask = null;
         }
         async onCellInputChange(codeCell) {
             this.codeCellHighlightQueue.add(codeCell);
             this.DoCodeCellsHightlight.call();
         }
         async beforeRender() {
-            if (this._scrollTask == null) {
-                let that = this;
-                this._scrollTask = base_1.Task.fork(function* () {
-                    yield* that._keepScrollState();
-                }).run();
-            }
         }
         render(props, state, context) {
             this.beforeRender();
-            return React.createElement("div", { ref: this.rref.container, style: {
-                    overflowY: 'auto', border: '0px', padding: '0px', margin: '0px', width: '100%', height: '100%', ...this.props.containerStyle
-                }, onPointerDown: () => this.autoScrollToBottom = false, onScroll: () => this.onContainerScroll.call() },
-                React.createElement(WebUi_1.CodeCellList, { codeContext: this.props.codeContext, onRun: (key) => this.onCellRun(key), ref: this.rref.list, cellProps: {
-                        runCodeKey: 'Enter',
-                        onInputChange: (target) => this.onCellInputChange(target)
-                    } }));
+            return React.createElement(WebUi_1.CodeCellList, { codeContext: this.props.codeContext, onRun: (key) => this.onCellRun(key), ref: this.rref.list, cellProps: {
+                    runCodeKey: 'Enter',
+                    onInputChange: (target) => this.onCellInputChange(target)
+                } });
         }
     }
     exports.__internal__ = {

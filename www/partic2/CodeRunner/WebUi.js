@@ -58,7 +58,7 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
         async runCode() {
             this.props.onRun?.();
             try {
-                this.setState({ cellOutput: 'Running...' });
+                this.setState({ cellOutput: 'Running...', codeCompleteCandidate: [] });
                 let resultVariable = this.state.resultVariable ?? ('__result_' + (0, base_1.GenerateRandomString)());
                 let runStatus = await this.codeContext.runCode(this.getCellInput(), resultVariable);
                 if (runStatus.err === null && runStatus.stringResult != null) {
@@ -74,7 +74,9 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 let err = e;
                 this.setState({ cellOutput: { message: err.message, stack: err.stack } });
             }
-            this.setState({ codeCompleteCandidate: [] });
+            finally {
+                this.props.onRunResult?.();
+            }
         }
         renderTooltipsContent() {
             if (this.state.extraTooltips == null && this.state.codeCompleteCandidate == null)
@@ -136,25 +138,40 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 }
                 ev.preventDefault();
             }
-            else if (ev.code == 'ArrowUp' && this.state.codeCompleteCandidate != null && this.state.codeCompleteCandidate.length > 0) {
-                let nextFocus = this.state.focusingCompletionCandidate - 1;
-                if (nextFocus < 0) {
-                    nextFocus += this.state.codeCompleteCandidate.length;
+            else if (ev.code == 'ArrowUp') {
+                if (this.state.codeCompleteCandidate != null && this.state.codeCompleteCandidate.length > 0) {
+                    let nextFocus = this.state.focusingCompletionCandidate - 1;
+                    if (nextFocus < 0) {
+                        nextFocus += this.state.codeCompleteCandidate.length;
+                    }
+                    this.setState({ focusingCompletionCandidate: nextFocus });
+                    ev.preventDefault();
+                    await new Promise(requestAnimationFrame);
+                    this.ensureCandidateScroll.call();
                 }
-                this.setState({ focusingCompletionCandidate: nextFocus });
-                ev.preventDefault();
-                await new Promise(requestAnimationFrame);
-                this.ensureCandidateScroll.call();
+                else if (this.rref.codeInput.current != null && this.rref.codeInput.current.isEditing()) {
+                    if (this.rref.codeInput.current.getTextCaretOffset() === 0) {
+                        this.props.onPreviousCell?.();
+                    }
+                }
             }
-            else if (ev.code == 'ArrowDown' && this.state.codeCompleteCandidate != null && this.state.codeCompleteCandidate.length > 0) {
-                let nextFocus = this.state.focusingCompletionCandidate + 1;
-                if (nextFocus >= this.state.codeCompleteCandidate.length) {
-                    nextFocus -= this.state.codeCompleteCandidate.length;
+            else if (ev.code == 'ArrowDown') {
+                if (this.state.codeCompleteCandidate != null && this.state.codeCompleteCandidate.length > 0) {
+                    let nextFocus = this.state.focusingCompletionCandidate + 1;
+                    if (nextFocus >= this.state.codeCompleteCandidate.length) {
+                        nextFocus -= this.state.codeCompleteCandidate.length;
+                    }
+                    this.setState({ focusingCompletionCandidate: nextFocus });
+                    ev.preventDefault();
+                    await new Promise(requestAnimationFrame);
+                    this.ensureCandidateScroll.call();
                 }
-                this.setState({ focusingCompletionCandidate: nextFocus });
-                ev.preventDefault();
-                await new Promise(requestAnimationFrame);
-                this.ensureCandidateScroll.call();
+                else if (this.rref.codeInput.current != null && this.rref.codeInput.current.isEditing()) {
+                    let plainText = this.rref.codeInput.current.getPlainText();
+                    if (this.rref.codeInput.current.getTextCaretOffset() >= plainText.length) {
+                        this.props.onNextCell?.();
+                    }
+                }
             }
             else if (ev.code == 'Escape' && this.state.codeCompleteCandidate != null) {
                 this.resetTooltips();
@@ -301,7 +318,8 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             return coor;
         }
         async setAsEditTarget() {
-            (await this.rref.codeInput.waitValid()).setTextCaretOffset('end');
+            this.rref.container.current?.focus();
+            this.rref.codeInput.current?.setTextCaretOffset('end');
         }
         async close() {
             if (this.state.resultVariable != null) {
@@ -335,7 +353,6 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 this.forceUpdate();
             };
             this.resetState();
-            this.setState({ padBottomCell: 300 });
         }
         beforeRender() {
             if (this.props.codeContext !== this.state.codeContext) {
@@ -406,36 +423,66 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
         getCellList() {
             return this.state.list;
         }
+        async scrollToCell(cellIndex) {
+            //To prevent user agent scroll handler overwrite the scrollTo position.
+            await new Promise(requestAnimationFrame);
+            let v = this.state.list.at(cellIndex);
+            let cellDiv = v.ref.current?.rref.container.current;
+            let listDiv = this.rref.container.current;
+            if (cellDiv != null && listDiv != null) {
+                if (cellDiv.offsetTop + 300 > listDiv.scrollTop + listDiv.clientHeight) {
+                    listDiv.scrollTo({ behavior: 'smooth', top: cellDiv.offsetTop + 300 - listDiv.clientHeight });
+                }
+                else if (cellDiv.offsetTop < listDiv.scrollTop) {
+                    await new Promise(requestAnimationFrame);
+                    listDiv.scrollTo({ behavior: 'smooth', top: cellDiv.offsetTop });
+                }
+            }
+        }
         render(props, state, context) {
             this.beforeRender();
-            return (this.state.codeContext != null && this.state.error == null) ? React.createElement("div", { style: { width: '100%', overflowX: 'auto', position: 'relative' }, ref: this.rref.container },
-                (0, jsutils2_1.FlattenArraySync)(this.state.list.map((v, index1) => {
-                    let cellCssStyle = {};
-                    if (this.state.lastFocusCellKey === v.key) {
-                        cellCssStyle.zIndex = 100;
-                    }
-                    let r = [React.createElement(CodeCell, { ref: v.ref, key: v.key, codeContext: this.state.codeContext, customBtns: [
-                                { label: 'New', cb: () => this.newCell(v.key) },
-                                { label: 'Del', cb: () => this.deleteCell(v.key) }
-                            ], onClearOutputs: () => this.clearConsoleOutput(v.key), onRun: async () => {
-                                this.props.onRun?.(v.key);
-                                this.lastRunCellKey = v.key;
-                                if (v.key == this.state.list.at(-1)?.key) {
-                                    await this.newCell(v.key);
-                                    let cc = await this.state.list.at(-1).ref.waitValid();
-                                    await cc.setAsEditTarget();
-                                }
-                            }, onFocusChange: (focusin) => {
-                                if (focusin) {
-                                    this.setState({ lastFocusCellKey: v.key });
-                                }
-                            }, divStyle: cellCssStyle, ...this.props.cellProps })];
-                    if (v.key in this.state.consoleOutput) {
-                        r.push(React.createElement("div", { style: { wordBreak: 'break-all' }, dangerouslySetInnerHTML: { __html: (0, utils_1.text2html)(this.state.consoleOutput[v.key].content) } }));
-                    }
-                    return r;
-                })),
-                React.createElement("div", { style: { height: this.state.padBottomCell + 'px' } })) :
+            return (this.state.codeContext != null && this.state.error == null) ?
+                React.createElement("div", { style: { width: '100%', height: '100%', overflow: 'auto', position: 'relative' }, ref: this.rref.container },
+                    (0, jsutils2_1.FlattenArraySync)(this.state.list.map((v, index1) => {
+                        let cellCssStyle = {};
+                        if (this.state.lastFocusCellKey === v.key) {
+                            cellCssStyle.zIndex = 100;
+                        }
+                        let r = [React.createElement(CodeCell, { ref: v.ref, key: v.key, codeContext: this.state.codeContext, customBtns: [
+                                    { label: 'New', cb: () => this.newCell(v.key) },
+                                    { label: 'Del', cb: () => this.deleteCell(v.key) }
+                                ], onClearOutputs: () => this.clearConsoleOutput(v.key), onRun: async () => {
+                                    this.props.onRun?.(v.key);
+                                    this.lastRunCellKey = v.key;
+                                    if (v.key == this.state.list.at(-1)?.key) {
+                                        await this.newCell(v.key);
+                                        let ccelem = this.state.list.at(-1);
+                                        let cc = await ccelem.ref.waitValid();
+                                        await cc.setAsEditTarget();
+                                    }
+                                }, onFocusChange: (focusin) => {
+                                    this.props.onCellFocusChange?.({ cellKey: v.key, focusIn: focusin });
+                                    if (focusin) {
+                                        this.setState({ lastFocusCellKey: v.key });
+                                        this.scrollToCell(index1);
+                                    }
+                                }, onPreviousCell: async () => {
+                                    let cc = this.state.list.at(index1 - 1);
+                                    if (cc != undefined) {
+                                        await cc.ref.current?.setAsEditTarget();
+                                    }
+                                }, onNextCell: async () => {
+                                    let cc = this.state.list.at(index1 + 1);
+                                    if (cc != undefined) {
+                                        await cc.ref.current?.setAsEditTarget();
+                                    }
+                                }, divStyle: cellCssStyle, ...this.props.cellProps })];
+                        if (v.key in this.state.consoleOutput) {
+                            r.push(React.createElement("div", { style: { wordBreak: 'break-all' }, dangerouslySetInnerHTML: { __html: (0, utils_1.text2html)(this.state.consoleOutput[v.key].content) } }));
+                        }
+                        return r;
+                    })),
+                    React.createElement("div", { style: { minHeight: '300px' } })) :
                 React.createElement("div", { style: { width: '100%', overflow: 'auto', position: 'relative' }, ref: this.rref.container },
                     React.createElement("pre", null, this.state.error),
                     React.createElement("a", { href: "javascript:;", onClick: () => this.resetState() }, "Reset"));
