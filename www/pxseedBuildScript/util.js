@@ -90,7 +90,7 @@ define("pxseedBuildScript/util", ["require", "exports"], function (require, expo
         let matchResult = [];
         for await (let t1 of iterPath('', { cwd: opt.cwd, includeHidenFile: opt.includeHidenFile })) {
             let matched = false;
-            const pathPart = t1.split(/[\\/]/);
+            let pathPart = t1.split(/[\\/]/).filter(t1 => t1 !== '');
             for (let t2 of matchRegexps) {
                 let pathPartMatched = true;
                 let doubleStar = t2.indexOf('**');

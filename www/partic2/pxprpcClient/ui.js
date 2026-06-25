@@ -1,7 +1,7 @@
 define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry", "partic2/pComponentUi/domui", "partic2/pComponentUi/window", "partic2/jsutils1/base", "./rpcworker", "partic2/jsutils1/webutils"], function (require, exports, React, registry_1, domui_1, window_1, base_1, rpcworker_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.RegistryUI = exports.RegistryInfoProvider = void 0;
+    exports.RegistryUI = void 0;
     let css2 = {
         rpcClientCard: (0, base_1.GenerateRandomString)()
     };
@@ -64,9 +64,6 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
         }
     }
     let config = null;
-    class RegistryInfoProvider {
-    }
-    exports.RegistryInfoProvider = RegistryInfoProvider;
     async function pullFromServerHost() {
         let rpc = await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName);
         if (rpc != undefined && !await (0, registry_1.isServerHost)()) {
@@ -113,10 +110,10 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
                 }
             }
             for (let t1 of toAdd) {
-                await (0, registry_1.easyCallRemoteJsonFunction)(await rpc.ensureConnected(), __name__, 'addClient', t1);
+                await (0, registry_1.easyCallRemoteJsonFunction)(await rpc.ensureConnected(), webutils_1.path.join(__name__, '..', 'registry'), 'addClient', t1);
             }
             for (let t1 of toRemove) {
-                await (0, registry_1.easyCallRemoteJsonFunction)(await rpc.ensureConnected(), __name__, 'removeClient', [t1]);
+                await (0, registry_1.easyCallRemoteJsonFunction)(await rpc.ensureConnected(), webutils_1.path.join(__name__, '..', 'registry'), 'removeClient', [t1]);
             }
         }
     }

@@ -1,7 +1,7 @@
 define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./transform", "partic2/pxseedMedia1/index1"], function (require, exports, React, domui_1, base_1, webutils_1, transform_1, index1_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.rootWindowsList = exports.WindowsList = exports.WindowsListContext = exports.WindowComponent = exports.DefaultWindowComponent = exports.css = void 0;
+    exports.dialogBoxProvider = exports.rootWindowsList = exports.WindowsList = exports.WindowComponent = exports.DefaultWindowComponent = exports.css = exports.language = void 0;
     exports.setDefaultWindowComponentImplemention = setDefaultWindowComponentImplemention;
     exports.ensureRootWindowContainer = ensureRootWindowContainer;
     exports.appendFloatWindow = appendFloatWindow;
@@ -11,11 +11,14 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
     exports.alert = alert;
     exports.confirm = confirm;
     exports.prompt = prompt;
+    exports.language = new base_1.Ref2('en');
+    let __name__ = base_1.requirejs.getLocalRequireModule(require);
+    let cssPrefix = __name__.replace(/\//g, '-');
     exports.css = {
-        defaultWindowDiv: (0, base_1.GenerateRandomString)(),
-        borderlessWindowDiv: (0, base_1.GenerateRandomString)(),
-        defaultContentDiv: (0, base_1.GenerateRandomString)(),
-        defaultTitleStyle: (0, base_1.GenerateRandomString)(),
+        defaultWindowDiv: cssPrefix + '-defaultWindowDiv',
+        borderlessWindowDiv: cssPrefix + '-borderlessWindowDiv',
+        defaultContentDiv: cssPrefix + '-defaultContentDiv',
+        defaultTitleStyle: cssPrefix + '-defaultTitleStyle',
     };
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultWindowDiv, ['border:solid black 1px', 'box-sizing: border-box', 'pointer-events:auto']);
     webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.borderlessWindowDiv, ['pointer-events:auto']);
@@ -31,9 +34,10 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
                 container: new domui_1.ReactRefEx(),
                 contentDiv: new domui_1.ReactRefEx()
             };
-            this._triggerResize = () => { this.forceUpdate(); this.dispatchEvent(new Event('resize')); };
+            this.__resizeObserver = new ResizeObserver(() => this.dispatchEvent(new Event('resize')));
             this.__wndMove = new transform_1.PointTrace({
                 onMove: (curr, start) => {
+                    this.beforeMaximizeSize = null;
                     this.setState({ layout: { ...this.state.layout, left: curr.x - start.x, top: curr.y - start.y } }, () => this.dispatchEvent(new Event('move')));
                 }
             });
@@ -43,7 +47,8 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
             };
             this.__wndResize = new transform_1.PointTrace({
                 onMove: (curr, start) => {
-                    this.setState({ layout: { ...this.state.layout, width: curr.x - start.x, height: curr.y - start.y } }, () => this.dispatchEvent(new Event('resize')));
+                    this.beforeMaximizeSize = null;
+                    this.setState({ layout: { ...this.state.layout, width: curr.x - start.x, height: curr.y - start.y } });
                 }
             });
             this.__onResizeIconMouseDownHandler = (evt) => {
@@ -51,45 +56,44 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
                 evt.preventDefault();
             };
             this.beforeMaximizeSize = null;
-            this.windowsList = null;
+            this._sizeMeasuring = false;
             this.setState({ activateTime: -1, layout: this.props.initialLayout ?? { left: 0, top: 0 }, errorOccured: null });
+            this.addEventListener('resize', () => this.onResize());
+            this.addEventListener('move', () => this.onMove());
         }
         componentDidMount() {
-            window.addEventListener('resize', this._triggerResize);
+            if (this.rref.container.current != undefined) {
+                this.__resizeObserver.observe(this.rref.container.current);
+            }
         }
         componentWillUnmount() {
-            window.removeEventListener('reisze', this._triggerResize);
+            this.__resizeObserver.disconnect();
+        }
+        onResize() {
+        }
+        onMove() {
         }
         async makeCenter() {
-            let width = 0;
-            let height = 0;
-            let stableCount = 0;
-            for (let t1 = 0; t1 < 100; t1++) {
-                await new Promise(resolve => requestAnimationFrame(resolve));
-                let newWidth = this.rref.container.current?.scrollWidth ?? 0;
-                let newHeight = this.rref.container.current?.scrollHeight ?? 0;
-                if (width != newWidth || height != newHeight) {
-                    width = newWidth;
-                    height = newHeight;
-                    stableCount = 0;
-                }
-                else {
-                    stableCount++;
-                }
-                if (stableCount >= 3)
-                    break;
-                let wndWidth = (exports.rootWindowsList.current?.container.current?.offsetWidth) ?? 0;
-                let wndHeight = (exports.rootWindowsList.current?.container.current?.offsetHeight) ?? 0;
-                if (width > wndWidth - 5)
-                    width = wndWidth - 5;
-                if (height > wndHeight - 5)
-                    height = wndHeight - 5;
-                let left = (wndWidth - width) >> 1;
-                let top = (wndHeight - height) >> 1;
-                if (left != this.state.layout.left || top != this.state.layout.top) {
-                    await new Promise((resolve) => {
-                        this.setState({ layout: { left: left, top: top } }, () => resolve(null));
-                    });
+            if (this.props.windowsList?.container.current != null) {
+                for (let t1 = 0; t1 < 40; t1++) {
+                    let wndWidth = (this.props.windowsList.container.current.offsetWidth) ?? 0;
+                    let wndHeight = (this.props.windowsList.container.current.offsetHeight) ?? 0;
+                    let width = this.rref.container.current?.offsetWidth ?? 0;
+                    let height = this.rref.container.current?.offsetHeight ?? 0;
+                    if (width > wndWidth - 5)
+                        width = wndWidth - 5;
+                    if (height > wndHeight - 5)
+                        height = wndHeight - 5;
+                    let left = (wndWidth - width) >> 1;
+                    let top = (wndHeight - height) >> 1;
+                    if (left != this.state.layout.left || top != this.state.layout.top) {
+                        await new Promise((resolve) => {
+                            this.setState({ layout: { ...this.state.layout, left: left, top: top } }, () => resolve(null));
+                        });
+                    }
+                    if (!this._sizeMeasuring)
+                        break;
+                    await (0, base_1.sleep)(25);
                 }
             }
         }
@@ -132,6 +136,18 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
                 this.renderIcon(this.props.maximize, () => this.onMaximizeClick()),
                 this.renderIcon(this.props.closeIcon, () => this.onCloseClick()));
         }
+        renderContent() {
+            return React.createElement("div", { className: [exports.css.defaultContentDiv].join(' '), ref: this.rref.contentDiv }, this.state.errorOccured == null ? this.props.children : React.createElement("pre", { style: { backgroundColor: 'white', color: 'black' } },
+                this.state.errorOccured.message,
+                this.state.errorOccured.stack));
+        }
+        renderResizeHandler() {
+            return React.createElement("img", { src: (0, index1_1.getIconUrl)('arrow-down-right.svg'), style: {
+                    position: 'absolute', cursor: 'nwse-resize',
+                    right: '0px', bottom: '0px', touchAction: 'none',
+                    backgroundColor: 'white'
+                }, onPointerDown: this.__onResizeIconMouseDownHandler, width: "12", height: "12" });
+        }
         async onCloseClick() {
             this.hide();
             this.dispatchEvent(new Event('close'));
@@ -149,26 +165,60 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
                 let containerDiv = await this.rref.container.waitValid();
                 this.setState({ layout: { left: 0, top: 0,
                         width: containerDiv.offsetParent.offsetWidth,
-                        height: containerDiv.offsetParent.offsetHeight } });
-                this._triggerResize();
+                        height: containerDiv.offsetParent.offsetHeight } }, () => this.dispatchEvent(new Event('move')));
             }
             else {
                 if (this.beforeMaximizeSize != null) {
-                    this.setState({ layout: { ...this.beforeMaximizeSize } });
-                    this._triggerResize();
+                    this.setState({ layout: { ...this.beforeMaximizeSize } }, () => this.dispatchEvent(new Event('move')));
                 }
                 this.beforeMaximizeSize = null;
             }
         }
+        async _measureSize() {
+            this._sizeMeasuring = true;
+            let width = 0;
+            let height = 0;
+            let stableCount = 0;
+            for (let t1 = 0; t1 < 40 && this._sizeMeasuring; t1++) {
+                await (0, base_1.sleep)(25);
+                let newWidth = this.rref.container.current?.offsetWidth ?? 0;
+                let newHeight = this.rref.container.current?.offsetHeight ?? 0;
+                if (width != newWidth || height != newHeight) {
+                    width = newWidth;
+                    height = newHeight;
+                    stableCount = 0;
+                }
+                else {
+                    stableCount++;
+                }
+                if (stableCount >= 8)
+                    break;
+            }
+            if (this._sizeMeasuring && this.rref.container.current != null && this.props.windowsList != null && (this.state.layout.width == undefined || this.state.layout.height == undefined)) {
+                let layout = { ...this.state.layout, width: width + 1, height: height + 1 };
+                if (this.rref.container.current.offsetLeft + this.rref.container.current.offsetWidth > this.props.windowsList.container.current.offsetWidth) {
+                    layout.width = this.props.windowsList.container.current.offsetWidth - this.rref.container.current.offsetLeft;
+                }
+                if (this.rref.container.current.offsetTop + this.rref.container.current.offsetHeight > this.props.windowsList.container.current.offsetHeight) {
+                    layout.height = this.props.windowsList.container.current.offsetHeight - this.rref.container.current.offsetTop;
+                }
+                this.setState({ layout });
+            }
+            this._sizeMeasuring = false;
+        }
         renderWindowMain() {
             try {
+                if ((this.state.layout.width == undefined || this.state.layout.height == undefined) && !this._sizeMeasuring && this.props.windowsList != null) {
+                    this._measureSize();
+                }
+                else if (this.state.layout.width != undefined && this.state.layout.height && this._sizeMeasuring) {
+                    this._sizeMeasuring = false;
+                }
                 let windowDivStyle = {
                     boxSizing: 'border-box',
                     position: 'absolute',
                     left: this.state.layout.left + 'px',
                     top: this.state.layout.top + 'px',
-                    maxWidth: (window.innerWidth - this.state.layout.left) + 'px',
-                    maxHeight: (window.innerHeight - this.state.layout.top) + 'px',
                     touchAction: 'none'
                 };
                 if (typeof this.state.layout.width === 'number') {
@@ -183,27 +233,14 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
                 else if (typeof this.state.layout.height === 'string') {
                     windowDivStyle.height = this.state.layout.height;
                 }
-                if (this.props.windowDivInlineStyle != undefined) {
-                    Object.assign(windowDivStyle, this.props.windowDivInlineStyle);
-                }
-                let contentDivStyle = {};
-                if (this.props.contentDivInlineStyle != undefined) {
-                    Object.assign(contentDivStyle, this.props.contentDivInlineStyle);
-                }
-                return React.createElement("div", { className: [domui_1.css.flexColumn, this.props.windowDivClassName ?? exports.css.defaultWindowDiv].join(' '), style: windowDivStyle, ref: this.rref.container, onPointerDown: () => {
+                return React.createElement("div", { className: [domui_1.css.flexColumn, this.props.borderless ? exports.css.borderlessWindowDiv : exports.css.defaultWindowDiv].join(' '), style: windowDivStyle, ref: this.rref.container, onPointerDown: () => {
                         if (this.state.activateTime >= 0 && !this.props.disableUserInputActivate)
                             this.activate();
                     } },
-                    this.props.noTitleBar ? null : this.renderTitle(),
+                    this.props.borderless ? null : this.renderTitle(),
                     [
-                        React.createElement("div", { style: { ...contentDivStyle }, className: [this.props.contentDivClassName ?? exports.css.defaultContentDiv].join(' '), ref: this.rref.contentDiv }, this.state.errorOccured == null ? this.props.children : React.createElement("pre", { style: { backgroundColor: 'white', color: 'black' } },
-                            this.state.errorOccured.message,
-                            this.state.errorOccured.stack)),
-                        (this.props.noResizeHandle) ? null : React.createElement("img", { src: (0, index1_1.getIconUrl)('arrow-down-right.svg'), style: {
-                                position: 'absolute', cursor: 'nwse-resize',
-                                right: '0px', bottom: '0px', touchAction: 'none',
-                                backgroundColor: 'white'
-                            }, onPointerDown: this.__onResizeIconMouseDownHandler, width: "12", height: "12" })
+                        this.renderContent(),
+                        (this.props.borderless) ? null : this.renderResizeHandler()
                     ]);
             }
             catch (err) {
@@ -214,9 +251,7 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
             this.props.onComponentDidUpdate?.();
         }
         render(props, state, context) {
-            return React.createElement(domui_1.FloatLayerComponent, { activateTime: this.state.activateTime },
-                React.createElement(exports.WindowsListContext.Consumer, null, (value) => { this.windowsList = value; return null; }),
-                this.renderWindowMain());
+            return React.createElement(domui_1.FloatLayerComponent, { activateTime: this.state.activateTime }, this.renderWindowMain());
         }
     }
     exports.DefaultWindowComponent = DefaultWindowComponent;
@@ -229,19 +264,30 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
     function setDefaultWindowComponentImplemention(impl) {
         exports.WindowComponent = impl;
     }
-    exports.WindowsListContext = React.createContext(null);
     class WindowsList extends React.Component {
         constructor(prop, ctx) {
             super(prop, ctx);
             this.container = new domui_1.ReactRefEx();
+            this.onResize = new Set();
+            this.resizeObserver = new ResizeObserver((ent) => {
+                for (let t1 of this.onResize) {
+                    t1();
+                }
+            });
             this.setState({ floatWindowVNodes: [] });
         }
+        async componentDidMount() {
+            this.resizeObserver.observe(await this.container.waitValid());
+        }
+        async componentWillUnmount() {
+            this.resizeObserver.disconnect();
+        }
         render(props, state, context) {
-            return React.createElement(exports.WindowsListContext.Provider, { value: this },
-                React.createElement("div", { style: { width: '100%', height: '100%', ...this.props.divStyle }, ref: this.container }, this.state.floatWindowVNodes));
+            return React.createElement("div", { style: { width: '100%', height: '100%', ...this.props.divStyle }, ref: this.container }, this.state.floatWindowVNodes);
         }
         appendFloatWindow(window, active) {
             active = active ?? true;
+            window.props.windowsList = this;
             let ref2 = new domui_1.ReactRefEx().forward([window.ref].filter(v => v != undefined));
             window.ref = ref2;
             if (window.key == undefined) {
@@ -282,6 +328,8 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
             div.style.pointerEvents = 'none';
             domui_1.DomRootComponent.addChild(windowDomRootComponent).then(() => domui_1.DomRootComponent.update());
             (0, domui_1.ReactRender)(React.createElement(WindowsList, { ref: exports.rootWindowsList }), windowDomRootComponent);
+            //To fix bug in EDGE --app mode
+            document.body.style.overflow = 'hidden';
         }
     }
     function appendFloatWindow(window, active) {
@@ -300,71 +348,24 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
         ensureRootWindowContainer();
         return exports.rootWindowsList.current?.state.floatWindowVNodes ?? [];
     }
-    let i18n = {
-        caution: 'caution',
-        ok: 'ok',
-        cancel: 'cancel'
-    };
-    if (navigator.language === 'zh-CN') {
-        i18n.caution = '提醒';
-        i18n.ok = '确认';
-        i18n.cancel = '取消';
-    }
+    exports.language.set(navigator.language);
+    exports.dialogBoxProvider = {};
     async function alert(message, title) {
-        let result = new base_1.future();
-        let windowRef = new domui_1.ReactRefEx();
-        let floatWindow1 = React.createElement(exports.WindowComponent, { key: (0, base_1.GenerateRandomString)(), ref: windowRef, title: title ?? i18n.caution, onClose: () => result.setResult(null) },
-            React.createElement("div", { style: { minWidth: Math.min((exports.rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
-                message,
-                React.createElement("div", { className: domui_1.css.flexRow },
-                    React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult(null), value: i18n.ok }))));
-        appendFloatWindow(floatWindow1);
-        windowRef.waitValid().then((w) => w.makeCenter());
-        await result.get();
-        removeFloatWindow(floatWindow1);
+        if (exports.dialogBoxProvider.alert == null) {
+            exports.dialogBoxProvider.alert = (await new Promise((resolve_1, reject_1) => { require(['./workspace'], resolve_1, reject_1); })).defaultDialogBoxImplemention.alert;
+        }
+        return exports.dialogBoxProvider.alert(message, title);
     }
     async function confirm(message, title) {
-        let result = new base_1.future();
-        let windowRef = new domui_1.ReactRefEx();
-        let floatWindow1 = React.createElement(exports.WindowComponent, { key: (0, base_1.GenerateRandomString)(), ref: windowRef, title: title ?? i18n.caution, onClose: () => result.setResult('cancel') },
-            React.createElement("div", { style: { minWidth: Math.min((exports.rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
-                message,
-                React.createElement("div", { className: domui_1.css.flexRow },
-                    React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult('ok'), value: i18n.ok }),
-                    React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult('cancel'), value: i18n.cancel }))));
-        appendFloatWindow(floatWindow1);
-        windowRef.waitValid().then((w) => { w.makeCenter(); });
-        let r = await result.get();
-        removeFloatWindow(floatWindow1);
-        return r;
+        if (exports.dialogBoxProvider.confirm == null) {
+            exports.dialogBoxProvider.confirm = (await new Promise((resolve_2, reject_2) => { require(['./workspace'], resolve_2, reject_2); })).defaultDialogBoxImplemention.confirm;
+        }
+        return exports.dialogBoxProvider.confirm(message, title);
     }
     async function prompt(form, opt) {
-        let result = new base_1.future();
-        if (typeof opt === 'string') {
-            opt = { title: opt };
+        if (exports.dialogBoxProvider.prompt == null) {
+            exports.dialogBoxProvider.prompt = (await new Promise((resolve_3, reject_3) => { require(['./workspace'], resolve_3, reject_3); })).defaultDialogBoxImplemention.prompt;
         }
-        let title = opt?.title;
-        let windowRef = new domui_1.ReactRefEx();
-        let floatWindow1 = React.createElement(exports.WindowComponent, { key: (0, base_1.GenerateRandomString)(), ref: windowRef, title: title ?? i18n.caution, onClose: () => {
-                result.setResult('cancel');
-                opt?.onButtonClick?.('cancel');
-            } },
-            React.createElement("div", { className: domui_1.css.flexColumn },
-                form,
-                React.createElement("div", { className: domui_1.css.flexRow },
-                    React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => {
-                            result.setResult('ok');
-                            opt?.onButtonClick?.('ok');
-                        }, value: i18n.ok }),
-                    React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => {
-                            result.setResult('cancel');
-                            opt?.onButtonClick?.('cancel');
-                        }, value: i18n.cancel }))));
-        appendFloatWindow(floatWindow1);
-        windowRef.waitValid().then((w) => { w.makeCenter(); });
-        return {
-            response: result,
-            close: () => removeFloatWindow(floatWindow1)
-        };
+        return exports.dialogBoxProvider.prompt(form, opt);
     }
 });

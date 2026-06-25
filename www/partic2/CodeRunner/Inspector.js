@@ -1,4 +1,4 @@
-define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "partic2/jsutils1/base", "./JsEnviron", "partic2/jsutils1/webutils", "./jsutils2"], function (require, exports, CodeContext_1, base_1, JsEnviron_1, webutils_1, jsutils2_1) {
+define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "partic2/jsutils1/base", "./JsEnviron", "partic2/jsutils1/webutils", "./jsutils2", "partic2/pxprpcClient/registry"], function (require, exports, CodeContext_1, base_1, JsEnviron_1, webutils_1, jsutils2_1, registry_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.defaultTooltipsHandlers = exports.defaultCompletionHandlers = exports.builtInCompletionHandlers = exports.builtInTooltipsHandlers = exports.CustomObjectTooltipsSymbol = exports.CustomFunctionParameterCompletionSymbol = exports.MiscObject = exports.UnidentifiedArray = exports.UnidentifiedObject = exports.RemoteCodeContextInspector = exports.serializingEscapeMark = void 0;
@@ -96,6 +96,8 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
                 }
                 else {
                     for (let k1 of keys) {
+                        if (k1 === registry_1.RpcSerializeMagicMark)
+                            continue;
                         try {
                             r[k1] = toSerializableObject(v[k1], { ...opt, maxDepth: opt.maxDepth - 1 });
                         }

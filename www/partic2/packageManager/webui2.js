@@ -27,7 +27,7 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
         cleanPackageInstallCache: 'clean install cache',
         updatePackageIndex: 'update package index'
     };
-    if (navigator.language.split('-').includes('zh')) {
+    if (window_1.language.get().split('-').includes('zh')) {
         i18n.install = '安装';
         i18n.list = '列出';
         i18n.filter = '过滤';
@@ -42,7 +42,7 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
         i18n.packageManager = '包管理';
         i18n.done = '完成';
         i18n.cleanPackageInstallCache = '清除安装缓存';
-        i18n.updatePackageIndex = '更新目录';
+        i18n.updatePackageIndex = '更新包信息';
     }
     let remoteModule = {
         registry: new jsutils2_1.Singleton(async () => {
@@ -519,7 +519,7 @@ import2env('partic2/packageManager/registry');`,
     let renderPackagePanel = async () => {
         (0, workspace_1.openNewWindow)(React.createElement(PackagePanel, null), { title: i18n.packageManager, layoutHint: exports.__name__ + '.PackagePanel', windowOptions: { closeIcon: null } });
         if (exports.floatTaskListView.ref != null) {
-            exports.floatTaskListView.component = React.createElement(window_1.WindowComponent, { keepTop: true, ref: exports.floatTaskListView.ref, noTitleBar: true, noResizeHandle: true, windowDivClassName: window_1.css.borderlessWindowDiv },
+            exports.floatTaskListView.component = React.createElement(window_1.WindowComponent, { keepTop: true, ref: exports.floatTaskListView.ref, borderless: true, initialLayout: { left: 0, top: 0, width: 0, height: 0 } },
                 React.createElement(WindowListIcon, null));
             (0, window_1.appendFloatWindow)(exports.floatTaskListView.component);
         }

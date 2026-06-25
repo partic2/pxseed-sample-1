@@ -170,7 +170,7 @@ define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "parti
             await this.reloadFileInfo();
         }
         async reloadFileInfo() {
-            this.DoFileOpen(this.state.currPath);
+            await this.DoFileOpen(this.state.currPath);
         }
         async DoDelete() {
             let ans = await (0, window_1.confirm)(`Delete ${this.state.selectedFiles.size} files permenantly?`);
@@ -291,8 +291,8 @@ define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "parti
             }
             dlg.close();
         }
-        componentDidMount() {
-            this.reloadFileInfo();
+        async componentDidMount() {
+            await this.reloadFileInfo();
         }
         render() {
             return (React.createElement("div", { className: domui_1.css.flexColumn, style: { height: '100%' } },
@@ -345,6 +345,11 @@ define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "parti
     class WorkspaceFileBrowser2 extends FileBrowserComponent {
         constructor(props, context) {
             super(props, context);
+            this.__didMountInited = false;
+        }
+        async componentDidMount() {
+            await super.componentDidMount();
+            this.__didMountInited = true;
         }
         async DoFileOpen(path, opt) {
             await super.DoFileOpen(path, opt);
@@ -369,7 +374,7 @@ define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "parti
                 }
             }
             else if (filetype == 'dir') {
-                if (this.props.context.startupProfile != null) {
+                if (this.props.context.startupProfile != null && this.__didMountInited) {
                     this.props.context.startupProfile.currPath = path;
                     this.props.context.saveStartupProfile();
                 }
@@ -378,7 +383,7 @@ define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "parti
         async promptForCurrentPath() {
             let newPathInput = new domui_1.ReactRefEx();
             let dlg = await (0, window_1.prompt)(React.createElement("div", null,
-                React.createElement(texteditor_1.TextEditor, { divClass: [domui_1.css.simpleCard], divStyle: { minWidth: 300 }, ref: newPathInput }),
+                React.createElement(texteditor_1.TextEditor, { divClass: [domui_1.css.simpleCard], divStyle: { minWidth: '300px', minHeight: '80px' }, ref: newPathInput }),
                 React.createElement("a", { href: "javascript:;", onClick: async () => {
                         let input1 = await newPathInput.waitValid();
                         input1.setPlainText(this.props.context.wwwroot ?? '/');

@@ -163,9 +163,10 @@ console.info(Array.from(jsutils2.u8hexconv(u8)))`,
                         await this.props.fs.mkdir(webutils_1.path.join((this.state.currPath ?? ''), name));
                     }
                     else if (name.endsWith('.ijsnb')) {
-                        await this.props.fs.writeAll(webutils_1.path.join((this.state.currPath ?? ''), name), (0, jsutils2_1.utf8conv)(JSON.stringify({
-                            rpc: opt.defaultRpc, startupScript: opt.defaultStartupScript
-                        })));
+                        let t1 = new workerinit_1.NotebookFileData();
+                        t1.rpc = opt.notebookInitialRpc;
+                        t1.startupScript = opt.defaultStartupScript ?? '';
+                        await this.props.fs.writeAll(webutils_1.path.join((this.state.currPath ?? ''), name), t1.dump());
                     }
                     else {
                         await this.props.fs.writeAll(webutils_1.path.join((this.state.currPath ?? ''), name), new Uint8Array(0));

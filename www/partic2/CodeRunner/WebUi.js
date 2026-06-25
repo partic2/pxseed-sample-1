@@ -258,14 +258,11 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             let result = [];
             if (this.props.customBtns != undefined) {
                 for (let t1 of this.props.customBtns) {
-                    result.push(React.createElement("a", { href: "javascript:;", onClick: () => t1.cb() }, t1.label));
+                    result.push(React.createElement("a", { href: "javascript:;", onClick: () => t1.cb(), title: t1.title }, t1.label));
                 }
             }
-            result.push(React.createElement("a", { href: "javascript:;", onClick: () => this.onBtnRun() },
-                "Run(",
-                this.getRunCodeKey(),
-                ")"));
-            result.push(React.createElement("a", { href: "javascript:;", onClick: () => this.onBtnClearOutputs() }, "ClearOutputs"));
+            result.push(React.createElement("a", { href: "javascript:;", onClick: () => this.onBtnRun(), title: `Run cell(${this.getRunCodeKey()})` }, "Run"));
+            result.push(React.createElement("a", { href: "javascript:;", onClick: () => this.onBtnClearOutputs(), title: `Clear outputs` }, "Clr"));
             result = result.map(v => [React.createElement("span", null, "\u00A0\u00A0"), v, React.createElement("span", null, "\u00A0\u00A0")]);
             return result;
         }
@@ -430,12 +427,12 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             let cellDiv = v.ref.current?.rref.container.current;
             let listDiv = this.rref.container.current;
             if (cellDiv != null && listDiv != null) {
-                if (cellDiv.offsetTop + 300 > listDiv.scrollTop + listDiv.clientHeight) {
+                if (cellDiv.offsetTop + 300 > listDiv.scrollTop + listDiv.clientHeight && listDiv.clientHeight > 300) {
                     listDiv.scrollTo({ behavior: 'smooth', top: cellDiv.offsetTop + 300 - listDiv.clientHeight });
                 }
-                else if (cellDiv.offsetTop < listDiv.scrollTop) {
+                else if (cellDiv.offsetTop + cellDiv.offsetHeight < listDiv.scrollTop) {
                     await new Promise(requestAnimationFrame);
-                    listDiv.scrollTo({ behavior: 'smooth', top: cellDiv.offsetTop });
+                    listDiv.scrollTo({ behavior: 'smooth', top: cellDiv.offsetTop + cellDiv.offsetHeight });
                 }
             }
         }

@@ -1,7 +1,7 @@
 define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "pxprpc/backend", "pxprpc/base", "pxprpc/extend", "./rpcworker", "partic2/pxprpcBinding/utils"], function (require, exports, base_1, webutils_1, backend_1, base_2, extend_1, rpcworker_1, utils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.persistent = exports.ServiceWorker = exports.WebWorker1RpcName = exports.ServerHostWorker1RpcName = exports.ServerHostRpcName = exports.__internal__ = exports.IoOverPxprpc = exports.ClientInfo = exports.RpcWorker = exports.rpcWorkerInitModule = exports.RpcSerializeMagicMark = exports.__name__ = void 0;
+    exports.persistent = exports.ServiceWorker = exports.WebWorker1RpcName = exports.ServerHostWorker1RpcName = exports.ServerHostRpcName = exports.getConnectionFromUrlHandler = exports.__internal__ = exports.IoOverPxprpc = exports.ClientInfo = exports.RpcWorker = exports.rpcWorkerInitModule = exports.RpcSerializeMagicMark = exports.__name__ = void 0;
     exports.createIoPipe = createIoPipe;
     exports.getAttachedRemoteRigstryFunction = getAttachedRemoteRigstryFunction;
     exports.getConnectionFromUrl = getConnectionFromUrl;
@@ -73,7 +73,6 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
         bytesArray.forEach((val) => ser.putBytes(val));
         return ser.build();
     }
-    let proxyDefault = {};
     extend_1.defaultFuncMap[exports.__name__ + '.callJsonFunction'] = new extend_1.RpcExtendServerCallable(async (requestJson, extraBytes, objectPool) => {
         try {
             let extraBytesArray = unpackExtraBytesArray(extraBytes);
@@ -194,15 +193,6 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
                 return this.conn;
             });
         }
-        async ensureClient() {
-            if (this.conn == undefined) {
-                await this.ensureConnection();
-            }
-            if (this.client == undefined) {
-                this.client = await new extend_1.RpcExtendClient1(new base_2.Client(this.conn)).init();
-            }
-            return this.client;
-        }
     }
     exports.RpcWorker = RpcWorker;
     RpcWorker.connectingMutex = {};
@@ -222,30 +212,21 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
             this.client?.close();
             this.client = null;
         }
-        async jsServerLoadModule(name) {
-            let fn = await getAttachedRemoteRigstryFunction(this.client);
-            await fn.loadModule(name);
-        }
         async ensureConnected() {
-            try {
-                await this.connecting.lock();
+            return await this.connecting.exec(async () => {
                 if (this.connected()) {
                     return this.client;
                 }
                 else {
                     let io1 = await getConnectionFromUrl(this.url.toString());
                     if (io1 == null) {
-                        let purl = new URL(this.url);
-                        throw new Error('No protocol handler for ' + purl.protocol);
+                        throw new Error('No protocol handler for ' + this.url);
                     }
                     this.client = new extend_1.RpcExtendClient1(new base_2.Client(io1));
                     await this.client.init();
                     return this.client;
                 }
-            }
-            finally {
-                await this.connecting.unlock();
-            }
+            });
         }
         toJSON() {
             return { name: this.name, url: this.url };
@@ -498,9 +479,9 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
     }
     exports.__internal__ = {
         isPxseedWorker: false,
-        isServingRpcName: {}
+        isServingRpcName: {},
     };
-    async function getConnectionFromUrl(url) {
+    exports.getConnectionFromUrlHandler = new base_1.Ref2(async function (url) {
         let url2 = new URL(url);
         if (url2.protocol == 'pxpwebmessage:') {
             if (exports.__internal__.isPxseedWorker) {
@@ -579,6 +560,9 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
             }
         }
         return null;
+    });
+    async function getConnectionFromUrl(url) {
+        return exports.getConnectionFromUrlHandler.get()(url);
     }
     let registered = new Map();
     //Only get current cached registered client. Use "getPersistentRegistered" to get all possible registered client.

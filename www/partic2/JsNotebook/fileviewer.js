@@ -32,10 +32,10 @@ define("partic2/JsNotebook/fileviewer", ["require", "exports", "partic2/pCompone
             this.rref.inputArea.current.setPlainText(new TextDecoder().decode(data));
         }
         render(props, state, context) {
-            return React.createElement("div", { className: domui_1.css.flexColumn, style: { flexGrow: '1' }, onKeyDown: (ev) => this.onKeyDown(ev) },
-                React.createElement("div", null,
+            return React.createElement("div", { className: domui_1.css.flexColumn, style: { height: '100%' }, onKeyDown: (ev) => this.onKeyDown(ev) },
+                React.createElement("div", { style: { flexShrink: '0' } },
                     React.createElement("a", { onClick: () => this.doSave(), href: "javascript:;" }, "Save")),
-                React.createElement(texteditor_1.TextEditor, { ref: this.rref.inputArea, divClass: [domui_1.css.simpleCard] }));
+                React.createElement(texteditor_1.TextEditor, { divStyle: { minHeight: '0px', overflow: 'auto', flexShrink: '1' }, ref: this.rref.inputArea, divClass: [domui_1.css.simpleCard] }));
         }
     }
     class MediaFileViewer1 extends React.Component {

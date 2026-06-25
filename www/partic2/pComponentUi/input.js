@@ -48,10 +48,11 @@ define("partic2/pComponentUi/input", ["require", "exports", "./domui", "preact",
                 }
             });
             this.inputRef[name] = rref;
+            this.dispatchEvent(new Event('collection-change'));
             return rref;
         }
         async waitRefValid() {
-            await Promise.all(Object.values(this.inputRef).map(t1 => t1.waitValid));
+            await Promise.all(Object.values(this.inputRef).map(t1 => t1.waitValid()));
             return this;
         }
         getValue() {
@@ -74,6 +75,7 @@ define("partic2/pComponentUi/input", ["require", "exports", "./domui", "preact",
         }
         forwardChangeEvent(eventTarget) {
             this.addEventListener('change', () => eventTarget.dispatchEvent(new Event('change')));
+            this.addEventListener('collection-change', () => eventTarget.dispatchEvent(new Event('collection-change')));
             return this;
         }
     }
@@ -86,12 +88,19 @@ define("partic2/pComponentUi/input", ["require", "exports", "./domui", "preact",
             };
             this.valueCollection = new ReactInputValueCollection().forwardChangeEvent(this.eventTarget);
             this.__cachedValue = {};
+            this.__value = true;
             this.__valueApplied = true;
             this.eventTarget.addEventListener('change', this._onChangeListener);
+            this.eventTarget.addEventListener('collection-change', () => {
+                if (this.__valueApplied) {
+                    this.__valueApplied = false;
+                    requestAnimationFrame(() => this.applyValue());
+                }
+            });
         }
         render(props, state, context) {
-            //XXX: Is there any better place?
-            if (this.props.value != undefined) {
+            if (this.props.value != undefined && this.__cachedValue !== this.props.value) {
+                this.__cachedValue = this.props.value;
                 this.value = this.props.value;
             }
             return this.props.children?.(this);
@@ -105,16 +114,19 @@ define("partic2/pComponentUi/input", ["require", "exports", "./domui", "preact",
             }
             return this.__cachedValue;
         }
+        applyValue() {
+            if (!this.__valueApplied) {
+                this.valueCollection.setValue(this.__cachedValue);
+                this.__valueApplied = true;
+            }
+        }
         set value(val) {
-            this.__cachedValue = { ...val };
+            this.__cachedValue = val;
             if (this.__valueApplied) {
                 this.__valueApplied = false;
-                (async () => {
-                    await this.valueCollection.waitRefValid();
-                    this.valueCollection.setValue(this.__cachedValue);
-                    this.__valueApplied = true;
-                })();
+                requestAnimationFrame(() => this.applyValue());
             }
+            this.setState({});
         }
         addEventListener(type, cb) {
             this.eventTarget.addEventListener(type, cb);
@@ -130,6 +142,9 @@ define("partic2/pComponentUi/input", ["require", "exports", "./domui", "preact",
             ref2.forward([simpleReactFormVNode.ref]);
         simpleReactFormVNode.ref = ref2;
         let dlg = await (0, window_1.prompt)(simpleReactFormVNode, options?.title ?? 'prompt');
+        if (options?.dlg != undefined) {
+            options.dlg.setResult(dlg);
+        }
         if (options?.initialValue != undefined) {
             (await ref2.waitValid()).value = options.initialValue;
         }

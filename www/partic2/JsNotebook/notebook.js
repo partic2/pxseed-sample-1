@@ -152,6 +152,12 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             this.doLoad();
         }
         componentWillUnmount() {
+            if (this.codeContext != undefined) {
+                try {
+                    this.codeContext.event.removeEventListener(`${exports.__name__}.NotebookViewer`, this.__notebookViewerEventHandler);
+                }
+                catch (err) { }
+            }
         }
         async doLoad() {
             try {

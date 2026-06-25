@@ -262,12 +262,15 @@ define("partic2/nodehelper/tjsadapt", ["require", "exports", "partic2/jsutils1/b
                 this.options = options;
                 this.processResult = new base_1.future();
                 this.pid = -1;
-                if (typeof args === 'string') {
-                    args = [args];
+                if (typeof this.args === 'string') {
+                    this.args = [this.args];
                 }
+            }
+            async spawn() {
+                let args = this.args;
                 this.nodeProcess = child_process_1.default.spawn(args[0], args.slice(1), {
-                    stdio: [options?.stdin, options?.stdout, options?.stderr],
-                    cwd: options?.cwd, env: options?.env
+                    stdio: [this.options?.stdin, this.options?.stdout, this.options?.stderr],
+                    cwd: this.options?.cwd, env: this.options?.env
                 });
                 this.nodeProcess.on('error', (err) => {
                     this.processResult.setException(err);
@@ -309,8 +312,9 @@ define("partic2/nodehelper/tjsadapt", ["require", "exports", "partic2/jsutils1/b
                 return this.processResult.get();
             }
         }
-        function spawn(args, options) {
+        async function spawn(args, options) {
             let p = new Process(args, options);
+            await p.spawn();
             return p;
         }
         var dataDir = base_1.requirejs.getConfig().wwwroot;
@@ -421,10 +425,22 @@ define("partic2/nodehelper/tjsadapt", ["require", "exports", "partic2/jsutils1/b
             }
             ;
             async accept() {
-                let sock = await this.sockQueue.queueBlockShift();
-                return new NodeConnection(sock);
+                try {
+                    let sock = await this.sockQueue.queueBlockShift();
+                    return new NodeConnection(sock);
+                }
+                catch (err) {
+                    (0, base_1.throwIfAbortError)(err);
+                    if (err instanceof base_1.CanceledError) {
+                        throw new Error('closed');
+                    }
+                    else {
+                        throw err;
+                    }
+                }
             }
             close() {
+                this.sockQueue.cancelWaiting();
                 this.ssoc.close();
             }
             [Symbol.asyncIterator]() {

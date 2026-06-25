@@ -665,15 +665,13 @@ define("partic2/tjshelper/httpprot", ["require", "exports", "partic2/CodeRunner/
                     port: 0
                 };
                 let isSsl = false;
+                if (['https:', 'wss:'].includes(url.protocol)) {
+                    target.port = 443;
+                    isSsl = true;
+                    (0, base_1.assert)(this.makeSsl != null);
+                }
                 if (url.port === '') {
-                    if (['http:', 'ws:'].includes(url.protocol)) {
-                        target.port = 80;
-                    }
-                    else if (['https:', 'wss:'].includes(url.protocol)) {
-                        target.port = 443;
-                        isSsl = true;
-                        (0, base_1.assert)(this.makeSsl != null);
-                    }
+                    target.port = isSsl ? 443 : 80;
                 }
                 else {
                     target.port = Number.parseInt(url.port);

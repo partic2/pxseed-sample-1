@@ -1,7 +1,7 @@
 define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./domui", "./window", "partic2/jsutils1/base", "./window", "partic2/pxseedMedia1/index1", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2"], function (require, exports, React, domui_1, window_1, base_1, window_2, index1_1, webutils_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.openNewWindow = exports.openNewWindowPipeline = exports.WorkspaceWindowContext = exports.NewWindowHandleLists = void 0;
+    exports.defaultDialogBoxImplemention = exports.openNewWindow = exports.openNewWindowPipeline = exports.WorkspaceWindowContext = exports.NewWindowHandleLists = void 0;
     exports.setBaseWindowView = setBaseWindowView;
     exports.setOpenNewWindowImpl = setOpenNewWindowImpl;
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
@@ -26,15 +26,17 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
                     await closeFuture.get();
                 },
                 close: async function () {
-                    for (let t1 of this.children) {
-                        t1.close();
+                    if (!closeFuture.done) {
+                        for (let t1 of this.children) {
+                            t1.close();
+                        }
+                        let at = exports.NewWindowHandleLists.value.indexOf(handle);
+                        if (at >= 0)
+                            exports.NewWindowHandleLists.value.splice(at, 1);
+                        exports.NewWindowHandleLists.dispatchEvent(new Event('change'));
+                        (0, window_2.removeFloatWindow)(windowVNode);
+                        closeFuture.setResult(true);
                     }
-                    let at = exports.NewWindowHandleLists.value.indexOf(handle);
-                    if (at >= 0)
-                        exports.NewWindowHandleLists.value.splice(at, 1);
-                    exports.NewWindowHandleLists.dispatchEvent(new Event('change'));
-                    (0, window_2.removeFloatWindow)(windowVNode);
-                    closeFuture.setResult(true);
                 },
                 async activate() {
                     (await this.windowRef.waitValid()).activate();
@@ -151,15 +153,129 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
     exports.openNewWindow = openNewWindow;
     let baseWindowComponnet = null;
     let baseWindowRef = new domui_1.ReactRefEx();
+    const onRootWindowsListResize = () => {
+        if (baseWindowRef.current != null) {
+            baseWindowRef.current.setState({ layout: { left: 0, top: 0,
+                    width: window_1.rootWindowsList.current?.container?.current?.offsetWidth,
+                    height: window_1.rootWindowsList.current?.container?.current?.offsetHeight
+                } });
+        }
+    };
     function setBaseWindowView(vnode) {
+        (0, window_1.ensureRootWindowContainer)();
         if (baseWindowComponnet != null) {
             (0, window_2.removeFloatWindow)(baseWindowComponnet);
         }
         baseWindowComponnet = vnode;
-        (0, window_2.appendFloatWindow)(React.createElement(window_2.WindowComponent, { disableUserInputActivate: true, noTitleBar: true, noResizeHandle: true, windowDivClassName: window_1.css.borderlessWindowDiv, ref: baseWindowRef, initialLayout: { left: 0, top: 0, width: '100%', height: '100%' } }, vnode));
+        (0, window_2.appendFloatWindow)(React.createElement(window_2.WindowComponent, { disableUserInputActivate: true, borderless: true, ref: baseWindowRef, initialLayout: { left: 0, top: 0,
+                width: window_1.rootWindowsList.current?.container?.current?.offsetWidth,
+                height: window_1.rootWindowsList.current?.container?.current?.offsetHeight } }, vnode));
+        window_1.rootWindowsList.waitValid().then((wndList) => {
+            if (!wndList.onResize.has(onRootWindowsListResize)) {
+                wndList.onResize.add(onRootWindowsListResize);
+            }
+        });
         baseWindowRef.waitValid().then((wnd) => wnd.activate(1));
     }
     function setOpenNewWindowImpl(impl) {
         exports.openNewWindow = impl;
     }
+    let i18n = {
+        caution: '',
+        ok: '',
+        cancel: '',
+        dialogBox: ''
+    };
+    window_1.language.watch((r) => {
+        let lang = r.get();
+        if (lang === 'zh-CN') {
+            i18n.caution = '提醒';
+            i18n.ok = '确认';
+            i18n.cancel = '取消';
+            i18n.dialogBox = '对话框';
+        }
+        else {
+            i18n.caution = 'caution';
+            i18n.ok = 'ok';
+            i18n.cancel = 'cancel';
+            i18n.dialogBox = 'dialog box';
+        }
+    });
+    window_1.language.set(window_1.language.get());
+    let dialogContainer = null;
+    exports.NewWindowHandleLists.addEventListener('change', (ev) => {
+        if (dialogContainer != null) {
+            let hasDialog = exports.NewWindowHandleLists.value.some(t1 => t1.parentWindow == dialogContainer);
+            if (!hasDialog) {
+                dialogContainer.close();
+                dialogContainer = null;
+            }
+        }
+    });
+    exports.defaultDialogBoxImplemention = {
+        async alert(message, title) {
+            if (dialogContainer == null) {
+                dialogContainer = await (0, exports.openNewWindow)(React.createElement("div", null), { windowOptions: { borderless: true }, title: i18n.dialogBox });
+            }
+            let result = new base_1.future();
+            let newWnd = await (0, exports.openNewWindow)(React.createElement("div", { style: { minWidth: Math.min((window_1.rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
+                message,
+                React.createElement("div", { className: domui_1.css.flexRow },
+                    React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult('ok'), value: i18n.ok }))), { title: title ?? i18n.caution, parentWindow: dialogContainer });
+            newWnd.waitClose().then(() => result.setResult('closed'));
+            (await newWnd.windowRef.waitValid()).makeCenter();
+            let r = await result.get();
+            if (r == 'ok') {
+                newWnd.close();
+            }
+        },
+        async confirm(message, title) {
+            if (dialogContainer == null) {
+                dialogContainer = await (0, exports.openNewWindow)(React.createElement("div", null), { windowOptions: { borderless: true }, title: i18n.dialogBox });
+            }
+            let result = new base_1.future();
+            let newWnd = await (0, exports.openNewWindow)(React.createElement("div", { style: { minWidth: Math.min((window_1.rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
+                message,
+                React.createElement("div", { className: domui_1.css.flexRow },
+                    React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult('ok'), value: i18n.ok }),
+                    React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult('cancel'), value: i18n.cancel }))), { title: title ?? i18n.caution, parentWindow: dialogContainer });
+            newWnd.waitClose().then(() => result.setResult('closed'));
+            (await newWnd.windowRef.waitValid()).makeCenter();
+            let r = await result.get();
+            if (r == 'closed') {
+                r = 'cancel';
+            }
+            else {
+                newWnd.close();
+            }
+            return r;
+        },
+        async prompt(form, opt) {
+            if (dialogContainer == null) {
+                dialogContainer = await (0, exports.openNewWindow)(React.createElement("div", null), { windowOptions: { borderless: true }, title: i18n.dialogBox });
+            }
+            let result = new base_1.future();
+            if (typeof opt === 'string') {
+                opt = { title: opt };
+            }
+            let title = opt?.title;
+            let newWnd = await (0, exports.openNewWindow)(React.createElement("div", { className: domui_1.css.flexColumn },
+                form,
+                (opt.noButton !== true) ? React.createElement("div", { className: domui_1.css.flexRow },
+                    React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => {
+                            result.setResult('ok');
+                            opt?.onButtonClick?.('ok');
+                        }, value: i18n.ok }),
+                    React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => {
+                            result.setResult('cancel');
+                            opt?.onButtonClick?.('cancel');
+                        }, value: i18n.cancel })) : null), { title: title ?? i18n.caution, parentWindow: dialogContainer });
+            newWnd.waitClose().then(() => result.setResult('cancel'));
+            (await newWnd.windowRef.waitValid()).makeCenter();
+            return {
+                response: result,
+                close: () => newWnd.close()
+            };
+        }
+    };
 });
