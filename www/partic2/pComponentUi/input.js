@@ -116,7 +116,9 @@ define("partic2/pComponentUi/input", ["require", "exports", "./domui", "preact",
         }
         applyValue() {
             if (!this.__valueApplied) {
-                this.valueCollection.setValue(this.__cachedValue);
+                if (this.__cachedValue !== null && typeof this.__cachedValue === 'object') {
+                    this.valueCollection.setValue(this.__cachedValue);
+                }
                 this.__valueApplied = true;
             }
         }
