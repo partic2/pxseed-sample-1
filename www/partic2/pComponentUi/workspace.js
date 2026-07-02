@@ -27,15 +27,15 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
                 },
                 close: async function () {
                     if (!closeFuture.done) {
+                        closeFuture.setResult(true);
+                        (0, window_2.removeFloatWindow)(windowVNode);
+                        exports.NewWindowHandleLists.dispatchEvent(new Event('change'));
                         for (let t1 of this.children) {
                             t1.close();
                         }
                         let at = exports.NewWindowHandleLists.value.indexOf(handle);
                         if (at >= 0)
                             exports.NewWindowHandleLists.value.splice(at, 1);
-                        exports.NewWindowHandleLists.dispatchEvent(new Event('change'));
-                        (0, window_2.removeFloatWindow)(windowVNode);
-                        closeFuture.setResult(true);
                     }
                 },
                 async activate() {
@@ -218,7 +218,7 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
                 dialogContainer = await (0, exports.openNewWindow)(React.createElement("div", null), { windowOptions: { borderless: true }, title: i18n.dialogBox });
             }
             let result = new base_1.future();
-            let newWnd = await (0, exports.openNewWindow)(React.createElement("div", { style: { minWidth: Math.min((window_1.rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
+            let newWnd = await (0, exports.openNewWindow)(React.createElement("div", { style: { width: '100%', height: '100%', minWidth: Math.min((window_1.rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
                 message,
                 React.createElement("div", { className: domui_1.css.flexRow },
                     React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult('ok'), value: i18n.ok }))), { title: title ?? i18n.caution, parentWindow: dialogContainer });
@@ -234,7 +234,7 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
                 dialogContainer = await (0, exports.openNewWindow)(React.createElement("div", null), { windowOptions: { borderless: true }, title: i18n.dialogBox });
             }
             let result = new base_1.future();
-            let newWnd = await (0, exports.openNewWindow)(React.createElement("div", { style: { minWidth: Math.min((window_1.rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
+            let newWnd = await (0, exports.openNewWindow)(React.createElement("div", { style: { width: '100%', height: '100%', minWidth: Math.min((window_1.rootWindowsList.current?.container.current?.offsetWidth) ?? 0 - 10, 300), whiteSpace: 'pre-wrap' } },
                 message,
                 React.createElement("div", { className: domui_1.css.flexRow },
                     React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult('ok'), value: i18n.ok }),
@@ -259,7 +259,7 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
                 opt = { title: opt };
             }
             let title = opt?.title;
-            let newWnd = await (0, exports.openNewWindow)(React.createElement("div", { className: domui_1.css.flexColumn },
+            let newWnd = await (0, exports.openNewWindow)(React.createElement("div", { className: domui_1.css.flexColumn, style: { height: '100%', width: '100%' } },
                 form,
                 (opt.noButton !== true) ? React.createElement("div", { className: domui_1.css.flexRow },
                     React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => {
