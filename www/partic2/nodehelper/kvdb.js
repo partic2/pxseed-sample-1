@@ -1,12 +1,33 @@
 define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base", "pxprpc/base", "partic2/jsutils1/webutils", "partic2/tjshelper/tjsbuilder"], function (require, exports, base_1, base_2, webutils_1, tjsbuilder_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.MessagePortProxyKvDbV1 = exports.FsBasedKvDbV1 = void 0;
+    exports.MessagePortProxyKvDbV1 = exports.FsBasedKvDbV1 = exports.dbFileDir = void 0;
     exports.MessagePortProxyHandler = MessagePortProxyHandler;
     exports.setupImpl = setupImpl;
     var __name__ = base_1.requirejs.getLocalRequireModule(require);
     let log = base_1.logger.getLogger(__name__);
     let serializableObjectMagic = '__DUz66NYkWuMdex9k2mvwBbYN__';
+    let pathSep = (0, webutils_1.getWWWRoot)().includes('\\') ? '\\' : '/';
+    function pathJoin(...args) {
+        let parts = [];
+        for (let t1 of args) {
+            for (let t2 of t1.split(/[\/\\]/)) {
+                if (t2 === '..' && parts.length >= 1) {
+                    parts.pop();
+                }
+                else if (t2 === '.') {
+                    //skip
+                }
+                else {
+                    parts.push(t2);
+                }
+            }
+        }
+        return parts.join(pathSep);
+    }
+    //Where to store the kv db data. To run different process/instance on same PXSEED_HOME
+    //Must be set before any kvStore call
+    exports.dbFileDir = new base_1.Ref2(pathJoin((0, webutils_1.getWWWRoot)(), __name__, '..', 'data'));
     function serializableObject(obj) {
         Error.stackTraceLimit = 100;
         let extraSer = new Array();
@@ -74,6 +95,31 @@ define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base"
             await file1.close();
         }
     }
+    async function appendKvdbLogFile(logmessage) {
+        let tjs1 = await (0, tjsbuilder_1.buildTjs)();
+        await tjs1.makeDir(exports.dbFileDir.get(), { recursive: true });
+        let logFile;
+        let writeOffset = 0;
+        try {
+            let statResult = await tjs1.stat(pathJoin(exports.dbFileDir.get(), 'meta-log.txt'));
+            if (statResult.size > 32 * 1024) {
+                logFile = await tjs1.open(pathJoin(exports.dbFileDir.get(), 'meta-log.txt'), 'w');
+            }
+            else {
+                logFile = await tjs1.open(pathJoin(exports.dbFileDir.get(), 'meta-log.txt'), 'r+');
+                writeOffset = statResult.size;
+            }
+        }
+        catch (err) {
+            logFile = await tjs1.open(pathJoin(exports.dbFileDir.get(), 'meta-log.txt'), 'w');
+        }
+        try {
+            await logFile.write(new TextEncoder().encode((0, base_1.FormatDate)((0, base_1.GetCurrentTime)(), 'yyyy-MM-dd HH:mm:ss') + ':\n' + logmessage + '\n------------\n'), writeOffset);
+        }
+        finally {
+            await logFile.close();
+        }
+    }
     class FsBasedKvDbV1 {
         constructor() {
             this.baseDir = '';
@@ -82,16 +128,18 @@ define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base"
         }
         async readLatestConfig() {
             await this.mtx.exec(async () => {
+                let data = '';
                 try {
-                    let data = await this.tjs1.readFile(this.baseDir + '/config.json');
-                    this.config = JSON.parse(new TextDecoder().decode(data));
+                    data = new TextDecoder().decode(await this.tjs1.readFile(this.baseDir + '/config.json'));
+                    this.config = JSON.parse(data);
                     if (this.config?.version !== 1) {
                         log.warning('Invalid kvdb file, ignored.', this.baseDir + '/config.json');
                         this.config = { version: 1, time: (0, base_1.GetCurrentTime)().getTime(), fileList: {} };
                     }
                 }
                 catch (e) {
-                    this.config = { version: 1, fileList: {}, time: (0, base_1.GetCurrentTime)().getTime(), lastError: e.toString() + e.stack };
+                    appendKvdbLogFile(e.toString() + e.stack + '\nconfig file:' + data);
+                    this.config = { version: 1, fileList: {}, time: (0, base_1.GetCurrentTime)().getTime() };
                     await tjsWriteFile(this.baseDir + '/config.json', new TextEncoder().encode(JSON.stringify(this.config)));
                 }
             });
@@ -121,7 +169,12 @@ define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base"
             let r = await this.getItemRaw(key);
             if (r.length === 0)
                 return null;
-            return unserializableObject(r);
+            try {
+                return unserializableObject(r);
+            }
+            catch (e) {
+                appendKvdbLogFile(e.toString() + e.stack + '\nraw data:' + (0, base_1.ArrayBufferToBase64)(r));
+            }
         }
         async getItemRaw(key) {
             return this.mtx.exec(async () => {
@@ -134,7 +187,7 @@ define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base"
                 }
                 catch (e) {
                     delete this.config.fileList[key];
-                    this.config.lastError = e.toString() + e.stack;
+                    appendKvdbLogFile(e.toString() + e.stack);
                     await this.saveConfigToFile();
                     return new Uint8Array(0);
                 }
@@ -161,25 +214,6 @@ define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base"
         }
     }
     exports.FsBasedKvDbV1 = FsBasedKvDbV1;
-    let pathSep = (0, webutils_1.getWWWRoot)().includes('\\') ? '\\' : '/';
-    function pathJoin(...args) {
-        let parts = [];
-        for (let t1 of args) {
-            for (let t2 of t1.split(/[\/\\]/)) {
-                if (t2 === '..' && parts.length >= 1) {
-                    parts.pop();
-                }
-                else if (t2 === '.') {
-                    //skip
-                }
-                else {
-                    parts.push(t2);
-                }
-            }
-        }
-        return parts.join(pathSep);
-    }
-    let dbDir = pathJoin((0, webutils_1.getWWWRoot)(), __name__, '..');
     let kvStoreBackendMutex = new base_1.mutex();
     async function MessagePortProxyHandler(dbname, method, args) {
         return await (await (0, webutils_1.kvStore)(dbname))[method](...args);
@@ -226,13 +260,17 @@ define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base"
                 }
                 else {
                     let dbMap = {};
+                    let dbMapContent = '';
                     let filename = null;
                     let tjs1 = await (0, tjsbuilder_1.buildTjs)();
-                    await tjs1.makeDir(pathJoin(dbDir, 'data'), { recursive: true });
+                    await tjs1.makeDir(exports.dbFileDir.get(), { recursive: true });
                     try {
-                        dbMap = JSON.parse(new TextDecoder().decode(await tjs1.readFile(pathJoin(dbDir, 'data', 'meta-dbMap'))));
+                        let dbMapContent = new TextDecoder().decode(await tjs1.readFile(pathJoin(exports.dbFileDir.get(), 'meta-dbMap')));
+                        dbMap = JSON.parse(dbMapContent);
                     }
-                    catch (e) { }
+                    catch (e) {
+                        appendKvdbLogFile(e.toString() + e.stack + '\ndbMapContent:' + dbMapContent);
+                    }
                     ;
                     if (dbMap[dbname] != undefined) {
                         filename = dbMap[dbname];
@@ -240,12 +278,12 @@ define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base"
                     else {
                         filename = (0, base_1.GenerateRandomString)();
                         dbMap[dbname] = filename;
-                        await tjs1.makeDir(pathJoin(dbDir, 'data', filename), { recursive: true });
+                        await tjs1.makeDir(pathJoin(exports.dbFileDir.get(), filename), { recursive: true });
                     }
-                    await tjsWriteFile(pathJoin(dbDir, 'data', 'meta-dbMap'), new TextEncoder().encode(JSON.stringify(dbMap)));
+                    await tjsWriteFile(pathJoin(exports.dbFileDir.get(), 'meta-dbMap'), new TextEncoder().encode(JSON.stringify(dbMap)));
                     let db = new FsBasedKvDbV1();
-                    await tjs1.makeDir(pathJoin(dbDir, 'data', filename), { recursive: true });
-                    await db.init(pathJoin(dbDir, 'data', filename));
+                    await tjs1.makeDir(pathJoin(exports.dbFileDir.get(), filename), { recursive: true });
+                    await db.init(pathJoin(exports.dbFileDir.get(), filename));
                     return db;
                 }
             });

@@ -17,8 +17,8 @@ define("partic2/tjshelper/tjsbuilder", ["require", "exports"], function (require
         }
         if (builtTjs == null) {
             try {
-                let { getPersistentRegistered, ServerHostWorker1RpcName } = await new Promise((resolve_2, reject_2) => { require(['partic2/pxprpcClient/registry'], resolve_2, reject_2); });
-                let rpc = await getPersistentRegistered(ServerHostWorker1RpcName);
+                let { getPersistentRegistered, ServerHostRpcName } = await new Promise((resolve_2, reject_2) => { require(['partic2/pxprpcClient/registry'], resolve_2, reject_2); });
+                let rpc = await getPersistentRegistered(ServerHostRpcName);
                 if (rpc != null) {
                     let { tjsFrom } = await new Promise((resolve_3, reject_3) => { require(['./tjsonjserpc'], resolve_3, reject_3); });
                     let { Invoker } = await new Promise((resolve_4, reject_4) => { require(['partic2/pxprpcBinding/JseHelper__JseIo'], resolve_4, reject_4); });

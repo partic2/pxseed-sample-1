@@ -8,6 +8,7 @@ define("partic2/pComponentUi/texteditor", ["require", "exports", "partic2/jsutil
             this.rref = { div1: new domui_1.ReactRefEx() };
             this.undoHistory = [];
             this.undoHistoryCurrent = -1;
+            this.compositing = false;
         }
         pushHistory() {
             let currText = this.getPlainText();
@@ -51,14 +52,28 @@ define("partic2/pComponentUi/texteditor", ["require", "exports", "partic2/jsutil
             this.props.divAttr?.onInput?.(ev);
             if (ev.defaultPrevented)
                 return;
-            let ch = ev.data;
-            if (ev.inputType == 'insertParagraph' || (ev.inputType == 'insertText' && ch == null)) {
-                ch = '\n';
+            if (!this.compositing) {
+                let ch = ev.data;
+                if (ev.inputType == 'insertParagraph' || (ev.inputType == 'insertText' && ch == null)) {
+                    ch = '\n';
+                }
+                if (/[^0-9a-zA-Z]/.test(ch ?? '')) {
+                    this.pushHistory();
+                }
+                this.props.onInput?.(this, { char: ch, text: ev.dataTransfer?.getData('text/plain') ?? null, type: ev.inputType });
             }
-            if (/[^0-9a-zA-Z]/.test(ch ?? '')) {
-                this.pushHistory();
-            }
-            this.props.onInput?.(this, { char: ch, text: ev.dataTransfer?.getData('text/plain') ?? null, type: ev.inputType });
+        }
+        onCompositionStart(ev) {
+            this.props.divAttr?.onCompositionStart?.(ev);
+            if (ev.defaultPrevented)
+                return;
+            this.compositing = true;
+        }
+        onCompositionEnd(ev) {
+            this.props.divAttr?.onCompositionEnd?.(ev);
+            if (ev.defaultPrevented)
+                return;
+            this.compositing = false;
         }
         onPasteHandler(ev) {
             this.props.divAttr?.onPaste?.(ev);
@@ -86,6 +101,12 @@ define("partic2/pComponentUi/texteditor", ["require", "exports", "partic2/jsutil
                     this.textUndo();
                 }
             }
+        }
+        async componentDidMount() {
+            let div1 = await this.rref.div1.waitValid();
+            div1.addEventListener('compositionstart', (ev) => this.onCompositionStart(ev));
+            div1.addEventListener('compositionend', (ev) => this.onCompositionEnd(ev));
+            div1.addEventListener('compositionupdate', (ev) => this.props.divAttr?.onCompositionUpdate?.(ev));
         }
         render(props, state, context) {
             return React.createElement("div", { contentEditable: true, ref: this.rref.div1, style: { wordBreak: 'break-all', overflowWrap: 'word-break', whiteSpace: 'pre-wrap', position: 'relative', ...this.props.divStyle }, className: (this.props.divClass ?? []).join(' '), ...this.props.divAttr, onPaste: (ev) => { this.onPasteHandler(ev); }, onInput: (ev) => this.onInputHandler(ev), onBlur: (ev) => this.onBlurHandler(ev), onFocus: (ev) => this.onFocusHandler(ev), onKeyDown: (ev) => this.onKeyDownHandler(ev) });

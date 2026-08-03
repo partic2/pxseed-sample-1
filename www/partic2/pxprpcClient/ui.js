@@ -12,12 +12,12 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
             super(props, ctx);
             this.setState({ url: '', name: '', rpcChain: [] });
         }
-        setNewWebWorker() {
+        async setNewWebWorker() {
             let tname = this.state.name;
             if (tname === '') {
                 for (let t1 of base_1.ArrayWrap2.IntSequence(0, 10000)) {
                     tname = 'partic2/pxprpcClient/registry/worker/' + String(t1);
-                    if ((0, registry_1.getRegistered)(tname) == undefined) {
+                    if (await (0, registry_1.getRegistered)(tname) == undefined) {
                         break;
                     }
                 }
@@ -74,17 +74,18 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
                 let existed = await (0, registry_1.getPersistentRegistered)(t1[0]);
                 if (existed == null || t1[1].url.startsWith(`iooverpxprpc:${registry_1.ServerHostRpcName}`)) {
                     if (t1[1].url.startsWith('iooverpxprpc:')) {
-                        await (0, registry_1.addClient)(`iooverpxprpc:${registry_1.ServerHostRpcName}/${t1[1].url.substring('iooverpxprpc:'.length)}`);
+                        await (0, registry_1.addClient)({ url: `iooverpxprpc:${registry_1.ServerHostRpcName}/${t1[1].url.substring('iooverpxprpc:'.length)}`, persistent: true });
                     }
                     else {
-                        await (0, registry_1.addClient)(`iooverpxprpc:${registry_1.ServerHostRpcName}/${encodeURIComponent(t1[1].url)}`, t1[0]);
+                        await (0, registry_1.addClient)({ url: `iooverpxprpc:${registry_1.ServerHostRpcName}/${encodeURIComponent(t1[1].url)}`, name: t1[0], persistent: true });
                     }
                 }
             }
+            await (0, registry_1.persistentClientStore)('save');
         }
     }
     async function pushToServerHost() {
-        let rpc = (0, registry_1.getRegistered)(registry_1.ServerHostRpcName);
+        let rpc = await (0, registry_1.getRegistered)(registry_1.ServerHostRpcName);
         if (rpc != undefined && !await (0, registry_1.isServerHost)()) {
             let remoteClientList = new Map(await (0, registry_1.easyCallRemoteJsonFunction)(await rpc.ensureConnected(), webutils_1.path.join(__name__, '..', 'registry'), 'listPersistentRegistered', []));
             let toRemove = new Array();
@@ -100,21 +101,22 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
                         restRpcPath = decodeURIComponent(restRpcPath);
                     }
                     if (remoteClientList.get(t1[0])?.url != restRpcPath) {
-                        toAdd.push([restRpcPath, t1[0]]);
+                        toAdd.push({ ...t1[1], url: restRpcPath });
                     }
                 }
             }
             for (let t1 of remoteClientList.keys()) {
-                if ((0, registry_1.getRegistered)(t1) == undefined) {
+                if (await (0, registry_1.getRegistered)(t1) == undefined) {
                     toRemove.push(t1);
                 }
             }
             for (let t1 of toAdd) {
-                await (0, registry_1.easyCallRemoteJsonFunction)(await rpc.ensureConnected(), webutils_1.path.join(__name__, '..', 'registry'), 'addClient', t1);
+                await (0, registry_1.easyCallRemoteJsonFunction)(await rpc.ensureConnected(), webutils_1.path.join(__name__, '..', 'registry'), 'addClient', [t1]);
             }
             for (let t1 of toRemove) {
                 await (0, registry_1.easyCallRemoteJsonFunction)(await rpc.ensureConnected(), webutils_1.path.join(__name__, '..', 'registry'), 'removeClient', [t1]);
             }
+            await (0, registry_1.easyCallRemoteJsonFunction)(await rpc.ensureConnected(), webutils_1.path.join(__name__, '..', 'registry'), 'persistentClientStore', ['save']);
         }
     }
     class RegistryUI extends React.Component {
@@ -130,7 +132,8 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
                 }
             }
             let r = await this._getRegistyModule();
-            this.setState({ clients: await r.listPersistentRegistered() }, () => {
+            let clients = await r.listPersistentRegistered();
+            this.setState({ clients: clients }, () => {
                 let div = this.rref.div.current;
                 div?.dispatchEvent(new Event(domui_1.event.layout, { bubbles: true }));
             });
@@ -152,9 +155,10 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
             let dlg = await (0, window_1.prompt)(React.createElement(AddCard, { ref: addCard }), 'New rpc client');
             (await addCard.waitValid()).setAddClientInfo({ name: 'user.', url: '' });
             if (await dlg.response.get() === 'ok') {
-                let { url, name } = (await addCard.waitValid()).getAddClientInfo();
+                let clientInfo = (await addCard.waitValid()).getAddClientInfo();
                 let r = await this._getRegistyModule();
-                await r.addClient(url, name);
+                await r.addClient({ ...clientInfo, persistent: true });
+                await r.persistentClientStore('save');
             }
             dlg.close();
             await this.doLoadConfig();
@@ -168,10 +172,11 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
                 url: this.state.clients.find(t1 => t1[0] == selected)[1].url
             });
             if (await dlg.response.get() === 'ok') {
-                let { url, name } = (await addCard.waitValid()).getAddClientInfo();
+                let clientInfo = (await addCard.waitValid()).getAddClientInfo();
                 let r = await this._getRegistyModule();
                 await r.removeClient(selected);
-                await r.addClient(url, name);
+                await r.addClient({ ...clientInfo, persistent: true });
+                await r.persistentClientStore('save');
             }
             dlg.close();
             await this.doLoadConfig();
@@ -179,13 +184,14 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
         async doRemove() {
             let r = await this._getRegistyModule();
             await r.removeClient(this.state.selected);
+            await r.persistentClientStore('save');
             await this.doLoadConfig();
         }
         async doSelect(selected) {
             this.setState({ selected });
         }
         async doDisconnect() {
-            let conn = (0, registry_1.getRegistered)(this.state.selected);
+            let conn = await (0, registry_1.getRegistered)(this.state.selected);
             await conn.disconnect();
             await this.doLoadConfig();
         }
@@ -200,7 +206,7 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
             }
         }
         async doConnect() {
-            let conn = (0, registry_1.getRegistered)(this.state.selected);
+            let conn = await (0, registry_1.getRegistered)(this.state.selected);
             try {
                 await conn.ensureConnected();
             }
@@ -222,16 +228,16 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
         }
         render(props, state, context) {
             let btns = [];
-            let sel2 = (0, registry_1.getRegistered)(this.state.selected ?? '');
-            if (sel2) {
-                if (this.props.rpc == undefined) {
-                    if (sel2.connected()) {
-                        btns.push({ label: 'Disconnect', handler: () => this.doDisconnect() });
-                    }
-                    else {
-                        btns.push({ label: 'Connect', handler: () => this.doConnect() });
-                    }
+            let selectedClient = this.state.clients?.find(t1 => t1[0] == this.state.selected)?.at(1);
+            if (selectedClient instanceof registry_1.ClientInfo) {
+                if (selectedClient.connected()) {
+                    btns.push({ label: 'Disconnect', handler: () => this.doDisconnect() });
                 }
+                else {
+                    btns.push({ label: 'Connect', handler: () => this.doConnect() });
+                }
+            }
+            if (selectedClient != undefined) {
                 btns.push({ label: 'Edit/Copy', handler: () => this.doEdit() });
                 btns.push({ label: 'Remove', handler: () => this.doRemove() });
             }
@@ -256,7 +262,9 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
                         React.createElement("hr", null),
                         React.createElement("div", null, ent[1].url.toString()),
                         React.createElement("hr", null),
-                        this.props.rpc == undefined ? React.createElement("div", null, ent[1].connected() ? 'connected' : 'disconnected') : '');
+                        React.createElement("div", { style: { display: 'flex', flexDirection: 'row' } },
+                            (ent[1] instanceof registry_1.ClientInfo) ? React.createElement("div", { style: { flex: '1' } }, ent[1].connected() ? 'connected' : 'disconnected') : '',
+                            ent[1].persistent ? React.createElement("div", { style: { flex: '1' } }, "persistent") : ''));
                 }),
                 React.createElement("hr", null),
                 this.props.rpc == undefined ? React.createElement("div", { style: { wordBreak: 'break-all' } },

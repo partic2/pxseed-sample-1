@@ -256,7 +256,7 @@ define("partic2/JsNotebook/tjseasyapi", ["require", "exports", "partic2/CodeRunn
             }
         },
         async connectPxprpc(url) {
-            let conn = await (0, registry_1.getConnectionFromUrl)(url);
+            let conn = await (0, registry_1.openConnectionFromUrl)(url);
             (0, base_1.assert)(conn != null);
             let rpc1 = await new extend_1.RpcExtendClient1(new base_3.Client(conn)).init();
             let { tjsFrom } = await new Promise((resolve_1, reject_1) => { require(['partic2/tjshelper/tjsonjserpc'], resolve_1, reject_1); });

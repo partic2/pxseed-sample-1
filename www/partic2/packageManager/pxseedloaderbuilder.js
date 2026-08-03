@@ -23,11 +23,11 @@ define("partic2/packageManager/pxseedloaderbuilder", ["require", "exports", "par
         { path: ['www', 'pxseedServer2023'], filter: onlyJsCssBuildInfoFilesFilter },
         { path: ['www', 'pxprpc'], filter: onlyJsCssBuildInfoFilesFilter },
         { path: ['www', 'partic2', 'CodeRunner'], filter: onlyJsCssBuildInfoFilesFilter },
-        { path: ['www', 'partic2', 'JsNotebook'], filter: onlyJsCssBuildInfoFilesFilter },
+        { path: ['www', 'partic2', 'JsNotebook'], filter: (p) => onlyJsCssBuildInfoFilesFilter(p) && !p.startsWith('__temp/') },
         { path: ['www', 'partic2', 'jsutils1'], filter: onlyJsCssBuildInfoFilesFilter },
-        { path: ['www', 'partic2', 'nodehelper'], filter: onlyJsCssBuildInfoFilesFilter },
+        { path: ['www', 'partic2', 'nodehelper'], filter: (p) => onlyJsCssBuildInfoFilesFilter(p) && !p.startsWith('__temp/') },
         { path: ['www', 'partic2', 'pComponentUi'], filter: onlyJsCssBuildInfoFilesFilter },
-        { path: ['www', 'partic2', 'packageManager'], filter: onlyJsCssBuildInfoFilesFilter },
+        { path: ['www', 'partic2', 'packageManager'], filter: (p) => onlyJsCssBuildInfoFilesFilter(p) && !p.startsWith('__temp/') && p != 'typescript4tjs.js' },
         { path: ['www', 'partic2', 'pxprpcBinding'], filter: onlyJsCssBuildInfoFilesFilter },
         { path: ['www', 'partic2', 'pxprpcClient'], filter: onlyJsCssBuildInfoFilesFilter },
         { path: ['www', 'partic2', 'pxseedMedia1'] },
@@ -290,7 +290,8 @@ define("partic2/packageManager/pxseedloaderbuilder", ["require", "exports", "par
                 await this.copyFilesNewer(destPath, sourcePath, (path) => {
                     if (filter == undefined)
                         return false;
-                    return !filter(path);
+                    let relpath = path.substring(sourcePath.length + 1).replace(/\\/g, '/');
+                    return !filter(relpath);
                 });
             }
         }

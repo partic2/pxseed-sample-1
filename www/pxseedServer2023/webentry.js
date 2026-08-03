@@ -17,14 +17,14 @@ define("pxseedServer2023/webentry", ["require", "exports", "partic2/jsutils1/bas
         return { pxseedBaseUrl, pxprpcUrl, wsPipeUrl };
     }
     async function updatePxseedServerConfig(pxprpcKey) {
-        await registry_1.persistent.load();
+        (0, registry_1.persistentClientStore)('load');
         if (pxprpcKey === undefined) {
             pxprpcKey = (0, webutils_1.GetUrlQueryVariable)('__pxprpcKey');
         }
         let config1 = (await (0, webutils_1.GetPersistentConfig)(exports.__name__));
         config1.pxprpcKey = pxprpcKey;
         await (0, webutils_1.SavePersistentConfig)(exports.__name__, config1);
-        if ((0, registry_1.getRegistered)(registry_1.ServerHostRpcName) != null) {
+        if (await (0, registry_1.getRegistered)(registry_1.ServerHostRpcName) != null) {
             await (0, registry_1.removeClient)(registry_1.ServerHostRpcName);
         }
         let { pxprpcUrl } = await getPxseedUrl();
@@ -35,7 +35,8 @@ define("pxseedServer2023/webentry", ["require", "exports", "partic2/jsutils1/bas
         try {
             wstest = await new backend_1.WebSocketIo().connect(pxprpcUrl);
             wstest.close();
-            await (0, registry_1.addClient)(pxprpcUrl, registry_1.ServerHostRpcName);
+            await (0, registry_1.addClient)({ url: pxprpcUrl, name: registry_1.ServerHostRpcName, persistent: true });
+            await (0, registry_1.persistentClientStore)('save');
         }
         catch (e) { }
     }

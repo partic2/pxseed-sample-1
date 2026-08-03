@@ -70,7 +70,7 @@ define("partic2/packageManager/modtools", ["require", "exports", "partic2/pxprpc
     exports.CHotModuleReload = CHotModuleReload;
     exports.HotModuleReload = new CHotModuleReload();
     async function getConnectedPxseedWebuiRpcClientFromServerHostUrl(serverHostUrl, index) {
-        let conn = await (0, registry_1.getConnectionFromUrl)(serverHostUrl);
+        let conn = await (0, registry_1.openConnectionFromUrl)(serverHostUrl);
         (0, base_1.assert)(conn != null);
         let prefix = `/pxprpc/pxseed_webui/partic2.packageManager.webui/`;
         let client = await new extend_1.RpcExtendClient1(new base_2.Client(conn)).init();

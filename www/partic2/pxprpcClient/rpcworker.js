@@ -1,4 +1,4 @@
-define("partic2/pxprpcClient/rpcworker", ["require", "exports", "pxprpc/backend", "pxprpc/base", "pxprpc/extend", "partic2/jsutils1/base", "../jsutils1/webutils"], function (require, exports, backend_1, base_1, extend_1, base_2, webutils_1) {
+define("partic2/pxprpcClient/rpcworker", ["require", "exports", "pxprpc/backend", "pxprpc/base", "pxprpc/extend", "partic2/jsutils1/base", "partic2/jsutils1/webutils"], function (require, exports, backend_1, base_1, extend_1, base_2, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__internal__ = exports.rpcId = void 0;
@@ -52,6 +52,7 @@ define("partic2/pxprpcClient/rpcworker", ["require", "exports", "pxprpc/backend"
     let servingConn = new Set();
     exports.__internal__ = {
         savedAsBootModules,
+        isPxseedWorker: false,
         rpcServer: new backend_1.WebMessage.Server((conn) => {
             servingConn.add(conn);
             new extend_1.RpcExtendServer1(new base_1.Server(conn)).serve()
@@ -69,14 +70,13 @@ define("partic2/pxprpcClient/rpcworker", ["require", "exports", "pxprpc/backend"
     async function __internalInitRpcWorker(workerInitModule, workerParentRpcIdIn) {
         if (workerParentRpcIdIn != undefined) {
             workerParentRpcId = workerParentRpcIdIn;
-            let { __internal__ } = await new Promise((resolve_1, reject_1) => { require(['./registry'], resolve_1, reject_1); });
-            __internal__.isPxseedWorker = true;
+            exports.__internal__.isPxseedWorker = true;
         }
         if (!rpcWorkerInited) {
             rpcWorkerInited = true;
             webutils_1.lifecycle.addEventListener('exit', () => servingConn.forEach((io) => io.close()));
-            await Promise.allSettled(workerInitModule.map(v => new Promise((resolve_2, reject_2) => { require([v], resolve_2, reject_2); })));
-            let { rpcWorkerInitModule } = await new Promise((resolve_3, reject_3) => { require(['./registry'], resolve_3, reject_3); });
+            await Promise.allSettled(workerInitModule.map(v => new Promise((resolve_1, reject_1) => { require([v], resolve_1, reject_1); })));
+            let { rpcWorkerInitModule } = await new Promise((resolve_2, reject_2) => { require(['./registry'], resolve_2, reject_2); });
             rpcWorkerInitModule.push(...workerInitModule);
             await savedAsBootModules();
         }

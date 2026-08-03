@@ -31,8 +31,8 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
     exports.blockStaticFileAccessIf = new Map();
     exports.blockStaticFileAccessIf.set(exports.__name__ + '.keepPxprpcKeySecret', async (path) => /^\/+www\/+pxseedServer2023\/+config\.json$/.test(path));
     async function setupServerPxprpcClient() {
-        await (0, registry_1.addClient)('pxseedjs:' + exports.__name__ + '.getConnectionForServerHost', registry_1.ServerHostRpcName);
-        await (0, registry_1.addClient)('webworker:partic2/pxprpcClient/registry/worker/1', registry_1.ServerHostWorker1RpcName);
+        await (0, registry_1.addClient)({ url: 'pxseedjs:' + exports.__name__ + '.getConnectionForServerHost', name: registry_1.ServerHostRpcName });
+        await (0, registry_1.addClient)({ url: 'webworker:partic2/pxprpcClient/registry/worker/1', name: registry_1.ServerHostWorker1RpcName });
     }
     async function loadConfig() {
         await setupServerPxprpcClient();
@@ -122,7 +122,8 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
     async function setupHttpServerHandler() {
         let serverworker1 = await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName);
         if (serverworker1 == null) {
-            serverworker1 = await (0, registry_1.addClient)('webworker:' + registry_1.ServerHostWorker1RpcName);
+            await (0, registry_1.addClient)({ url: 'webworker:' + registry_1.ServerHostWorker1RpcName, name: registry_1.ServerHostWorker1RpcName, persistent: true });
+            serverworker1 = await (0, registry_1.getRegistered)(registry_1.ServerHostWorker1RpcName);
         }
         exports.defaultRouter.setHandler(exports.config.pxseedBase + '/pxprpc/0', { websocket: pxprpcHandler });
         exports.defaultRouter.setHandler(exports.config.pxseedBase + '/ws/pipe', { websocket: wsPipeHandler });

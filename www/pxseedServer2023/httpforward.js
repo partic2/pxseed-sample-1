@@ -3,7 +3,9 @@ define("pxseedServer2023/httpforward", ["require", "exports", "partic2/jsutils1/
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.HttpRequestForwardOnRpc = void 0;
     exports.__serverHostForwardHttpRequestToRpcWorker = __serverHostForwardHttpRequestToRpcWorker;
+    exports.__serverHostForwardHttpRequestToNewUrl = __serverHostForwardHttpRequestToNewUrl;
     exports.forwardHttpRequestToRpcWorker = forwardHttpRequestToRpcWorker;
+    exports.forwardHttpRequestToNewUrl = forwardHttpRequestToNewUrl;
     exports.getServerHostHttpRequestHandler = getServerHostHttpRequestHandler;
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
     class HttpSession {
@@ -109,7 +111,7 @@ define("pxseedServer2023/httpforward", ["require", "exports", "partic2/jsutils1/
             return (0, jsutils2_1.utf8conv)(JSON.stringify({ websocketAccepted: session.websocketAccepted }));
         }
         else {
-            throw new Error('Unknown protocol:' + session);
+            throw new Error('Unknown protocol:' + session.protocol);
         }
     }).typedecl('o->b');
     extend_1.defaultFuncMap[__name__ + '.readHttpResponseBody'] = new extend_1.RpcExtendServerCallable(async (session) => {
@@ -166,6 +168,10 @@ define("pxseedServer2023/httpforward", ["require", "exports", "partic2/jsutils1/
                 let resp2 = new httpprot_1.ExtendHttpResponse(new ReadableStream({
                     pull: async (controller) => {
                         abortCtl.signal.throwIfAborted();
+                        if (httpSession.value == undefined) {
+                            controller.close();
+                            return;
+                        }
                         let chunk = await readHttpResponseBody.call(httpSession);
                         if (chunk.length > 0) {
                             controller.enqueue(chunk);
@@ -226,9 +232,34 @@ define("pxseedServer2023/httpforward", ["require", "exports", "partic2/jsutils1/
             pxseedhttpserver_1.defaultRouter.setHandler(prefix, new HttpRequestForwardOnRpc(await (await (0, registry_1.getPersistentRegistered)(rpc)).ensureConnected()));
         }
     }
+    async function __serverHostForwardHttpRequestToNewUrl(prefix, newprefix) {
+        (0, base_1.assert)(prefix != newprefix);
+        pxseedhttpserver_1.defaultRouter.setHandler(prefix, {
+            fetch: async (req) => {
+                let url2 = new URL(req.url);
+                url2.pathname = newprefix + url2.pathname.substring(prefix.length);
+                let req2 = new Request(url2.toString(), {
+                    method: req.method, headers: req.headers, body: req.body, duplex: 'half'
+                });
+                return pxseedhttpserver_1.defaultRouter.onfetch(req2);
+            },
+            websocket: async (ws) => {
+                let url2 = new URL(ws.request.url);
+                url2.pathname = newprefix + url2.pathname.substring(prefix.length);
+                let req2 = new Request(url2.toString(), {
+                    method: ws.request.method, headers: ws.request.headers, body: ws.request.body, duplex: 'half'
+                });
+                return pxseedhttpserver_1.defaultRouter.onwebsocket({ request: req2, accept: (...args) => ws.accept(...args) });
+            }
+        });
+    }
     async function forwardHttpRequestToRpcWorker(prefix, rpc) {
         let httpforward = await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName)).ensureConnected(), __name__);
         httpforward.__serverHostForwardHttpRequestToRpcWorker(prefix, rpc);
+    }
+    async function forwardHttpRequestToNewUrl(prefix, newprefix) {
+        let httpforward = await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName)).ensureConnected(), __name__);
+        httpforward.__serverHostForwardHttpRequestToNewUrl(prefix, newprefix);
     }
     let serverHostHttpRequestHandler = null;
     async function getServerHostHttpRequestHandler() {

@@ -240,14 +240,14 @@ define("partic2/jsutils1/webutilssw", ["require", "exports", "./base", "./webuti
         disable: async function () {
             await unregisterServiceWorkerStartupModule(__name__);
         },
-        ensurePersitentConfigLoaded: async function () {
+        ensurePersistentConfigLoaded: async function () {
             config = await (0, webutils_1.GetPersistentConfig)(__name__);
         },
         //The service worker config must reload manually after modified(ie:setCachePolicy)
         async reloadConfig() {
             if ('__pxseedInit' in globalThis && __pxseedInit.env == 'service worker') {
                 if (exports.usingSimpleGETCacheFetchHandler != null) {
-                    await this.ensurePersitentConfigLoaded();
+                    await this.ensurePersistentConfigLoaded();
                     await exports.usingSimpleGETCacheFetchHandler.initWithConfig();
                 }
             }
@@ -258,7 +258,7 @@ define("partic2/jsutils1/webutilssw", ["require", "exports", "./base", "./webuti
         },
         //path is relative the wwwroot
         setCachePolicy: async function (path, policy) {
-            this.ensurePersitentConfigLoaded();
+            this.ensurePersistentConfigLoaded();
             if (config.simpleGETCache == undefined) {
                 config.simpleGETCache = [];
             }
@@ -274,7 +274,7 @@ define("partic2/jsutils1/webutilssw", ["require", "exports", "./base", "./webuti
             (0, webutils_1.SavePersistentConfig)(__name__, config);
         },
         getAllCachePolicy: async function () {
-            await this.ensurePersitentConfigLoaded();
+            await this.ensurePersistentConfigLoaded();
             return config.simpleGETCache ?? [];
         },
         clearCache: async function () {

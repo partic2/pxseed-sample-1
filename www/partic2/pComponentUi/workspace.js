@@ -1,7 +1,7 @@
 define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./domui", "./window", "partic2/jsutils1/base", "./window", "partic2/pxseedMedia1/index1", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2"], function (require, exports, React, domui_1, window_1, base_1, window_2, index1_1, webutils_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.defaultDialogBoxImplemention = exports.openNewWindow = exports.openNewWindowPipeline = exports.WorkspaceWindowContext = exports.NewWindowHandleLists = void 0;
+    exports.defaultDialogBoxImplemention = exports.openNewWindow = exports.openNewWindowPipeline = exports.WorkspaceWindowComponent = exports.WorkspaceWindowUtils = exports.DefaultWorkspaceWindowComponent = exports.WorkspaceWindowContext = exports.NewWindowHandleLists = void 0;
     exports.setBaseWindowView = setBaseWindowView;
     exports.setOpenNewWindowImpl = setOpenNewWindowImpl;
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
@@ -14,6 +14,79 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
     exports.NewWindowHandleLists = new CNewWindowHandleLists();
     let config1 = {};
     exports.WorkspaceWindowContext = React.createContext({});
+    class DefaultWorkspaceWindowComponent extends window_2.WindowComponent {
+        constructor() {
+            super(...arguments);
+            this.beforeMaximizeSize = null;
+            this.__onAnyUserLayout = () => { this.beforeMaximizeSize = null; };
+        }
+        async onMaximizeClick() {
+            await this.setMaximized(!this.getMaximized());
+        }
+        getMaximized() {
+            return this.beforeMaximizeSize != null;
+        }
+        componentDidMount() {
+            super.componentDidMount();
+            this.addEventListener('user-move', this.__onAnyUserLayout);
+            this.addEventListener('user-resize', this.__onAnyUserLayout);
+        }
+        componentWillUnmount() {
+            this.removeEventListener('user-move', this.__onAnyUserLayout);
+            this.removeEventListener('user-resize', this.__onAnyUserLayout);
+            super.componentWillUnmount();
+        }
+        async setMaximized(maximized) {
+            if (maximized) {
+                this.beforeMaximizeSize = { ...this.state.layout };
+                let containerDiv = await this.rref.container.waitValid();
+                this.setState({ layout: { left: 0, top: 0,
+                        width: containerDiv.offsetParent.offsetWidth,
+                        height: containerDiv.offsetParent.offsetHeight } }, () => this.dispatchEvent(new Event('move')));
+            }
+            else {
+                if (this.beforeMaximizeSize != null) {
+                    this.setState({ layout: { ...this.beforeMaximizeSize } }, () => this.dispatchEvent(new Event('move')));
+                }
+                this.beforeMaximizeSize = null;
+            }
+        }
+        renderTitleIcons() {
+            return [
+                ...(this.state.titleBarButton ?? []).map(t1 => this.renderIcon(t1.icon, t1.onClick)),
+                this.renderIcon((0, index1_1.getIconUrl)('maximize-2.svg'), () => this.onMaximizeClick()),
+                this.renderIcon(this.props.closeIcon, () => this.onCloseClick())
+            ];
+        }
+    }
+    exports.DefaultWorkspaceWindowComponent = DefaultWorkspaceWindowComponent;
+    exports.WorkspaceWindowUtils = {
+        async centerWindow(windowComponent) {
+            if (windowComponent.props.windowsList?.container.current != null) {
+                for (let t1 = 0; t1 < 40; t1++) {
+                    let wndWidth = (windowComponent.props.windowsList.container.current.offsetWidth) ?? 0;
+                    let wndHeight = (windowComponent.props.windowsList.container.current.offsetHeight) ?? 0;
+                    let width = windowComponent.rref.container.current?.offsetWidth ?? 0;
+                    let height = windowComponent.rref.container.current?.offsetHeight ?? 0;
+                    if (width > wndWidth - 5)
+                        width = wndWidth - 5;
+                    if (height > wndHeight - 5)
+                        height = wndHeight - 5;
+                    let left = (wndWidth - width) >> 1;
+                    let top = (wndHeight - height) >> 1;
+                    if (left != windowComponent.state.layout.left || top != windowComponent.state.layout.top) {
+                        await new Promise((resolve) => {
+                            windowComponent.setState({ layout: { ...windowComponent.state.layout, left: left, top: top } }, () => resolve(null));
+                        });
+                    }
+                    if (!windowComponent.sizeMeasuring.get())
+                        break;
+                    await (0, base_1.sleep)(25);
+                }
+            }
+        }
+    };
+    exports.WorkspaceWindowComponent = DefaultWorkspaceWindowComponent;
     exports.openNewWindowPipeline = new jsutils2_1.ArrayWrap3();
     exports.openNewWindowPipeline.arr().push({ name: __name__ + '.openNewWindowCreateWindow', handler: async (context) => {
             let options = context.request;
@@ -61,7 +134,7 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
                 windowRef, windowVNode: null,
                 children: new Set()
             };
-            let WindowComponentClass = options.WindowComponentClass ?? window_2.WindowComponent;
+            let WindowComponentClass = options.WindowComponentClass ?? exports.WorkspaceWindowComponent;
             let windowVNode = React.createElement(WindowComponentClass, { ref: windowRef, onClose: async () => {
                     handle.close();
                 }, onComponentDidUpdate: () => {
@@ -223,7 +296,7 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
                 React.createElement("div", { className: domui_1.css.flexRow },
                     React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult('ok'), value: i18n.ok }))), { title: title ?? i18n.caution, parentWindow: dialogContainer });
             newWnd.waitClose().then(() => result.setResult('closed'));
-            (await newWnd.windowRef.waitValid()).makeCenter();
+            exports.WorkspaceWindowUtils.centerWindow(await newWnd.windowRef.waitValid());
             let r = await result.get();
             if (r == 'ok') {
                 newWnd.close();
@@ -240,7 +313,7 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
                     React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult('ok'), value: i18n.ok }),
                     React.createElement("input", { type: 'button', style: { flexGrow: '1' }, onClick: () => result.setResult('cancel'), value: i18n.cancel }))), { title: title ?? i18n.caution, parentWindow: dialogContainer });
             newWnd.waitClose().then(() => result.setResult('closed'));
-            (await newWnd.windowRef.waitValid()).makeCenter();
+            exports.WorkspaceWindowUtils.centerWindow(await newWnd.windowRef.waitValid());
             let r = await result.get();
             if (r == 'closed') {
                 r = 'cancel';
@@ -258,7 +331,10 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
             if (typeof opt === 'string') {
                 opt = { title: opt };
             }
-            let title = opt?.title;
+            if (opt == undefined) {
+                opt = {};
+            }
+            let title = opt.title;
             let newWnd = await (0, exports.openNewWindow)(React.createElement("div", { className: domui_1.css.flexColumn, style: { height: '100%', width: '100%' } },
                 form,
                 (opt.noButton !== true) ? React.createElement("div", { className: domui_1.css.flexRow },
@@ -271,7 +347,7 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
                             opt?.onButtonClick?.('cancel');
                         }, value: i18n.cancel })) : null), { title: title ?? i18n.caution, parentWindow: dialogContainer });
             newWnd.waitClose().then(() => result.setResult('cancel'));
-            (await newWnd.windowRef.waitValid()).makeCenter();
+            exports.WorkspaceWindowUtils.centerWindow(await newWnd.windowRef.waitValid());
             return {
                 response: result,
                 close: () => newWnd.close()

@@ -40,8 +40,7 @@ define("partic2/JsNotebook/index", ["require", "exports", "partic2/jsutils1/webu
         if ((0, webutils_1.GetJsEntry)() == exports.__name__) {
             (0, webutils_1.useDeviceWidth)();
             webutils_1.DynamicPageCSSManager.PutCss('body', ['margin:0px']);
-            let rpc = (0, webutils_1.GetUrlQueryVariable)('__rpc');
-            await registry_1.persistent.load();
+            await (0, registry_1.persistentClientStore)('load');
             (0, workspace_1.setBaseWindowView)(React.createElement(MainView, null));
         }
     })();

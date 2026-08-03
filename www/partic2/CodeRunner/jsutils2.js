@@ -1,14 +1,15 @@
 define("partic2/CodeRunner/jsutils2", ["require", "exports", "partic2/jsutils1/base"], function (require, exports, base_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.OnConsoleData = exports.CFuncCallProbe = exports.ArrayWrap3 = exports.ThrottleCall = exports.DebounceCall = exports.Singleton = exports.ExtendStreamReader = exports.TaskLocalRef = void 0;
+    exports.EventBuffer = exports.OnConsoleData = exports.CFunctionHook = exports.ArrayWrap3 = exports.ThrottleCall = exports.DebounceCall = exports.Singleton = exports.ExtendStreamReader = exports.TaskLocalRef = void 0;
     exports.utf8conv = utf8conv;
     exports.u8hexconv = u8hexconv;
     exports.FlattenArray = FlattenArray;
     exports.FlattenArraySync = FlattenArraySync;
     exports.deepEqual = deepEqual;
     exports.setupAsyncHook = setupAsyncHook;
-    exports.ensureFunctionProbe = ensureFunctionProbe;
+    exports.ensureFunctionHookSetup = ensureFunctionHookSetup;
+    exports.newEventBuffer = newEventBuffer;
     Object.defineProperty(exports, "TaskLocalRef", { enumerable: true, get: function () { return base_1.TaskLocalRef; } });
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
     let utf8decoder = new TextDecoder();
@@ -465,55 +466,93 @@ define("partic2/CodeRunner/jsutils2", ["require", "exports", "partic2/jsutils1/b
         }
     }
     exports.ArrayWrap3 = ArrayWrap3;
-    class CFuncCallProbe {
+    class CFunctionHook {
         constructor(originalFunction) {
             this.originalFunction = originalFunction;
-            this.beforeFunctionEnter = new Set();
+            this.hooks = new Set();
         }
-        hooked() {
+        _call() {
             let that = this;
             return function (...argv) {
-                for (let t1 of that.beforeFunctionEnter) {
+                let context = { hookedThis: this, hook: that, originalFunction: that.originalFunction };
+                for (let t1 of that.hooks) {
                     try {
-                        t1(argv, that, this);
+                        t1(argv, context);
                     }
                     catch (err) { }
                     ;
                 }
-                return that.originalFunction.apply(this, argv);
+                return context.originalFunction.apply(this, argv);
             };
         }
     }
-    exports.CFuncCallProbe = CFuncCallProbe;
-    let funcProbeProp = Symbol('funcProbeProp');
-    function ensureFunctionProbe(o, p) {
+    exports.CFunctionHook = CFunctionHook;
+    let functionHookProp = Symbol('functionHookProp');
+    function ensureFunctionHookSetup(o, p) {
         let func = o[p];
         let p2;
-        if (funcProbeProp in func) {
-            p2 = func[funcProbeProp];
-            if (p2.funcCallProbe == undefined) {
-                p2.funcCallProbe = new CFuncCallProbe(func);
-                p2.funcCallProbe.name = p.toString();
-                o[p] = p2.funcCallProbe.hooked();
-                o[p][funcProbeProp] = p2;
+        if (functionHookProp in func) {
+            p2 = func[functionHookProp];
+            if (p2.hook == undefined) {
+                p2.hook = new CFunctionHook(func);
+                p2.hook.name = p.toString();
+                o[p] = p2.hook._call();
+                o[p][functionHookProp] = p2;
             }
         }
         else {
             p2 = {
-                funcCallProbe: new CFuncCallProbe(func)
+                hook: new CFunctionHook(func)
             };
-            p2.funcCallProbe.name = p.toString();
-            func[funcProbeProp] = p2;
-            o[p] = p2.funcCallProbe.hooked();
-            o[p][funcProbeProp] = p2;
+            p2.hook.name = p.toString();
+            func[functionHookProp] = p2;
+            o[p] = p2.hook._call();
+            o[p][functionHookProp] = p2;
         }
-        return p2.funcCallProbe;
+        return p2.hook;
     }
     exports.OnConsoleData = new Set();
-    ensureFunctionProbe(console, 'log').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('log', argv)));
-    ensureFunctionProbe(console, 'debug').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('debug', argv)));
-    ensureFunctionProbe(console, 'info').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('info', argv)));
-    ensureFunctionProbe(console, 'warn').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('warn', argv)));
-    ensureFunctionProbe(console, 'error').beforeFunctionEnter.add((argv) => exports.OnConsoleData.forEach(t1 => t1('error', argv)));
+    ensureFunctionHookSetup(console, 'log').hooks.add((argv) => exports.OnConsoleData.forEach(t1 => t1('log', argv)));
+    ensureFunctionHookSetup(console, 'debug').hooks.add((argv) => exports.OnConsoleData.forEach(t1 => t1('debug', argv)));
+    ensureFunctionHookSetup(console, 'info').hooks.add((argv) => exports.OnConsoleData.forEach(t1 => t1('info', argv)));
+    ensureFunctionHookSetup(console, 'warn').hooks.add((argv) => exports.OnConsoleData.forEach(t1 => t1('warn', argv)));
+    ensureFunctionHookSetup(console, 'error').hooks.add((argv) => exports.OnConsoleData.forEach(t1 => t1('error', argv)));
     setupAsyncHook();
+    class EventBuffer {
+        constructor() {
+            //[RpcSerializeMagicMark]={}; BUT we must use literal to avoid recursive import
+            this.__DUz66NYkWuMdex9k2mvwBbYN__ = {};
+            this._cachedEvent = new base_1.ArrayWrap2();
+            this.eventQueueExpiredTime = 1000;
+            this._lastSeq = 0;
+        }
+        push(event) {
+            this._lastSeq++;
+            this._cachedEvent.queueSignalPush({ time: (0, base_1.GetCurrentTime)().getTime(), event, seq: this._lastSeq });
+            setTimeout(() => this._cachedEvent.arr().shift(), this.eventQueueExpiredTime);
+        }
+        async peek(cond) {
+            let events = [];
+            const checkEvent = () => {
+                let evs = this._cachedEvent.arr();
+                if (cond.seqGt != undefined) {
+                    evs = evs.filter(t1 => t1.seq > cond.seqGt);
+                }
+                if (cond.timeGt != undefined) {
+                    evs = evs.filter(t1 => t1.time > cond.timeGt);
+                }
+                return evs.map(t1 => t1.event);
+            };
+            events = checkEvent();
+            if (events.length === 0) {
+                await this._cachedEvent.waitForQueueChange();
+                events = checkEvent();
+            }
+            return events;
+        }
+    }
+    exports.EventBuffer = EventBuffer;
+    async function newEventBuffer() {
+        return new EventBuffer();
+    }
 });

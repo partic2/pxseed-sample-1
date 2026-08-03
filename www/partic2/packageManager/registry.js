@@ -1,7 +1,7 @@
 define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScript/buildlib", "partic2/jsutils1/webutils", "partic2/jsutils1/base", "pxseedBuildScript/util", "partic2/CodeRunner/JsEnviron", "partic2/JsNotebook/workerinit", "partic2/pxprpcClient/registry", "./pkgfetcher", "partic2/CodeRunner/CodeContext"], function (require, exports, buildlib_1, webutils_1, base_1, util_1, JsEnviron_1, workerinit_1, registry_1, pkgfetcher_1, CodeContext_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.listener = exports.__name__ = void 0;
+    exports.pxseedCorePackagesNames = exports.listener = exports.__name__ = void 0;
     exports.UpgradeCorePackages = UpgradeCorePackages;
     exports.packPxseedForPxseedLoader = packPxseedForPxseedLoader;
     exports.updatePackagesDatabase = updatePackagesDatabase;
@@ -14,6 +14,7 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
     exports.listPackages = listPackages;
     exports.listPackagesArray = listPackagesArray;
     exports.upgradePackage = upgradePackage;
+    exports.upgradeAllNonCorePackages = upgradeAllNonCorePackages;
     exports.installPackage = installPackage;
     exports.createPackageTemplate1 = createPackageTemplate1;
     exports.unloadPackageModules = unloadPackageModules;
@@ -74,26 +75,19 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
             }
         }
     }
+    exports.pxseedCorePackagesNames = new Set([
+        "pxprpc", "pxseedBuildScript", "pxseedServer2023", "partic2/CodeRunner", "partic2/JsNotebook", "partic2/jsutils1", "partic2/nodehelper",
+        "partic2/pComponentUi", "partic2/packageManager", "partic2/pxprpcBinding", "partic2/pxprpcClient",
+        "partic2/pxseedMedia1", "partic2/tjshelper"
+    ]);
     let corePackFiles = [
         ['copysource'],
         ['npmdeps'],
         ['pxseed-cli'],
         ['script'],
-        ['source', 'pxseedBuildScript'],
-        ['source', 'pxseedServer2023'],
-        ['source', 'pxprpc'],
         ['source', '.gitignore'],
         ['source', 'tsconfig.base.json'],
-        ['source', 'partic2', 'CodeRunner'],
-        ['source', 'partic2', 'JsNotebook'],
-        ['source', 'partic2', 'jsutils1'],
-        ['source', 'partic2', 'nodehelper'],
-        ['source', 'partic2', 'pComponentUi'],
-        ['source', 'partic2', 'packageManager'],
-        ['source', 'partic2', 'pxprpcBinding'],
-        ['source', 'partic2', 'pxprpcClient'],
-        ['source', 'partic2', 'pxseedMedia1'],
-        ['source', 'partic2', 'tjshelper']
+        ...Array.from(exports.pxseedCorePackagesNames).map(t1 => ['source', ...t1.split('/')])
     ];
     async function UpgradeCorePackages() {
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
@@ -205,9 +199,9 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
 `));
     }
     let pkgdbName = exports.__name__ + '/pkgdb';
-    function getPMOptFromPcfg(config) {
-        if (config.options && (exports.__name__ in config.options)) {
-            return config.options[exports.__name__];
+    function getPMConfigFromPcfg(config) {
+        if (config.extra && (exports.__name__ in config.extra)) {
+            return config.extra[exports.__name__];
         }
         else {
             return null;
@@ -284,7 +278,7 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
             else {
                 pxseedConfig = pkgNameOrPxseedConfig;
             }
-            let pkgConfig = getPMOptFromPcfg(pxseedConfig);
+            let pkgConfig = getPMConfigFromPcfg(pxseedConfig);
             if (pkgConfig?.repositories != undefined) {
                 for (let scopeName in pkgConfig.repositories) {
                     let toMerge = pkgConfig.repositories[scopeName];
@@ -320,7 +314,7 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
         if (path2 != destDir) {
             await copyFilesNewer(destDir, path2);
         }
-        let pkgConfig = getPMOptFromPcfg(pxseedConfig);
+        let pkgConfig = getPMConfigFromPcfg(pxseedConfig);
         if (pkgConfig?.dependencies != undefined) {
             for (let dep of pkgConfig.dependencies) {
                 let config = await getPxseedConfigForPackage(dep);
@@ -427,12 +421,12 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
         let arr = [];
         let filterFunc;
         if (filterString.startsWith('javascript:')) {
-            filterFunc = new Function('name', 'config', 'pmopt', filterString.substring('javascript:'.length + 1));
+            filterFunc = new Function('name', 'config', 'pmcfg', filterString.substring('javascript:'.length + 1));
         }
         else {
             filterFunc = (() => {
                 let keywords = filterString.split(/\s+/);
-                return (name, config, pmopt) => {
+                return (name, config, pmcfg) => {
                     for (let kw of keywords) {
                         if (name.includes(kw)) {
                             return true;
@@ -440,7 +434,7 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
                         if (config.description != undefined && config.description.includes(kw)) {
                             return true;
                         }
-                        if (pmopt != undefined && kw in pmopt) {
+                        if (pmcfg != undefined && kw in pmcfg) {
                             return true;
                         }
                     }
@@ -449,7 +443,7 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
             })();
         }
         for await (let t1 of listPackages()) {
-            if (filterFunc(t1.name, t1, t1.options?.[exports.__name__])) {
+            if (filterFunc(t1.name, t1, t1.extra?.[exports.__name__])) {
                 arr.push(t1);
             }
             ;
@@ -463,6 +457,19 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
         await fs.access(path.join(pkgdir, '.git'));
         await pkgfetcher_1.__internal__.upgradeGitPackage(pkgdir);
         await installLocalPackage(pkgdir);
+    }
+    async function upgradeAllNonCorePackages() {
+        for await (let t1 of listPackages()) {
+            if (!exports.pxseedCorePackagesNames.has(t1.name)) {
+                try {
+                    await upgradePackage(t1.name);
+                    log.info(`upgradeAllNonCorePackages success to upgrade ${t1.name}`);
+                }
+                catch (err) {
+                    log.warning(`upgradeAllNonCorePackages failed when upgrade ${t1.name}, message:${err.toString()} stack:${err.stack}`);
+                }
+            }
+        }
     }
     async function installPackage(source) {
         const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
@@ -478,11 +485,11 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
             }
             let pkgName = t1.substring(0, versionSep);
             if (packageJson.dependencies[pkgName] == undefined) {
-                log.info('install npm package ' + pkgName);
+                log.info('install npm package ' + source.substring(4));
                 if (globalThis.process?.versions?.node == undefined) {
                     throw new Error('npm depdendencies are only support on node.js platform');
                 }
-                let returnCode = await util_1.__internal__.runCommand(`npm i ${pkgName}`, { cwd: path.join(path.dirname(sourceDir), 'npmdeps') });
+                let returnCode = await util_1.__internal__.runCommand(`npm i ${source.substring(4)}`, { cwd: path.join(path.dirname(sourceDir), 'npmdeps') });
                 if (returnCode !== 0)
                     log.error('install npm package failed.');
             }
@@ -538,10 +545,10 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
 !.gitignore
 tsconfig.json
 `);
-        if (pxseedConfig.options?.[exports.__name__] != undefined) {
-            let opt = pxseedConfig.options[exports.__name__];
-            if (opt.webui?.entry != undefined && opt.webui.entry != '') {
-                let entryMod = opt.webui.entry;
+        if (pxseedConfig.extra?.[exports.__name__] != undefined) {
+            let cfg = pxseedConfig.extra[exports.__name__];
+            if (cfg.webui?.entry != undefined && cfg.webui.entry != '') {
+                let entryMod = cfg.webui.entry;
                 if (entryMod.startsWith(pxseedConfig.name + '/')) {
                     let entModPath = path.join(buildlib_1.sourceDir, ...entryMod.split('/')) + '.tsx';
                     await fs.mkdir(path.dirname(entModPath), { recursive: true });
@@ -623,11 +630,11 @@ export function main(args:string){
     async function getPackageListeners(eventType) {
         let result = new Array();
         for await (let pkg of listPackages()) {
-            let pmopt = getPMOptFromPcfg(pkg);
-            if (pmopt != null) {
-                if (pmopt[eventType] != null) {
+            let pmcfg = getPMConfigFromPcfg(pkg);
+            if (pmcfg != null) {
+                if (pmcfg[eventType] != null) {
                     try {
-                        let t1 = { ...pmopt[eventType] };
+                        let t1 = { ...pmcfg[eventType] };
                         if (/^\.\.?\//.test(t1.module)) {
                             t1.module = webutils_1.path.join(pkg.name, t1.module);
                         }

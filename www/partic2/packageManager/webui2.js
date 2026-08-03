@@ -116,8 +116,8 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
         let registry = await remoteModule.registry.get();
         let config1 = await registry.getPxseedConfigForPackage(pkgName);
         (0, base_1.assert)(config1 != null, 'packages not found.');
-        (0, base_1.assert)(config1.options?.[registryModuleName]?.webui != undefined, 'No webui info found in package');
-        let pmopt = config1.options[registryModuleName];
+        (0, base_1.assert)(config1.extra?.[registryModuleName]?.webui != undefined, 'No webui info found in package');
+        let pmopt = config1.extra[registryModuleName];
         let entry = pmopt.webui.entry;
         if (entry.startsWith('.')) {
             entry = webutils_1.path.join(pkgName, entry);
@@ -261,7 +261,7 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
                                 }
                             ],
                             "name": "partic2/JsNotebook",
-                            "options": {
+                            "extra": {
                                 "partic2/packageManager/registry": {
                                     "webui": {
                                         "entry": "./index",
@@ -282,7 +282,7 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
                                 }
                             ],
                             "name": "pxseedServer2023",
-                            "options": {
+                            "extra": {
                                 "partic2/packageManager/registry": {
                                     "webui": {
                                         "entry": "./webui",
@@ -351,7 +351,7 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
                     return;
                 }
                 try {
-                    basicInfo.options = {};
+                    basicInfo.extra = {};
                     let opt = {};
                     let inPath = basicInfo.webui.entry;
                     if (inPath != '') {
@@ -375,7 +375,7 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
                     delete basicInfo.dependencies;
                     opt.repositories = JSON.parse(basicInfo.repositories);
                     delete basicInfo.repositories;
-                    basicInfo.options['partic2/packageManager/registry'] = opt;
+                    basicInfo.extra['partic2/packageManager/registry'] = opt;
                     await registry.createPackageTemplate1(basicInfo);
                     await (0, window_1.alert)(i18n.done, 'CAUTION');
                 }
@@ -439,8 +439,8 @@ import2env('partic2/packageManager/registry');`,
             this.refreshList();
         }
         renderPackageList() {
-            return this.state.packageList.filter(pkg => pkg.options?.[registryModuleName] != undefined).map(pkg => {
-                return React.createElement(PackageWebUiEntry, { pmopt: pkg.options[registryModuleName], packageName: pkg.name });
+            return this.state.packageList.filter(pkg => pkg.extra?.[registryModuleName] != undefined).map(pkg => {
+                return React.createElement(PackageWebUiEntry, { pmopt: pkg.extra[registryModuleName], packageName: pkg.name });
             });
         }
         async upgradeCorePackages() {

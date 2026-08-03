@@ -46,7 +46,7 @@ define("partic2/JsNotebook/workerinit", ["require", "exports", "partic2/CodeRunn
             if (r.rpc != undefined)
                 this.rpc = r.rpc;
             this.startupScript = r.startupScript ?? '';
-            this.cells = r.cells ?? CodeContext_1.newCodeCellListData.get()().saveTo();
+            this.cells = r.cells ?? (CodeContext_1.newCodeCellListData.get()().saveTo());
         }
         getCellsData() {
             let cld = CodeContext_1.newCodeCellListData.get()();
@@ -61,6 +61,14 @@ define("partic2/JsNotebook/workerinit", ["require", "exports", "partic2/CodeRunn
     }
     exports.NotebookFileData = NotebookFileData;
     exports.runningRunCodeContextForNotebookFile = new Map();
+    class RemoteCallFunctionError extends Error {
+        constructor(message) {
+            super('REMOTE:' + message);
+        }
+        toString() {
+            return this.message + '\n' + (this.remoteStack ?? '');
+        }
+    }
     //treat both slash and back slash as sep
     function dirname2(path) {
         for (let t1 = path.length - 1; t1 >= 0; t1--) {
@@ -115,22 +123,43 @@ define("partic2/JsNotebook/workerinit", ["require", "exports", "partic2/CodeRunn
         };
         _ENV.globalThis = globalThis;
         _ENV.fetch = webutils_1.defaultHttpClient.fetch.bind(webutils_1.defaultHttpClient);
+        _ENV.JSON = globalThis.JSON;
+        _ENV.encodeURIComponent = globalThis.encodeURIComponent.bind(globalThis);
+        _ENV.decodeURIComponent = globalThis.decodeURIComponent.bind(globalThis);
         _ENV.restartThisWorker = async () => {
             _ENV.jsnotebook?.notebookViewer?.reconnectCodeContextSoon?.();
             await (0, base_1.sleep)(100);
             globalThis.close();
         };
-        let callMethodAttachedOnNotebookViewer = (name, argv) => {
-            _ENV.event.dispatchEvent(new CodeContext_1.CodeContextEvent(`${webutils_1.path.join(exports.__name__, '../notebook')}.NotebookViewer`, { data: { call: name, argv: argv ?? [] } }));
+        let callMethodAttachedOnNotebookViewer = async (name, argv, waitResult) => {
+            let resultFuture = null;
+            if (waitResult != undefined) {
+                resultFuture = new base_1.future();
+                resultFuture[registry_1.RpcSerializeMagicMark] = {};
+            }
+            _ENV.event.dispatchEvent(new CodeContext_1.CodeContextEvent(`${webutils_1.path.join(exports.__name__, '../notebook')}.NotebookViewer`, { data: { call: name, argv: argv ?? [], result: resultFuture } }));
+            if (resultFuture != undefined) {
+                let r = await resultFuture.get();
+                if (r.error != undefined) {
+                    let e = new RemoteCallFunctionError(r.error.message);
+                    e.remoteStack = r.error.stack;
+                    throw e;
+                }
+                else {
+                    return r.result;
+                }
+            }
         };
         let jsnotebook = {
             callMethodAttachedOnNotebookViewer,
             callFunctionInNotebookWebui: function (...argv) { callMethodAttachedOnNotebookViewer('callFunctionInNotebookWebui', argv); },
             notebookViewer: {
                 openRpcChooser: () => callMethodAttachedOnNotebookViewer('openRpcChooser', []),
-                updateNotebookCodeCellsData: () => callMethodAttachedOnNotebookViewer('updateNotebookCodeCellsData', []),
+                updateNotebookCodeCellsData: (cellsData) => callMethodAttachedOnNotebookViewer('updateNotebookCodeCellsData', [cellsData]),
                 setCodeCellsDataOnRemoteJsNotebook: () => callMethodAttachedOnNotebookViewer('setCodeCellsDataOnRemoteJsNotebook', []),
-                reconnectCodeContextSoon: () => callMethodAttachedOnNotebookViewer('reconnectCodeContextSoon', [])
+                reconnectCodeContextSoon: () => callMethodAttachedOnNotebookViewer('reconnectCodeContextSoon', []),
+                hasMethod: (name) => callMethodAttachedOnNotebookViewer('hasMethod', [name], true),
+                switchNotebookViewerImpl: (implFactory) => callMethodAttachedOnNotebookViewer('switchNotebookViewerImpl', [implFactory], true)
             },
             startupScript: opt?.startupScript ?? '',
         };
@@ -219,7 +248,7 @@ return JSON.stringify({startupScript:jsnotebook.startupScript})
         return new Promise((resolve)=>event.addEventListener('close',()=>resolve('close')))`, '').then((r) => {
                 codeContextClosed.setResult();
             }).catch((err) => log.warning(err.stack));
-            await this.connector.runCode(`await (await import('partic2/JsNotebook/workerinit')).initNotebookCodeEnv(_ENV,${JSON.stringify({ codePath: this.notebookFilePath, startupScript: this.notebookFileData.startupScript })});`, '');
+            await this.connector.runCode(`await (await import('partic2/JsNotebook/workerinit')).initNotebookCodeEnv(_ENV,${JSON.stringify({ ...this.notebookFileData })});`, '');
         }
         async setRawCellsData(data) {
             this.notebookFileData.cells = data;
@@ -243,6 +272,7 @@ return JSON.stringify({startupScript:jsnotebook.startupScript})
         if (!exports.runningRunCodeContextForNotebookFile.has(notebookFilePath)) {
             await (0, JsEnviron_1.ensureDefaultFileSystem)();
             let onbf = new OpenedJsNotebookFile(notebookFilePath, { noRpc: opt?.noRpc });
+            onbf.notebookFileData.codePath = notebookFilePath;
             await onbf.loadFromFile();
             await onbf.ensureRunCodeContextConnector();
             exports.runningRunCodeContextForNotebookFile.set(notebookFilePath, onbf);

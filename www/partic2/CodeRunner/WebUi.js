@@ -55,6 +55,9 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             };
             this.setState({ codeCompleteCandidate: null, focusin: false, extraTooltips: null, errorCatched: null, focusingCompletionCandidate: 0 });
         }
+        getContainerDiv() {
+            return this.rref.container.current;
+        }
         async runCode() {
             this.props.onRun?.();
             try {
@@ -198,7 +201,8 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 this.requestTooltips.call();
             }
             else {
-                this.setState({ extraTooltips: null });
+                //BUG?: "setState" before "onInput" return trigger by full-width character lead to double input sometimes.
+                requestAnimationFrame(() => this.setState({ extraTooltips: null }));
             }
             this.props.onInputChange?.(this);
         }
@@ -214,6 +218,22 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
         }
         setCellOutput(output, resultVariable) {
             this.setState({ cellOutput: output, resultVariable, errorCatched: null });
+        }
+        getCellInputHtml() {
+            return this.rref.codeInput.current?.getHtml() ?? null;
+        }
+        setCellInputHtml(html) {
+            let input1 = this.rref.codeInput.current;
+            if (input1 == undefined)
+                return;
+            let caret = null;
+            if (input1.isEditing()) {
+                caret = input1.getTextCaretOffset();
+            }
+            input1.setHtml(html);
+            if (caret != null) {
+                input1.setTextCaretOffset(caret);
+            }
         }
         resetTooltips() {
             this.setState({ focusingCompletionCandidate: 0, codeCompleteCandidate: null, extraTooltips: null });
@@ -332,7 +352,6 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
     class DefaultCodeCellList extends React.Component {
         constructor(prop, ctx) {
             super(prop, ctx);
-            this.__initCellValue = null;
             this.lastRunCellKey = '';
             this.__currentCodeContext = null;
             this.rref = {
@@ -351,50 +370,71 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             };
             this.resetState();
         }
+        async detachCodeContext(codeContext) {
+            codeContext.event.removeEventListener('console.data', this.onConsoleData);
+        }
+        async attachCodeContext(codeContext) {
+            (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(codeContext);
+            this.props.codeContext.event.addEventListener('console.data', this.onConsoleData);
+        }
         beforeRender() {
-            if (this.props.codeContext !== this.state.codeContext) {
+            if (this.props.codeContext != this.state.codeContext) {
                 if (this.state.codeContext != null) {
-                    this.state.codeContext.event.removeEventListener('console.data', this.onConsoleData);
+                    this.detachCodeContext(this.state.codeContext);
                 }
-                (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.props.codeContext);
-                this.props.codeContext.event.addEventListener('console.data', this.onConsoleData);
                 this.setState({ codeContext: this.props.codeContext });
+                if (this.props.codeContext != null) {
+                    this.attachCodeContext(this.props.codeContext);
+                }
+            }
+        }
+        componentWillUnmount() {
+            if (this.props.codeContext != null) {
+                this.detachCodeContext(this.props.codeContext);
+            }
+            if (this.props.codeContext != null) {
+                this.detachCodeContext(this.props.codeContext);
             }
         }
         async newCell(afterCellKey) {
-            let pos = this.state.list.findIndex(v => v.key == afterCellKey);
-            if (pos < 0) {
-                pos = this.state.list.length - 1;
-            }
+            let pos = afterCellKey == undefined ? -1 : this.state.list.findIndex(v => v.key === afterCellKey);
             let newKey = (0, base_1.GenerateRandomString)();
-            this.state.list.splice(pos + 1, 0, { ref: new domui_1.ReactRefEx(), key: newKey });
-            await new Promise(resolve => this.forceUpdate(resolve));
+            if (pos < 0) {
+                this.state.list.push({ ref: new domui_1.ReactRefEx(), key: newKey });
+            }
+            else {
+                this.state.list.splice(pos + 1, 0, { ref: new domui_1.ReactRefEx(), key: newKey });
+            }
+            this.setState({});
             this.props.onCellListChange?.();
             return newKey;
+        }
+        async deleteCell(cellKey) {
+            let pos = this.state.list.findIndex(v => v.key == cellKey);
+            try {
+                this.state.list[pos].ref.current?.close();
+            }
+            catch (e) { }
+            ;
+            if (pos >= 0) {
+                this.state.list.splice(pos, 1);
+                this.setState({});
+            }
+            this.props.onCellListChange?.();
+        }
+        getCellList() {
+            return this.state.list;
+        }
+        async runCell(cellKey) {
+            let cell = this.state.list.find(v => v.key == cellKey);
+            (0, base_1.assert)(cell != undefined);
+            cell.ref.current.runCode();
         }
         async setCurrentEditing(cellKey) {
             let cell2 = this.state.list.find(v => v.key == cellKey);
             if (cell2 != undefined && cell2.ref.current != undefined) {
                 await cell2.ref.current.setAsEditTarget();
             }
-        }
-        async deleteCell(cellKey) {
-            let pos = this.state.list.findIndex(v => v.key == cellKey);
-            try {
-                await this.state.list[pos].ref.current?.close();
-            }
-            catch (e) { }
-            ;
-            if (pos >= 0) {
-                this.state.list.splice(pos, 1);
-                await new Promise(resolve => this.forceUpdate(resolve));
-            }
-            this.props.onCellListChange?.();
-        }
-        async runCell(cellKey) {
-            let cell = this.state.list.find(v => v.key == cellKey);
-            (0, base_1.assert)(cell != undefined);
-            cell.ref.current.runCode();
         }
         async setCellInput(cellKey, input) {
             let cell = this.state.list.find(v => v.key == cellKey);
@@ -405,26 +445,22 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             delete this.state.consoleOutput[key];
             this.forceUpdate();
         }
-        resetState() {
-            this.__initCellValue = null;
+        async resetState() {
             this.lastRunCellKey = '';
-            this.setState({
-                list: [{ ref: new domui_1.ReactRefEx(), key: (0, base_1.GenerateRandomString)() }],
+            await new Promise(resolve => this.setState({
+                list: [],
                 consoleOutput: {},
                 error: null,
                 codeContext: null,
                 lastFocusCellKey: ''
-            });
-            this.forceUpdate();
-        }
-        getCellList() {
-            return this.state.list;
+            }, resolve));
+            await this.newCell();
         }
         async scrollToCell(cellIndex) {
             //To prevent user agent scroll handler overwrite the scrollTo position.
             await new Promise(requestAnimationFrame);
             let v = this.state.list.at(cellIndex);
-            let cellDiv = v.ref.current?.rref.container.current;
+            let cellDiv = v.ref.current?.getContainerDiv();
             let listDiv = this.rref.container.current;
             if (cellDiv != null && listDiv != null) {
                 if (cellDiv.offsetTop + 300 > listDiv.scrollTop + listDiv.clientHeight && listDiv.clientHeight > 300) {
@@ -436,44 +472,47 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 }
             }
         }
+        renderCodeCell(v, index, cellCssStyle) {
+            return React.createElement(CodeCell, { ref: v.ref, key: v.key, codeContext: this.state.codeContext, customBtns: [
+                    { label: 'New', cb: () => this.newCell(v.key) },
+                    { label: 'Del', cb: () => this.deleteCell(v.key) }
+                ], onClearOutputs: () => this.clearConsoleOutput(v.key), onRun: async () => {
+                    this.props.onRun?.(v.key);
+                    this.lastRunCellKey = v.key;
+                    if (v.key == this.state.list.at(-1)?.key) {
+                        await this.newCell(v.key);
+                        let ccelem = this.state.list.at(-1);
+                        let cc = await ccelem.ref.waitValid();
+                        await cc.setAsEditTarget();
+                    }
+                }, onFocusChange: (focusin) => {
+                    this.props.onCellFocusChange?.({ cellKey: v.key, focusIn: focusin });
+                    if (focusin) {
+                        this.setState({ lastFocusCellKey: v.key });
+                        this.scrollToCell(index);
+                    }
+                }, onPreviousCell: async () => {
+                    let cc = this.state.list.at(index - 1);
+                    if (cc != undefined) {
+                        await cc.ref.current?.setAsEditTarget();
+                    }
+                }, onNextCell: async () => {
+                    let cc = this.state.list.at(index + 1);
+                    if (cc != undefined) {
+                        await cc.ref.current?.setAsEditTarget();
+                    }
+                }, divStyle: cellCssStyle, ...this.props.cellProps });
+        }
         render(props, state, context) {
             this.beforeRender();
             return (this.state.codeContext != null && this.state.error == null) ?
                 React.createElement("div", { style: { width: '100%', height: '100%', overflow: 'auto', position: 'relative' }, ref: this.rref.container },
-                    (0, jsutils2_1.FlattenArraySync)(this.state.list.map((v, index1) => {
+                    (0, jsutils2_1.FlattenArraySync)(this.state.list.map((v, index) => {
                         let cellCssStyle = {};
                         if (this.state.lastFocusCellKey === v.key) {
                             cellCssStyle.zIndex = 100;
                         }
-                        let r = [React.createElement(CodeCell, { ref: v.ref, key: v.key, codeContext: this.state.codeContext, customBtns: [
-                                    { label: 'New', cb: () => this.newCell(v.key) },
-                                    { label: 'Del', cb: () => this.deleteCell(v.key) }
-                                ], onClearOutputs: () => this.clearConsoleOutput(v.key), onRun: async () => {
-                                    this.props.onRun?.(v.key);
-                                    this.lastRunCellKey = v.key;
-                                    if (v.key == this.state.list.at(-1)?.key) {
-                                        await this.newCell(v.key);
-                                        let ccelem = this.state.list.at(-1);
-                                        let cc = await ccelem.ref.waitValid();
-                                        await cc.setAsEditTarget();
-                                    }
-                                }, onFocusChange: (focusin) => {
-                                    this.props.onCellFocusChange?.({ cellKey: v.key, focusIn: focusin });
-                                    if (focusin) {
-                                        this.setState({ lastFocusCellKey: v.key });
-                                        this.scrollToCell(index1);
-                                    }
-                                }, onPreviousCell: async () => {
-                                    let cc = this.state.list.at(index1 - 1);
-                                    if (cc != undefined) {
-                                        await cc.ref.current?.setAsEditTarget();
-                                    }
-                                }, onNextCell: async () => {
-                                    let cc = this.state.list.at(index1 + 1);
-                                    if (cc != undefined) {
-                                        await cc.ref.current?.setAsEditTarget();
-                                    }
-                                }, divStyle: cellCssStyle, ...this.props.cellProps })];
+                        let r = [this.renderCodeCell(v, index, cellCssStyle)];
                         if (v.key in this.state.consoleOutput) {
                             r.push(React.createElement("div", { style: { wordBreak: 'break-all' }, dangerouslySetInnerHTML: { __html: (0, utils_1.text2html)(this.state.consoleOutput[v.key].content) } }));
                         }
@@ -483,16 +522,6 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 React.createElement("div", { style: { width: '100%', overflow: 'auto', position: 'relative' }, ref: this.rref.container },
                     React.createElement("pre", null, this.state.error),
                     React.createElement("a", { href: "javascript:;", onClick: () => this.resetState() }, "Reset"));
-        }
-        componentDidUpdate() {
-            if (this.__initCellValue !== null && this.state.codeContext != null) {
-                this.__initCellValue.forEach(async (val, index) => {
-                    this.state.list[index].ref.current.setCellInput(val.input);
-                    val.output[0] = (0, Inspector_1.fromSerializableObject)(val.output[0], { fetcher: await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.state.codeContext), accessPath: [val.output[1] ?? ''] });
-                    this.state.list[index].ref.current.setCellOutput(...val.output);
-                });
-                this.__initCellValue = null;
-            }
         }
         saveTo() {
             let cellData = CodeContext_1.newCodeCellListData.get()();
@@ -509,8 +538,8 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 let cellData = CodeContext_1.newCodeCellListData.get()();
                 cellData.loadFrom(data);
                 ;
-                while (this.state.list.length < cellData.cellList.length) {
-                    this.state.list.push({ ref: new domui_1.ReactRefEx(), key: (0, base_1.GenerateRandomString)() });
+                while (this.getCellList().length < cellData.cellList.length) {
+                    await this.newCell();
                 }
                 let consoleOutput = {};
                 for (let k1 in cellData.consoleOutput) {
@@ -519,7 +548,13 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                         consoleOutput[this.state.list[index].key] = cellData.consoleOutput[k1];
                     }
                 }
-                this.__initCellValue = cellData.cellList.map(v => ({ input: v.cellInput, output: v.cellOutput }));
+                let cellList = this.getCellList();
+                for (let t1 = 0; t1 < cellData.cellList.length; t1++) {
+                    let cell = await cellList[t1].ref.waitValid();
+                    let val = cellData.cellList[t1];
+                    cell.setCellInput(val.cellInput);
+                    cell.setCellOutput((0, Inspector_1.fromSerializableObject)(val.cellOutput[0], { fetcher: await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.state.codeContext), accessPath: [val.cellOutput[1] ?? ''] }), val.cellOutput[1]);
+                }
                 this.setState({ consoleOutput });
                 this.forceUpdate();
             }

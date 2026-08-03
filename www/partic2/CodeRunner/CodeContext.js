@@ -187,14 +187,18 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
                     { name: __name__ + '.builtinCodeContextSourceProcessor', process: builtinCodeContextSourceProcessor }
                 ],
                 callModuleFunction: async (module, func, args) => {
-                    let imp = await this.importHandler(module);
-                    return await imp[func](...args);
+                    let that = this;
+                    //Use Task to keep TaskLocalEnv valid.
+                    return jsutils1.Task.fork(function* () {
+                        let imp = yield that.importHandler(module);
+                        return yield imp[func](...args);
+                    }).run();
                 },
                 event: null,
                 CodeContextEvent,
                 Task: jsutils1.Task,
                 tasks: {},
-                //Will be close when LocalRunCodeContext is closing.
+                //Will be closed when LocalRunCodeContext is closing.
                 autoClosable: {},
                 deleteVariables: (names) => {
                     for (let n of names) {
