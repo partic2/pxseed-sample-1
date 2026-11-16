@@ -55,13 +55,13 @@ define("partic2/packageManager/nodecompat", ["require", "exports", "partic2/Code
     class NodeFsAdapter {
         constructor(wrapped) {
             this.wrapped = wrapped;
-            this.access = (async (path, mode) => {
-                if (await this.wrapped.filetype(path) === 'none') {
+            this.access = (async (path, mode) => {Promise.__onAsyncEnter();try{
+                if (await  Promise.__onAwait(this.wrapped.filetype(path)) === 'none') {
                     throw makeENOENT();
                 }
-            });
-            this.readFile = (async (path, options) => {
-                let data = await this.wrapped.readAll(path);
+            }finally{Promise.__onAsyncExit();}});
+            this.readFile = (async (path, options) => {Promise.__onAsyncEnter();try{
+                let data = await  Promise.__onAwait(this.wrapped.readAll(path));
                 if (data == null) {
                     let err = new Error('File not existed.');
                     err.name = 'ENOENT';
@@ -74,70 +74,70 @@ define("partic2/packageManager/nodecompat", ["require", "exports", "partic2/Code
                 else {
                     return data;
                 }
-            });
-            this.writeFile = (async (path, data, options) => {
+            }finally{Promise.__onAsyncExit();}});
+            this.writeFile = (async (path, data, options) => {Promise.__onAsyncEnter();try{
                 if (options?.encoding != undefined) {
                     (0, base_1.assert)(options.encoding.toLowerCase() == 'utf8');
                 }
                 if (typeof data === 'string') {
                     data = new TextEncoder().encode(data);
                 }
-                await this.wrapped.writeAll(path, data);
-            });
-            this.unlink = (async (path) => {
-                await this.wrapped.delete2(path);
-            });
-            this.readdir = (async (path2, opt) => {
-                let result = await this.wrapped.listdir(path2);
+                await  Promise.__onAwait(this.wrapped.writeAll(path, data));
+            }finally{Promise.__onAsyncExit();}});
+            this.unlink = (async (path) => {Promise.__onAsyncEnter();try{
+                await  Promise.__onAwait(this.wrapped.delete2(path));
+            }finally{Promise.__onAsyncExit();}});
+            this.readdir = (async (path2, opt) => {Promise.__onAsyncEnter();try{
+                let result = await  Promise.__onAwait(this.wrapped.listdir(path2));
                 if (opt?.withFileTypes != true) {
                     return result.map(v => v.name);
                 }
                 else {
                     return result.map(v => new NodeFsCompatDirent(v.type, v.name, webutils_1.path.join(path2, v.name)));
                 }
-            });
-            this.mkdir = (async (path2, opt) => {
-                await this.wrapped.mkdir(path2);
-            });
-            this.rmdir = (async (path) => {
-                if ((await this.wrapped.listdir(path)).length == 0) {
-                    await this.wrapped.delete2(path);
+            }finally{Promise.__onAsyncExit();}});
+            this.mkdir = (async (path2, opt) => {Promise.__onAsyncEnter();try{
+                await  Promise.__onAwait(this.wrapped.mkdir(path2));
+            }finally{Promise.__onAsyncExit();}});
+            this.rmdir = (async (path) => {Promise.__onAsyncEnter();try{
+                if ((await  Promise.__onAwait(this.wrapped.listdir(path))).length == 0) {
+                    await  Promise.__onAwait(this.wrapped.delete2(path));
                 }
                 else {
                     throw new Error('rmdir failed, directory not empty.');
                 }
-            });
-            this.rm = (async (path, options) => {
-                if (options?.recursive || await this.wrapped.filetype(path) == 'file') {
-                    await this.wrapped.delete2(path);
+            }finally{Promise.__onAsyncExit();}});
+            this.rm = (async (path, options) => {Promise.__onAsyncEnter();try{
+                if (options?.recursive || await  Promise.__onAwait(this.wrapped.filetype(path)) == 'file') {
+                    await  Promise.__onAwait(this.wrapped.delete2(path));
                 }
                 else {
-                    await this.rmdir(path);
+                    await  Promise.__onAwait(this.rmdir(path));
                 }
-            });
-            this.stat = (async (path) => {
-                let sr = await this.wrapped.stat(path);
-                let nst = new NodeFsCompatStats(await this.wrapped.filetype(path), path, path);
+            }finally{Promise.__onAsyncExit();}});
+            this.stat = (async (path) => {Promise.__onAsyncEnter();try{
+                let sr = await  Promise.__onAwait(this.wrapped.stat(path));
+                let nst = new NodeFsCompatStats(await  Promise.__onAwait(this.wrapped.filetype(path)), path, path);
                 Object.assign(nst, sr);
                 return nst;
-            });
-            this.lstat = (async (path) => {
-                return await this.stat(path);
-            });
-            this.readlink = (async () => {
+            }finally{Promise.__onAsyncExit();}});
+            this.lstat = (async (path) => {Promise.__onAsyncEnter();try{
+                return await  Promise.__onAwait(this.stat(path));
+            }finally{Promise.__onAsyncExit();}});
+            this.readlink = (async () => {Promise.__onAsyncEnter();try{
                 throw new Error('Not implemented');
-            });
-            this.symlink = (async () => {
+            }finally{Promise.__onAsyncExit();}});
+            this.symlink = (async () => {Promise.__onAsyncEnter();try{
                 throw new Error('Not implemented');
-            });
-            this.chmod = (async (path, mode) => {
-            });
-            this.copyFile = (async (src, dest, mode) => {
-                if (await this.wrapped.filetype(src) === 'none') {
+            }finally{Promise.__onAsyncExit();}});
+            this.chmod = (async (path, mode) => {Promise.__onAsyncEnter();try{
+            }finally{Promise.__onAsyncExit();}});
+            this.copyFile = (async (src, dest, mode) => {Promise.__onAsyncEnter();try{
+                if (await  Promise.__onAwait(this.wrapped.filetype(src)) === 'none') {
                     throw makeENOENT();
                 }
-                await JsEnviron_1.simpleFileSystemHelper.copyFile(this.wrapped, src, dest);
-            });
+                await  Promise.__onAwait(JsEnviron_1.simpleFileSystemHelper.copyFile(this.wrapped, src, dest));
+            }finally{Promise.__onAsyncExit();}});
         }
     }
     exports.NodeFsAdapter = NodeFsAdapter;
@@ -170,22 +170,22 @@ define("partic2/packageManager/nodecompat", ["require", "exports", "partic2/Code
     exports.pathCompat.join = exports.pathCompat.join.bind(exports.pathCompat);
     exports.pathCompat.dirname = exports.pathCompat.dirname.bind(exports.pathCompat);
     exports.pathCompat.basename = exports.pathCompat.basename.bind(exports.pathCompat);
-    async function buildNodeCompatApiTjs() {
-        const { buildTjs } = await new Promise((resolve_1, reject_1) => { require(['partic2/tjshelper/tjsbuilder'], resolve_1, reject_1); });
-        const tjs = await buildTjs();
-        const { TjsSfs } = await new Promise((resolve_2, reject_2) => { require(['partic2/CodeRunner/JsEnviron'], resolve_2, reject_2); });
+    async function buildNodeCompatApiTjs() {Promise.__onAsyncEnter();try{
+        const { buildTjs } = await  Promise.__onAwait(new Promise((resolve_1, reject_1) => { require(['partic2/tjshelper/tjsbuilder'], resolve_1, reject_1); }));
+        const tjs = await  Promise.__onAwait(buildTjs());
+        const { TjsSfs } = await  Promise.__onAwait(new Promise((resolve_2, reject_2) => { require(['partic2/CodeRunner/JsEnviron'], resolve_2, reject_2); }));
         const fs = new TjsSfs();
         fs.from(tjs);
-        await fs.ensureInited();
-        const { NodeFsAdapter } = await new Promise((resolve_3, reject_3) => { require(['partic2/packageManager/nodecompat'], resolve_3, reject_3); });
+        await  Promise.__onAwait(fs.ensureInited());
+        const { NodeFsAdapter } = await  Promise.__onAwait(new Promise((resolve_3, reject_3) => { require(['partic2/packageManager/nodecompat'], resolve_3, reject_3); }));
         const nfs = new NodeFsAdapter(fs);
-        const { ServerHostWorker1RpcName, getPersistentRegistered, getAttachedRemoteRigstryFunction } = await new Promise((resolve_4, reject_4) => { require(['partic2/pxprpcClient/registry'], resolve_4, reject_4); });
+        const { ServerHostWorker1RpcName, getPersistentRegistered, getAttachedRemoteRigstryFunction } = await  Promise.__onAwait(new Promise((resolve_4, reject_4) => { require(['partic2/pxprpcClient/registry'], resolve_4, reject_4); }));
         let wwwroot = (0, webutils_1.getWWWRoot)();
         if (wwwroot.startsWith('http')) {
             //get the server wwwroot
-            const serverWorker1 = await getPersistentRegistered(ServerHostWorker1RpcName);
+            const serverWorker1 = await  Promise.__onAwait(getPersistentRegistered(ServerHostWorker1RpcName));
             if (serverWorker1 != undefined) {
-                wwwroot = await (0, registry_1.easyCallRemoteJsonFunction)(await serverWorker1.ensureConnected(), 'partic2/jsutils1/webutils', 'getWWWRoot', []);
+                wwwroot = await  Promise.__onAwait((0, registry_1.easyCallRemoteJsonFunction)(await  Promise.__onAwait(serverWorker1.ensureConnected()), 'partic2/jsutils1/webutils', 'getWWWRoot', []));
                 ;
                 wwwroot = wwwroot.replace(/\\/g, '/');
                 if (wwwroot.startsWith('/')) {
@@ -194,44 +194,53 @@ define("partic2/packageManager/nodecompat", ["require", "exports", "partic2/Code
             }
         }
         return { fs: { promises: nfs }, 'fs/promises': nfs, wwwroot: wwwroot, path: exports.pathCompat };
-    }
+    }finally{Promise.__onAsyncExit();}}
     let cachedTypescriptModule = null;
-    async function getTypescriptModuleTjs() {
+    async function getTypescriptModuleTjs() {Promise.__onAsyncEnter();try{
         if (cachedTypescriptModule != null) {
             return cachedTypescriptModule;
         }
         let importTyescriptSucc = false;
         try {
-            let ts = await new Promise((resolve_5, reject_5) => { require(['typescript'], resolve_5, reject_5); });
+            let ts = await  Promise.__onAwait(new Promise((resolve_5, reject_5) => { require(['typescript'], resolve_5, reject_5); }));
             importTyescriptSucc = true;
             cachedTypescriptModule = ts.default ?? ts;
             return cachedTypescriptModule;
         }
         catch (err) {
-            await Promise.all(Object.keys(await base_1.requirejs.getFailed()).map((t1) => base_1.requirejs.undef(t1)));
+            await  Promise.__onAwait(Promise.all(Object.keys(await  Promise.__onAwait(base_1.requirejs.getFailed())).map((t1) => base_1.requirejs.undef(t1))));
         }
         try {
-            let ts = await new Promise((resolve_6, reject_6) => { require(['partic2/packageManager/typescript4tjs'], resolve_6, reject_6); });
+            let ts = await  Promise.__onAwait(new Promise((resolve_6, reject_6) => { require(['partic2/prebuiltTypescript5d8/typescript'], resolve_6, reject_6); }));
             importTyescriptSucc = true;
             cachedTypescriptModule = ts.default ?? ts;
             return cachedTypescriptModule;
         }
         catch (err) {
-            await Promise.all(Object.keys(await base_1.requirejs.getFailed()).map((t1) => base_1.requirejs.undef(t1)));
+            await  Promise.__onAwait(Promise.all(Object.keys(await  Promise.__onAwait(base_1.requirejs.getFailed())).map((t1) => base_1.requirejs.undef(t1))));
         }
         {
-            let downloadTs = await fetch('https://cdnjs.cloudflare.com/ajax/libs/typescript/5.8.3/typescript.min.js');
-            (0, base_1.assert)(downloadTs.ok);
-            let tstxt = await downloadTs.text();
-            tstxt = "define(['exports','module'],function(exports,module){" + tstxt + "})";
-            const { fs, wwwroot, path } = await buildNodeCompatApiTjs();
-            await fs.promises.writeFile(path.join(wwwroot, 'partic2', 'packageManager', 'typescript4tjs.js'), new TextEncoder().encode(tstxt));
+            let { buildTjs } = await  Promise.__onAwait(new Promise((resolve_7, reject_7) => { require(['partic2/tjshelper/tjsbuilder'], resolve_7, reject_7); }));
+            let tjs = await  Promise.__onAwait(buildTjs());
+            let { fetchPackage } = await  Promise.__onAwait(new Promise((resolve_8, reject_8) => { require(['./pkgfetcher'], resolve_8, reject_8); }));
+            let { localPath } = await  Promise.__onAwait(fetchPackage('partic2/prebuiltTypescript5d8'));
+            let installDir = exports.pathCompat.join((0, webutils_1.getWWWRoot)(), '..', 'source', 'partic2', 'prebuiltTypescript5d8');
+            await  Promise.__onAwait(tjs.makeDir(installDir, { recursive: true }));
+            await  Promise.__onAwait(tjs.remove(installDir));
+            await  Promise.__onAwait(tjs.rename(localPath, installDir));
+            let { processDirectoryInRecursive } = await  Promise.__onAwait(new Promise((resolve_9, reject_9) => { require(['pxseedBuildScript/buildlib'], resolve_9, reject_9); }));
+            await  Promise.__onAwait(processDirectoryInRecursive(installDir));
         }
-        {
-            let ts = await new Promise((resolve_7, reject_7) => { require(['partic2/packageManager/typescript4tjs'], resolve_7, reject_7); });
+        try {
+            let ts = await  Promise.__onAwait(new Promise((resolve_10, reject_10) => { require(['partic2/prebuiltTypescript5d8/typescript'], resolve_10, reject_10); }));
             importTyescriptSucc = true;
             cachedTypescriptModule = ts.default ?? ts;
             return cachedTypescriptModule;
         }
-    }
+        catch (err) {
+            await  Promise.__onAwait(Promise.all(Object.keys(await  Promise.__onAwait(base_1.requirejs.getFailed())).map((t1) => base_1.requirejs.undef(t1))));
+        }
+        (0, base_1.assert)(cachedTypescriptModule != null, 'load typescript module failed');
+        return cachedTypescriptModule;
+    }finally{Promise.__onAsyncExit();}}
 });

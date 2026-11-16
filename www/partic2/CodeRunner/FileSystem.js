@@ -1,0 +1,682 @@
+define("partic2/CodeRunner/FileSystem", ["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils"], function (require, exports, base_1, webutils_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.simpleFileSystemHelper = exports.DirAsRootFS = exports.PathRewriteFs = exports.LocalWindowSFS = exports.KVDbBasedFs = exports.TjsSfs = void 0;
+    exports.getSimpleFileSystemFromPxprpc = getSimpleFileSystemFromPxprpc;
+    //treat both slash and back slash as sep
+    function dirname2(path) {
+        for (let t1 = path.length - 1; t1 >= 0; t1--) {
+            let ch = path.charAt(t1);
+            if ('\\/'.includes(ch)) {
+                return path.substring(0, t1);
+            }
+        }
+        return '';
+    }
+    class TjsSfs {
+        constructor() {
+            //is windows base(C:\... D:\...) path?
+            this.winbasepath = false;
+            this.inited = false;
+            this.mtx = new base_1.mutex();
+        }
+        from(impl) {
+            this.impl = impl;
+            return this;
+        }
+        async ensureInited() {
+            await this.mtx.exec(async () => {
+                if (this.inited)
+                    return;
+                if (this.impl == undefined) {
+                    throw new Error('call from() first.');
+                }
+                try {
+                    await this.impl.stat('C:\\');
+                    this.winbasepath = true;
+                }
+                catch (e) {
+                    (0, base_1.throwIfAbortError)(e);
+                }
+                this.inited = true;
+            });
+        }
+        async writeAll(path, data) {
+            let dirname = dirname2(path);
+            if (await this.filetype(dirname) !== 'dir') {
+                await this.mkdir(dirname);
+            }
+            path = this.pathConvert(path);
+            let file = await this.impl.open(path, 'w');
+            try {
+                let offset = 0;
+                for (let times = 0; offset < data.byteLength && times < 4000; times++) {
+                    let sizemax = 4 * 1024 * 1024;
+                    if (data.length - offset < sizemax) {
+                        sizemax = data.length - offset;
+                    }
+                    let write = await file.write(new Uint8Array(data.buffer, offset, sizemax), offset);
+                    offset += write;
+                }
+            }
+            finally {
+                await file.close();
+            }
+        }
+        async readAll(path) {
+            path = this.pathConvert(path);
+            return await this.impl.readFile(path);
+        }
+        async delete2(path) {
+            path = this.pathConvert(path);
+            await this.impl.remove(path);
+        }
+        pathConvert(path) {
+            if (path === '') {
+                path = '/';
+            }
+            if (path.startsWith('/') && this.winbasepath) {
+                let t1 = 0;
+                for (; t1 < path.length; t1++) {
+                    if (path.charAt(t1) !== '/') {
+                        break;
+                    }
+                }
+                path = path.substring(t1);
+                if (path.length == 2) {
+                    path = path + '\\';
+                }
+            }
+            return path;
+        }
+        async listdir(path) {
+            if ((path === '/' || path === '') && this.winbasepath) {
+                //Performance issue?
+                let dummyRootDir = [];
+                await Promise.all(Array.from('CDEFGHIJKMNOPQRSTUVWXYZ').map((t1) => this.impl.stat(t1 + ':\\')
+                    .then((statResult) => dummyRootDir.push([t1 + ':', statResult]))
+                    .catch(() => { })));
+                return dummyRootDir.map(v => ({ name: v[0], type: 'dir' }));
+            }
+            path = this.pathConvert(path);
+            let files = [];
+            let dirHandler = await this.impl.readDir(path);
+            try {
+                for await (let child of dirHandler) {
+                    files.push({ name: child.name, type: child.isDirectory ? 'dir' : 'file' });
+                }
+            }
+            finally {
+                dirHandler.close();
+            }
+            return files;
+        }
+        async filetype(path) {
+            if ((path === '/' || path === '') && this.winbasepath) {
+                return 'dir';
+            }
+            path = this.pathConvert(path);
+            try {
+                let st = await this.impl.stat(path);
+                return st.isDirectory ? 'dir' : 'file';
+            }
+            catch (e) {
+                return 'none';
+            }
+        }
+        async mkdir(path) {
+            path = this.pathConvert(path);
+            await this.impl.makeDir(path, { recursive: true });
+        }
+        async rename(path, newPath) {
+            path = this.pathConvert(path);
+            newPath = this.pathConvert(newPath);
+            await this.impl.rename(path, newPath);
+        }
+        async read(path, offset, buf) {
+            path = this.pathConvert(path);
+            let fh = await this.impl.open(path, 'r+');
+            try {
+                let len = await fh.read(buf, offset);
+                if (len === null) {
+                    len = 0;
+                }
+                return len;
+            }
+            finally {
+                await fh.close();
+            }
+        }
+        async write(path, offset, buf) {
+            path = this.pathConvert(path);
+            let fh;
+            try {
+                fh = await this.impl.open(path, 'r+');
+            }
+            catch (err) {
+                fh = await this.impl.open(path, 'w');
+            }
+            try {
+                let len = await fh.write(buf, offset);
+                return len;
+            }
+            finally {
+                await fh.close();
+            }
+        }
+        async stat(path) {
+            if ((path === '/' || path === '') && this.winbasepath) {
+                let now = new Date();
+                return { atime: now, mtime: now, ctime: now, birthtime: now, size: 0 };
+            }
+            path = this.pathConvert(path);
+            let statRes = await this.impl.stat(path);
+            return { atime: statRes.atim, mtime: statRes.mtim, ctime: statRes.ctim, birthtime: statRes.birthtim, size: statRes.size };
+        }
+        async truncate(path, newSize) {
+            path = this.pathConvert(path);
+            let f = await this.impl.open(path, 'r+');
+            try {
+                await f.truncate(newSize);
+            }
+            finally {
+                await f.close();
+            }
+        }
+    }
+    exports.TjsSfs = TjsSfs;
+    async function getSimpleFileSystemFromPxprpc(pxprpc) {
+        //check if jseio is supported
+        let checkFunc = await pxprpc.getFunc('JseHelper.JseIo.open');
+        if (checkFunc != null) {
+            checkFunc.free();
+            let { tjsFrom } = await new Promise((resolve_1, reject_1) => { require(['partic2/tjshelper/tjsonjserpc'], resolve_1, reject_1); });
+            let { Invoker } = await new Promise((resolve_2, reject_2) => { require(['partic2/pxprpcBinding/JseHelper__JseIo'], resolve_2, reject_2); });
+            let inv = new Invoker();
+            await inv.useClient(pxprpc);
+            let fs = new TjsSfs();
+            fs.from(await tjsFrom(inv));
+            return fs;
+        }
+    }
+    class LWSFSInternalError extends Error {
+    }
+    class KVDbBasedFs {
+        constructor() {
+            this.lastModified = 0;
+            //For compatibility. fs module is in partic2/JsNotebook in early day.
+            this.dbname = 'partic2/JsNotebook/filebrowser/sfs';
+            this.mtx = new base_1.mutex();
+        }
+        throwIfNotInternalError(err) {
+            if (!(err instanceof LWSFSInternalError)) {
+                throw err;
+            }
+        }
+        async ensureInited() {
+            //XXX: race condition
+            await this.mtx.lock();
+            try {
+                if (this.db == undefined) {
+                    this.db = await (0, webutils_1.kvStore)(this.dbname);
+                    this.root = await this.db.getItem('lwsfs/1');
+                    if (this.root == undefined) {
+                        this.root = { name: '', type: 'dir', children: [], mtime: (0, base_1.GetCurrentTime)().getTime() };
+                        await this.saveChange();
+                    }
+                    this.lastModified = (await this.db.getItem('lwsfs/modifiedAt') ?? 0);
+                }
+            }
+            finally {
+                await this.mtx.unlock();
+            }
+        }
+        pathSplit(path) {
+            //remove empty name
+            return path.split(/[\/\\]/).filter(v => v != '');
+        }
+        async lookupPathDir(path2, opt) {
+            //_ensureRootCacheLatest()
+            let lastModified = (await this.db.getItem('lwsfs/modifiedAt') ?? 0);
+            if (this.lastModified < lastModified) {
+                this.root = await this.db.getItem('lwsfs/1');
+                this.lastModified = lastModified;
+            }
+            let curobj = this.root;
+            for (let i1 = 0; i1 < path2.length; i1++) {
+                let name = path2[i1];
+                if (curobj.type === 'dir') {
+                    let t1 = curobj.children.find(v => v.name === name);
+                    if (t1 === undefined) {
+                        if (opt.createParentDirectories) {
+                            t1 = { type: 'dir', children: [], name, mtime: (0, base_1.GetCurrentTime)().getTime() };
+                            curobj.children.push(t1);
+                        }
+                        else {
+                            throw new LWSFSInternalError(path2.slice(0, i1).join('/') + ' is not a directory');
+                        }
+                    }
+                    curobj = t1;
+                }
+                else if (curobj.type === 'file') {
+                    throw new Error(path2.slice(0, i1 + 1).join('/') + ' is not a directory');
+                }
+            }
+            return {
+                entry: curobj
+            };
+        }
+        async writeAll(path, data) {
+            let path2 = this.pathSplit(path);
+            let lookupResult = await this.lookupPathDir(path2.slice(0, path2.length - 1), { createParentDirectories: true });
+            let parent = lookupResult.entry;
+            let found = parent.children.find(v => v.name === path2[path2.length - 1]);
+            let dataKey = (0, base_1.GenerateRandomString)();
+            if (found != undefined) {
+                found.mtime = (0, base_1.GetCurrentTime)().getTime();
+                if (typeof found.dataKey === 'string') {
+                    await this.db.delete(found.dataKey);
+                }
+                else {
+                    for (let t1 of found.dataKey) {
+                        await this.db.delete(t1.key);
+                    }
+                }
+                found.dataKey = [{ key: dataKey, size: data.length }];
+            }
+            else {
+                found = { type: 'file', name: path2[path2.length - 1], dataKey: [{ key: dataKey, size: data.length }], mtime: (0, base_1.GetCurrentTime)().getTime() };
+                parent.children.push(found);
+            }
+            found.size = data.length;
+            await this.db.setItem(dataKey, data);
+            await this.saveChange();
+        }
+        async readAll(path) {
+            let path2 = this.pathSplit(path);
+            try {
+                let lookupResult = await this.lookupPathDir(path2.slice(0, path2.length - 1), { createParentDirectories: false });
+                let parent = lookupResult.entry;
+                let found = parent.children.find(v => v.name === path2[path2.length - 1]);
+                if (found == undefined || found.type !== 'file') {
+                    return null;
+                }
+                else {
+                    if (typeof found.dataKey === 'string') {
+                        return await this.db.getItem(found.dataKey);
+                    }
+                    else {
+                        return new Uint8Array((0, base_1.ArrayBufferConcat)(await Promise.all(found.dataKey.map(t1 => this.db.getItem(t1.key)))));
+                    }
+                }
+            }
+            catch (e) {
+                this.throwIfNotInternalError(e);
+                return null;
+            }
+        }
+        async delete2(path) {
+            let path2 = this.pathSplit(path);
+            let lookupResult = await this.lookupPathDir(path2.slice(0, path2.length - 1), { createParentDirectories: false });
+            let parent = lookupResult.entry;
+            let found = parent.children.findIndex(v => v.name === path2[path2.length - 1]);
+            if (found >= 0) {
+                let [fe] = parent.children.splice(found, 1);
+                if (fe.dataKey != undefined) {
+                    if (typeof fe.dataKey === 'string') {
+                        await this.db.delete(fe.dataKey);
+                    }
+                    else {
+                        await Promise.all(fe.dataKey.map(t1 => this.db.delete(t1.key)));
+                    }
+                }
+            }
+            await this.saveChange();
+        }
+        async saveChange() {
+            this.lastModified = (0, base_1.GetCurrentTime)().getTime();
+            await this.db.setItem('lwsfs/1', this.root);
+            await this.db.setItem('lwsfs/modifiedAt', this.lastModified);
+        }
+        async listdir(path) {
+            let path2 = this.pathSplit(path);
+            let lookupResult = await this.lookupPathDir(path2, { createParentDirectories: false });
+            return lookupResult.entry.children.map(v => v);
+        }
+        async mkdir(path) {
+            let path2 = this.pathSplit(path);
+            let lookupResult = await this.lookupPathDir(path2, { createParentDirectories: true });
+            await this.saveChange();
+        }
+        //Don't create directory automatically
+        async filetype(path) {
+            let path2 = this.pathSplit(path);
+            try {
+                if (path == '') {
+                    return this.root.type;
+                }
+                let lookupResult = await this.lookupPathDir(path2.slice(0, path2.length - 1), { createParentDirectories: false });
+                let parent = lookupResult.entry;
+                let found = parent.children.find(v => v.name === path2[path2.length - 1]);
+                return found === undefined ? 'none' : found.type;
+            }
+            catch (e) {
+                this.throwIfNotInternalError(e);
+                return 'none';
+            }
+        }
+        async rename(path, newPath) {
+            let path2 = this.pathSplit(path);
+            let newPath2 = this.pathSplit(newPath);
+            let parent = await this.lookupPathDir(path2.slice(0, path2.length - 1), { createParentDirectories: false });
+            let newParent = await this.lookupPathDir(newPath2.slice(0, path2.length - 1), { createParentDirectories: true });
+            let foundIndex = parent.entry.children.findIndex(v => v.name == path2[path2.length - 1]);
+            let [t1] = parent.entry.children.splice(foundIndex, 1);
+            t1.name = newPath2[newPath2.length - 1];
+            newParent.entry.children.push(t1);
+            await this.saveChange();
+        }
+        async read(path, offset, buf) {
+            (0, base_1.assert)(buf.length > 0);
+            let path2 = this.pathSplit(path);
+            let lookupResult = await this.lookupPathDir(path2.slice(0, path2.length - 1), { createParentDirectories: false });
+            let entry = lookupResult.entry.children.find(t1 => t1.name == path2.at(-1));
+            let datas = new Array();
+            if (typeof entry.dataKey === 'string') {
+                datas.push({ key: entry.dataKey, size: entry.size });
+            }
+            else {
+                datas = entry.dataKey;
+            }
+            let pos = 0;
+            let blk = 0;
+            for (blk = 0; blk < datas.length; blk++) {
+                if (pos + datas[blk].size > offset) {
+                    break;
+                }
+                pos += datas[blk].size;
+            }
+            let len = Math.min(datas[blk].size - (offset - pos), buf.byteLength);
+            if (len <= 0)
+                return 0;
+            let bufsrc = await this.db.getItem(datas[blk].key);
+            buf.set(new Uint8Array(bufsrc.buffer, offset - pos, len));
+            return len;
+        }
+        async write(path, offset, buf) {
+            (0, base_1.assert)(buf.length > 0);
+            let path2 = this.pathSplit(path);
+            let lookupResult = await this.lookupPathDir(path2.slice(0, path2.length - 1), { createParentDirectories: true });
+            let entry = lookupResult.entry.children.find(t1 => t1.name == path2.at(-1));
+            if (entry == undefined) {
+                let newEntry = {
+                    type: 'file', name: path2[path2.length - 1],
+                    dataKey: [{ key: (0, base_1.GenerateRandomString)(), size: offset }],
+                    mtime: (0, base_1.GetCurrentTime)().getTime(),
+                    size: offset
+                };
+                await this.db.setItem(newEntry.dataKey[0].key, new Uint8Array(newEntry.dataKey[0].size));
+                entry = newEntry;
+                lookupResult.entry.children.push(entry);
+            }
+            let datas = new Array();
+            if (typeof entry.dataKey === 'string') {
+                datas.push({ key: entry.dataKey, size: entry.size });
+            }
+            else {
+                datas = entry.dataKey;
+            }
+            if (offset > entry.size) {
+                await this.truncate(path, offset);
+            }
+            let pos = 0, blk = 0, endblk = 0, startblk = 0, startpos = 0, endpos = 0;
+            for (blk = 0; blk < datas.length; blk++) {
+                if (pos + datas[blk].size > offset) {
+                    break;
+                }
+                pos += datas[blk].size;
+            }
+            startblk = blk;
+            startpos = pos;
+            for (; blk < datas.length; blk++) {
+                if (pos + datas[blk].size > offset + buf.byteLength) {
+                    break;
+                }
+                pos += datas[blk].size;
+            }
+            endblk = blk;
+            endpos = pos;
+            let newDatas = new Array();
+            for (let t1 = 0; t1 < startblk; t1++) {
+                newDatas.push(datas[t1]);
+            }
+            if (startpos < offset) {
+                let newKey = (0, base_1.GenerateRandomString)();
+                let startblk2 = await this.db.getItem(datas[startblk].key);
+                await this.db.setItem(newKey, startblk2.slice(0, offset - startpos));
+                newDatas.push({ key: newKey, size: offset - startpos });
+            }
+            {
+                let newKey = (0, base_1.GenerateRandomString)();
+                await this.db.setItem(newKey, buf.slice());
+                newDatas.push({ key: newKey, size: buf.length });
+            }
+            if (endblk < datas.length) {
+                if (endpos < offset + buf.byteLength) {
+                    let newKey = (0, base_1.GenerateRandomString)();
+                    let endblk2 = await this.db.getItem(datas[endblk].key);
+                    let blkSplice = offset + buf.byteLength - endpos;
+                    await this.db.setItem(newKey, endblk2.slice(blkSplice, endblk2.byteLength));
+                    newDatas.push({ key: newKey, size: endblk2.byteLength - blkSplice });
+                    await this.db.delete(datas[endblk].key);
+                }
+                else {
+                    newDatas.push(datas[endblk]);
+                }
+            }
+            for (let t1 = endblk + 1; t1 < datas.length; t1++) {
+                newDatas.push(datas[t1]);
+            }
+            for (let t1 = startblk; t1 < endblk; t1++) {
+                await this.db.delete(datas[t1].key);
+            }
+            entry.dataKey = newDatas;
+            entry.size = entry.dataKey.reduce((prev, curr) => prev + curr.size, 0);
+            await this.saveChange();
+            return buf.byteLength;
+        }
+        async stat(path) {
+            let path2 = this.pathSplit(path);
+            try {
+                let lookupResult = await this.lookupPathDir(path2.slice(0, path2.length - 1), { createParentDirectories: false });
+                let parent = lookupResult.entry;
+                let found = parent.children.find(v => v.name === path2[path2.length - 1]);
+                if (found == undefined) {
+                    throw new Error(`${path} can't be read.`);
+                }
+                else {
+                    let mtimDat = new Date(found.mtime);
+                    return { atime: mtimDat, mtime: mtimDat, ctime: mtimDat, birthtime: mtimDat, size: found.size ?? 0 };
+                }
+            }
+            catch (e) {
+                this.throwIfNotInternalError(e);
+                throw new Error(`${path} can't be read.`);
+            }
+        }
+        async truncate(path, newSize) {
+            let path2 = this.pathSplit(path);
+            try {
+                let lookupResult = await this.lookupPathDir(path2, { createParentDirectories: false });
+                (0, base_1.assert)(lookupResult.entry.type == 'file', `incorrect file type for ${path}`);
+                let datas = new Array();
+                if (typeof lookupResult.entry.dataKey === 'string') {
+                    datas.push({ key: lookupResult.entry.dataKey, size: lookupResult.entry.size });
+                }
+                else {
+                    datas = lookupResult.entry.dataKey;
+                }
+                if (lookupResult.entry.size < newSize) {
+                    let newBlk = { key: (0, base_1.GenerateRandomString)(), size: newSize - lookupResult.entry.size };
+                    await this.db.setItem(newBlk.key, new Uint8Array(newBlk.size));
+                    datas.push(newBlk);
+                }
+                else if (lookupResult.entry.size > newSize) {
+                    let pos = 0;
+                    let t1 = -1;
+                    for (t1 = 0; t1 < datas.length; t1++) {
+                        if (pos + datas[t1].size > newSize) {
+                            break;
+                        }
+                    }
+                    let data1 = await this.db.getItem(datas[t1].key);
+                    await this.db.setItem(datas[t1].key, data1.slice(0, newSize - pos));
+                    lookupResult.entry.dataKey = datas.slice(0, t1);
+                }
+                lookupResult.entry.size = newSize;
+            }
+            catch (e) {
+                this.throwIfNotInternalError(e);
+            }
+        }
+    }
+    exports.KVDbBasedFs = KVDbBasedFs;
+    exports.LocalWindowSFS = KVDbBasedFs;
+    class PathRewriteFs {
+        constructor(fs) {
+            this.fs = fs;
+        }
+        async ensureInited() {
+            return await this.fs.ensureInited();
+        }
+        async writeAll(path, data) {
+            return this.fs.writeAll(await this.rewritePath(path), data);
+        }
+        async readAll(path) {
+            return this.fs.readAll(await this.rewritePath(path));
+        }
+        async read(path, offset, buf) {
+            return this.fs.read(await this.rewritePath(path), offset, buf);
+        }
+        async write(path, offset, buf) {
+            return this.fs.write(await this.rewritePath(path), offset, buf);
+        }
+        async delete2(path) {
+            return this.fs.delete2(await this.rewritePath(path));
+        }
+        async listdir(path) {
+            return this.fs.listdir(await this.rewritePath(path));
+        }
+        async filetype(path) {
+            return this.fs.filetype(await this.rewritePath(path));
+        }
+        async mkdir(path) {
+            return this.fs.mkdir(await this.rewritePath(path));
+        }
+        async rename(path, newPath) {
+            return this.fs.rename(await this.rewritePath(path), await this.rewritePath(newPath));
+        }
+        async stat(path) {
+            return this.fs.stat(await this.rewritePath(path));
+        }
+        async truncate(path, newSize) {
+            return this.fs.truncate(await this.rewritePath(path), newSize);
+        }
+    }
+    exports.PathRewriteFs = PathRewriteFs;
+    class DirAsRootFS extends PathRewriteFs {
+        constructor(fs, rootDir) {
+            super(fs);
+            this.fs = fs;
+            this.rootDir = rootDir;
+            if (!this.rootDir.endsWith('/')) {
+                this.rootDir += '/';
+            }
+        }
+        async ensureInited() {
+            return await this.fs.ensureInited();
+        }
+        async rewritePath(path) {
+            if (path.startsWith('/')) {
+                return this.rootDir + path.substring(1);
+            }
+            else {
+                return this.rootDir + path;
+            }
+        }
+    }
+    exports.DirAsRootFS = DirAsRootFS;
+    class SimpleFileSystemDataSource {
+        constructor(fs, path) {
+            this.fs = fs;
+            this.path = path;
+            this.readPos = 0;
+            this.bufferSize = 64 * 1024;
+            this.inited = null;
+        }
+        async pull(controller) {
+            await this.inited;
+            let readBuffer = new Uint8Array(this.bufferSize);
+            let bytesRead = await this.fs.read(this.path, this.readPos, readBuffer);
+            if (bytesRead == 0) {
+                controller.close();
+                return;
+            }
+            this.readPos += bytesRead;
+            controller.enqueue(new Uint8Array(readBuffer.buffer, 0, bytesRead));
+        }
+    }
+    function getFileSystemReadableStream(fs, path, initialSeek, opt) {
+        let dataSource = new SimpleFileSystemDataSource(fs, path);
+        if (opt?.bufferSize != undefined) {
+            dataSource.bufferSize = opt.bufferSize;
+        }
+        if (initialSeek != undefined)
+            dataSource.readPos = initialSeek;
+        return new ReadableStream(dataSource);
+    }
+    class SimpleFileSystemDataSink {
+        constructor(fs, path) {
+            this.fs = fs;
+            this.path = path;
+            this.writePos = 0;
+            this.inited = null;
+        }
+        async write(chunk, controller) {
+            await this.inited;
+            let writeCount = await this.fs.write(this.path, this.writePos, chunk);
+            this.writePos += writeCount;
+        }
+    }
+    function getFileSystemWritableStream(fs, path, initialSeek) {
+        let dataSink = new SimpleFileSystemDataSink(fs, path);
+        dataSink.inited = (async () => {
+            if (initialSeek != undefined) {
+                if (initialSeek === 'end') {
+                    let { size } = await fs.stat(path);
+                    initialSeek = size;
+                }
+                dataSink.writePos = initialSeek;
+            }
+        })();
+        return new WritableStream(dataSink);
+    }
+    exports.simpleFileSystemHelper = {
+        getFileSystemReadableStream, getFileSystemWritableStream,
+        copyFile: async function (srcFs, src, dest, destFs) {
+            destFs = destFs ?? srcFs;
+            let r = this.getFileSystemReadableStream(srcFs, src);
+            let w = this.getFileSystemWritableStream(destFs, dest);
+            try {
+                if (await destFs.filetype(dest) == 'file') {
+                    await destFs.truncate(dest, 0);
+                }
+                await r.pipeTo(w);
+            }
+            catch (err) {
+                w.close().catch(() => { });
+                throw err;
+            }
+        }
+    };
+});

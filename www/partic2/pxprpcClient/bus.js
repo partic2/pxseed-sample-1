@@ -1,4 +1,4 @@
-define("partic2/pxprpcClient/bus", ["require", "exports", "pxprpc/extend", "partic2/jsutils1/base", "./registry", "partic2/pxprpcBinding/utils", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2", "pxprpc/backend"], function (require, exports, extend_1, base_1, registry_1, utils_1, webutils_1, jsutils2_1, backend_1) {
+define("partic2/pxprpcClient/bus", ["require", "exports", "pxprpc/extend", "partic2/jsutils1/base", "./registry", "partic2/pxprpcBinding/utils", "partic2/jsutils1/webutils", "partic2/CodeRunner/jsutils2", "pxprpc/backend", "partic2/tjshelper/tjsutil"], function (require, exports, extend_1, base_1, registry_1, utils_1, webutils_1, jsutils2_1, backend_1, tjsutil_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.PxprpcIoFromRawStream = exports.RemotePxseedJsIoServer = exports.PxseedJsIoServer = exports.BusHostServer = void 0;
@@ -138,31 +138,24 @@ define("partic2/pxprpcClient/bus", ["require", "exports", "pxprpc/extend", "part
     async function createIoPxseedJsUrl(url) {
         let type = (0, webutils_1.GetUrlQueryVariable2)(url, 'type') ?? 'tcp';
         let { buildTjs } = await new Promise((resolve_1, reject_1) => { require(['partic2/tjshelper/tjsbuilder'], resolve_1, reject_1); });
-        let { TjsReaderDataSource, TjsWriterDataSink } = await new Promise((resolve_2, reject_2) => { require(['partic2/tjshelper/tjsutil'], resolve_2, reject_2); });
         if (type === 'tcp') {
             let host = (0, webutils_1.GetUrlQueryVariable2)(url, 'host') ?? '127.0.0.1';
             let port = Number((0, webutils_1.GetUrlQueryVariable2)(url, 'port'));
             let tjs = await buildTjs();
             let conn = await tjs.connect('tcp', host, port);
-            return new PxprpcIoFromRawStream([
-                new ReadableStream(new TjsReaderDataSource(conn)),
-                new WritableStream(new TjsWriterDataSink(conn))
-            ]);
+            return new tjsutil_1.PxprpcIoFromTjsStream(conn, conn, conn);
         }
         else if (type == 'pipe') {
             let path = (0, webutils_1.GetUrlQueryVariable2)(url, 'pipe');
             (0, base_1.assert)(path != null);
             let tjs = await buildTjs();
             let conn = await tjs.connect('pipe', path);
-            return new PxprpcIoFromRawStream([
-                new ReadableStream(new TjsReaderDataSource(conn)),
-                new WritableStream(new TjsWriterDataSink(conn))
-            ]);
+            return new tjsutil_1.PxprpcIoFromTjsStream(conn, conn, conn);
         }
         else if (type == 'ws') {
             let target = (0, webutils_1.GetUrlQueryVariable2)(url, 'target');
             (0, base_1.assert)(target != null);
-            let io = await new backend_1.WebSocketIo().connect(decodeURIComponent(target));
+            let io = await new backend_1.WebSocketIo().connect(target);
             return io;
         }
         throw new Error(`Unsupported type ${type}`);

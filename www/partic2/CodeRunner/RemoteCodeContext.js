@@ -10,21 +10,12 @@ define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeCon
         constructor(value) {
             this.value = value;
             this[_a] = {};
+            this.connectorId = (0, base_1.GenerateRandomString)();
         }
         ;
-        async pullCodeContextEvent(seqGt) {
+        async pullCodeContextEvent() {
             let codeContext = this.value;
-            let events = [];
-            const checkEvent = () => {
-                let filterev = codeContext.event._cachedEventQueue.arr().filter(t1 => t1.seq > seqGt);
-                events = filterev.map(t1 => ({ type: t1.event.type, data: t1.event.data, time: t1.time, seq: t1.seq }));
-            };
-            checkEvent();
-            if (events.length === 0) {
-                await codeContext.event._cachedEventQueue.waitForQueueChange();
-                checkEvent();
-            }
-            return events;
+            return (await codeContext.event._buffer.take(this.connectorId)).map(e => e.event);
         }
         async pushCodeContextEvent(event) {
             this.value.event._dispatchEventOnEventTarget(new CodeContext_1.CodeContextEvent(event.type, { data: event.data }));
@@ -32,8 +23,8 @@ define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeCon
         async runCode(source, resultVariable) {
             return this.value.runCode(source, resultVariable);
         }
-        async callFunction(name, args) {
-            return this.value.callFunction(name, args);
+        async callFunction(func, args) {
+            return this.value.callFunction(func, args);
         }
     }
     exports.RunCodeContextConnector = RunCodeContextConnector;
@@ -69,14 +60,10 @@ define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeCon
         }
         async pullEventLoop() {
             try {
-                let lastEventSeq = 0;
                 while (this._remoteContext != null) {
-                    let events = await this._remoteContext.pullCodeContextEvent(lastEventSeq);
+                    let events = await this._remoteContext.pullCodeContextEvent();
                     for (let t1 of events) {
                         this.event._dispatchEventOnEventTarget(new CodeContext_1.CodeContextEvent(t1.type, { data: t1.data }));
-                    }
-                    if (events.length > 0) {
-                        lastEventSeq = events.at(-1).seq;
                     }
                 }
             }
@@ -106,9 +93,9 @@ define("partic2/CodeRunner/RemoteCodeContext", ["require", "exports", "./CodeCon
             await this.inited.get();
             return await this._remoteContext.runCode(source, resultVariable);
         }
-        async callFunction(name, args) {
+        async callFunction(func, args) {
             await this.inited.get();
-            return await this._remoteContext.callFunction(name, args);
+            return await this._remoteContext.callFunction(func, args);
         }
         close() {
             let t1 = this._remoteContext;

@@ -1,7 +1,7 @@
 define("pxseedBuildScript/util", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.__internal__ = exports.console = void 0;
+    exports.__internal__ = exports.console = exports.mutex = void 0;
     exports.getNodeCompatApi = getNodeCompatApi;
     exports.simpleGlob = simpleGlob;
     exports.withConsole = withConsole;
@@ -22,6 +22,51 @@ define("pxseedBuildScript/util", ["require", "exports"], function (require, expo
         }
         return cachedNodeCompatApi;
     }
+    class mutex {
+        constructor() {
+            this.locked = false;
+            this.unlockCb = [];
+        }
+        async lock() {
+            var that = this;
+            if (this.locked) {
+                return new Promise(function (resolve, reject) {
+                    that.unlockCb.push(resolve);
+                });
+            }
+            else {
+                this.locked = true;
+                return;
+            }
+        }
+        async unlock() {
+            if (this.unlockCb.length > 0) {
+                this.unlockCb.shift()();
+            }
+            else {
+                this.locked = false;
+            }
+        }
+        async tryLock() {
+            if (!this.locked) {
+                this.locked = true;
+                return true;
+            }
+            else {
+                return false;
+            }
+        }
+        async exec(fn) {
+            await this.lock();
+            try {
+                return await fn();
+            }
+            finally {
+                await this.unlock();
+            }
+        }
+    }
+    exports.mutex = mutex;
     async function runCommand(cmd, opt) {
         const { spawn } = await new Promise((resolve_4, reject_4) => { require(['child_process'], resolve_4, reject_4); });
         let runOpt = opt ?? {};
@@ -35,91 +80,164 @@ define("pxseedBuildScript/util", ["require", "exports"], function (require, expo
         const { readFile, writeFile } = fs;
         return JSON.parse(new TextDecoder().decode(await readFile(path)));
     }
-    async function writeJson(path, obj) {
-        const { fs } = await getNodeCompatApi();
+    async function writeJson(jsonPath, obj) {
+        const { fs, path } = await getNodeCompatApi();
         const { readFile, writeFile } = fs;
-        await writeFile(path, new TextEncoder().encode(JSON.stringify(obj)));
-    }
-    async function runBuild() {
-        const { dirname, join: pathJoin } = await new Promise((resolve_5, reject_5) => { require(['path'], resolve_5, reject_5); });
-        let buildScriptPath = pathJoin(dirname(__dirname), 'script', 'buildAll.js');
-        await runCommand('node ' + buildScriptPath);
-    }
-    async function* iterPath(path2, opt) {
-        const { path, fs } = await getNodeCompatApi();
-        for (let child of await fs.readdir(path.join(opt.cwd, path2), { withFileTypes: true })) {
-            if (!opt.includeHidenFile && child.name.startsWith('.')) {
-                continue;
-            }
-            if (child.isDirectory()) {
-                yield* iterPath(path.join(path2, child.name), opt);
-            }
-            else {
-                const p = path.join(path2, child.name);
-                yield p;
-            }
-        }
+        let dir = path.dirname(jsonPath);
+        await fs.mkdir(dir, { recursive: true });
+        await writeFile(jsonPath, new TextEncoder().encode(JSON.stringify(obj)));
     }
     async function simpleGlob(include, opt) {
-        let matchRegexps = [];
-        for (let t1 of include) {
-            let pathPart = t1.split(/[\\/]/);
-            let pathPartReg = [];
-            for (let t2 of pathPart) {
-                if (t2 == '.') {
-                    continue;
+        let { fs, path } = await getNodeCompatApi();
+        const segmentRegexCache = new Map();
+        function compileSegment(segment) {
+            const cached = segmentRegexCache.get(segment);
+            if (cached)
+                return cached;
+            let source = '^';
+            for (const ch of segment) {
+                if (ch === '*') {
+                    source += '[^/]*';
                 }
-                else if (t2 == '..') {
-                    if (pathPartReg.length == 0) {
-                        throw new Error('simple glob do not support ".." on the top level.');
-                    }
-                    pathPartReg.pop();
-                }
-                else if (t2 == '**') {
-                    pathPartReg.push('**');
+                else if (ch === '?') {
+                    source += '[^/]';
                 }
                 else {
-                    pathPartReg.push(new RegExp('^' +
-                        t2.replace(/[\.\(\)]/g, (v) => '\\' + v)
-                            .replace(/\*/g, '.*') +
-                        '$'));
+                    source += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 }
             }
-            matchRegexps.push(pathPartReg);
+            source += '$';
+            const regex = new RegExp(source);
+            segmentRegexCache.set(segment, regex);
+            return regex;
         }
-        let matchResult = [];
-        for await (let t1 of iterPath('', { cwd: opt.cwd, includeHidenFile: opt.includeHidenFile })) {
-            let matched = false;
-            let pathPart = t1.split(/[\\/]/).filter(t1 => t1 !== '');
-            for (let t2 of matchRegexps) {
-                let pathPartMatched = true;
-                let doubleStar = t2.indexOf('**');
-                if (doubleStar < 0)
-                    doubleStar = t2.length;
-                for (let t3 = 0; t3 < doubleStar; t3++) {
-                    if (!t2[t3].test(pathPart[t3])) {
-                        pathPartMatched = false;
-                        break;
-                    }
+        function segmentMatches(pathSegment, patternSegment) {
+            if (patternSegment === '*')
+                return true;
+            return compileSegment(patternSegment).test(pathSegment);
+        }
+        function parsePattern(pattern) {
+            return pattern.split('/').filter((s) => s.length > 0 && s !== '.');
+        }
+        function matchesPattern(pathSegments, pattern) {
+            const n = pathSegments.length;
+            const m = pattern.length;
+            const memo = new Map();
+            const go = (i, j) => {
+                if (j === m)
+                    return i === n;
+                const key = i * (m + 1) + j;
+                const cached = memo.get(key);
+                if (cached !== undefined)
+                    return cached;
+                let result;
+                if (pattern[j] === '**') {
+                    result = go(i, j + 1) || (i < n && go(i + 1, j));
                 }
-                if (pathPartMatched) {
-                    for (let t3 = t2.length - 1; t3 > doubleStar; t3--) {
-                        if (!t2[t3].test(pathPart[pathPart.length - (t2.length - t3)])) {
-                            pathPartMatched = false;
-                            break;
+                else {
+                    result = i < n && segmentMatches(pathSegments[i], pattern[j]) && go(i + 1, j + 1);
+                }
+                memo.set(key, result);
+                return result;
+            };
+            return go(0, 0);
+        }
+        function canBePrefix(pathSegments, pattern) {
+            const n = pathSegments.length;
+            const m = pattern.length;
+            const memo = new Map();
+            const go = (i, j) => {
+                if (i === n)
+                    return true; // all directory segments consumed so far
+                if (j === m)
+                    return false; // pattern exhausted, path is not
+                const key = i * (m + 1) + j;
+                const cached = memo.get(key);
+                if (cached !== undefined)
+                    return cached;
+                let result;
+                if (pattern[j] === '**') {
+                    result = go(i, j + 1) || go(i + 1, j);
+                }
+                else {
+                    result = segmentMatches(pathSegments[i], pattern[j]) && go(i + 1, j + 1);
+                }
+                memo.set(key, result);
+                return result;
+            };
+            return go(0, 0);
+        }
+        function excludedDir(pathSegments, pattern) {
+            const n = pathSegments.length;
+            const m = pattern.length;
+            const memo = new Map();
+            const go = (i, j) => {
+                if (i === n) {
+                    // Directory path fully matched. Anything left in the pattern must be "**",
+                    // meaning the whole subtree is excluded too.
+                    for (let k = j; k < m; k++) {
+                        if (pattern[k] !== '**')
+                            return false;
+                    }
+                    return true;
+                }
+                if (j === m)
+                    return false;
+                const key = i * (m + 1) + j;
+                const cached = memo.get(key);
+                if (cached !== undefined)
+                    return cached;
+                let result;
+                if (pattern[j] === '**') {
+                    result = go(i, j + 1) || go(i + 1, j);
+                }
+                else {
+                    result = segmentMatches(pathSegments[i], pattern[j]) && go(i + 1, j + 1);
+                }
+                memo.set(key, result);
+                return result;
+            };
+            return go(0, 0);
+        }
+        async function glob({ include, exclude, cwd }) {
+            const includePatterns = include.map(parsePattern).filter((p) => p.length > 0);
+            const excludePatterns = exclude.map(parsePattern).filter((p) => p.length > 0);
+            if (includePatterns.length === 0)
+                return [];
+            const results = [];
+            const walk = async (absDir, relSegments) => {
+                let entries;
+                try {
+                    entries = await fs.readdir(absDir, { withFileTypes: true });
+                }
+                catch {
+                    return;
+                }
+                for (const entry of entries) {
+                    const name = entry.name;
+                    const childRel = relSegments.concat(name);
+                    const childAbs = path.join(absDir, name);
+                    if (entry.isDirectory()) {
+                        if (excludePatterns.some((p) => excludedDir(childRel, p)))
+                            continue;
+                        if (!includePatterns.some((p) => canBePrefix(childRel, p)))
+                            continue;
+                        await walk(childAbs, childRel);
+                    }
+                    else if (entry.isFile()) {
+                        if (excludePatterns.some((p) => matchesPattern(childRel, p)))
+                            continue;
+                        if (includePatterns.some((p) => matchesPattern(childRel, p))) {
+                            results.push(childRel.join('/'));
                         }
                     }
                 }
-                if (pathPartMatched) {
-                    matched = true;
-                    break;
-                }
-            }
-            if (matched) {
-                matchResult.push(t1.replace(/\\/g, '/'));
-            }
+            };
+            await walk(cwd, []);
+            results.sort();
+            return results;
         }
-        return matchResult;
+        return glob({ include, exclude: opt.exclude ?? [], cwd: opt.cwd });
     }
     exports.console = globalThis.console;
     async function withConsole(c, fn) {
@@ -132,6 +250,6 @@ define("pxseedBuildScript/util", ["require", "exports"], function (require, expo
         }
     }
     exports.__internal__ = {
-        runCommand, readJson, writeJson, runBuild
+        runCommand, readJson, writeJson
     };
 });

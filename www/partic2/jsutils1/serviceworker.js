@@ -37,28 +37,6 @@ define("partic2/jsutils1/serviceworker", ["require", "exports", "./webutils"], f
     async function requestExit() {
         globalThis.close();
     }
-    async function kvStoreOnFetch(dbName, varName, queryStat) {
-        let db = await (0, webutils_1.kvStore)(dbName);
-        let data = await db.getItem(varName);
-        if (data == undefined) {
-            return new Response('Not found', {
-                status: 404
-            });
-        }
-        else {
-            let contentType = '';
-            if (queryStat != undefined) {
-                contentType = decodeURIComponent((0, webutils_1.GetUrlQueryVariable2)(queryStat, 'content-type') ?? '');
-            }
-            let headers = {};
-            if (contentType != '') {
-                headers['content-type'] = contentType;
-            }
-            return new Response(data, {
-                headers
-            });
-        }
-    }
     let swconfig = {};
     exports.onfetchHandlers = new Array();
     async function cacheFetch(url) {
@@ -70,8 +48,8 @@ define("partic2/jsutils1/serviceworker", ["require", "exports", "./webutils"], f
     async function loadServiceWorkerModule(modName) {
         try {
             let mod = await new Promise((resolve_1, reject_1) => { require([modName], resolve_1, reject_1); });
-            if (mod != undefined && ('asyncInit' in mod)) {
-                await mod.asyncInit();
+            if (mod != undefined && ('__inited__' in mod)) {
+                await mod.__inited__;
             }
         }
         catch (e) {
@@ -85,24 +63,13 @@ define("partic2/jsutils1/serviceworker", ["require", "exports", "./webutils"], f
             __pxseedInit.onfetch = (ev) => {
                 let resp = null;
                 for (let t1 of exports.onfetchHandlers) {
-                    resp = t1(ev);
+                    resp = t1.handler(ev);
                     if (resp !== null) {
                         break;
                     }
                 }
                 return resp;
             };
-            exports.onfetchHandlers.push((fetchEv) => {
-                let req = fetchEv.request;
-                if (req.url.startsWith(exports.serviceWorkerServeRoot)) {
-                    let subpath = req.url.substring(exports.serviceWorkerServeRoot.length);
-                    let matched = subpath.match(/^kvStore\/(.+?)\/(.+?)(\?.*)?$/);
-                    if (matched != null) {
-                        return kvStoreOnFetch(decodeURIComponent(matched[1]), matched[2], matched[3]);
-                    }
-                }
-                return null;
-            });
             try {
                 await Promise.allSettled((swconfig.startupModules ?? []).map(t1 => loadServiceWorkerModule(t1)));
             }

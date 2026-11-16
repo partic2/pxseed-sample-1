@@ -1,7 +1,9 @@
 define("partic2/pxprpcClient/pxseedremotefuncs", ["require", "exports", "partic2/jsutils1/base", "pxprpc/backend", "pxprpc/base", "pxprpc/extend", "partic2/pxprpcBinding/utils", "partic2/jsutils1/webutils"], function (require, exports, base_1, backend_1, base_2, extend_1, utils_1, webutils_1) {
     "use strict";
+    var _a;
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.openConnectionFromUrlImpl = exports.RpcWorker = exports.IoOverPxprpc = exports.RpcSerializeMagicMark = void 0;
+    exports.bindToRemoteRpcTask = bindToRemoteRpcTask;
     exports.createIoPipe = createIoPipe;
     exports.getAttachedRemoteRigstryFunction = getAttachedRemoteRigstryFunction;
     exports.openConnectionFromUrl = openConnectionFromUrl;
@@ -65,6 +67,22 @@ define("partic2/pxprpcClient/pxseedremotefuncs", ["require", "exports", "partic2
         bytesArray.forEach((val) => ser.putBytes(val));
         return ser.build();
     }
+    class RemoteRpcTask extends base_1.Task {
+        constructor() {
+            super(...arguments);
+            this[_a] = {};
+        }
+        execute(fn) {
+            return this.fork(function* () {
+                let t1 = fn();
+                if (typeof t1 === 'object' && t1 !== null && 'then' in t1) {
+                    t1 = yield t1;
+                }
+                return t1;
+            }, { locals: 'share', name: this.name + '.subtask' }).run();
+        }
+    }
+    _a = exports.RpcSerializeMagicMark;
     extend_1.defaultFuncMap[rpcFuncPrefix + '.callJsonFunction'] = new extend_1.RpcExtendServerCallable(async (requestJson, extraBytes, objectPool) => {
         try {
             let extraBytesArray = unpackExtraBytesArray(extraBytes);
@@ -111,8 +129,21 @@ define("partic2/pxprpcClient/pxseedremotefuncs", ["require", "exports", "partic2
             extraBytesArray = new Array();
             let callable = thisObject[request.method];
             (0, base_1.assert)(typeof callable === 'function', thisObject.constructor.name + '.' + request.method + ' is not callable');
+            let result;
+            if (request.task != undefined) {
+                let task = objectPool.get(request.task);
+                if (task == undefined) {
+                    task = new RemoteRpcTask(function* () { yield new Promise(resolve => { }); });
+                    task.name = __name__ + '.RpcTask-' + request.task;
+                    objectPool.set(request.task, task);
+                }
+                result = await task.execute(() => thisObject[request.method](...request.params));
+            }
+            else {
+                result = await thisObject[request.method](...request.params);
+            }
             return [
-                JSON.stringify({ result: (await thisObject[request.method](...request.params)) ?? null }, (key, value) => {
+                JSON.stringify({ result: result ?? null }, (key, value) => {
                     if (value instanceof Uint8Array) {
                         extraBytesArray.push(value);
                         return { [exports.RpcSerializeMagicMark]: true, t: 'Uint8Array', i: extraBytesArray.length - 1 };
@@ -149,6 +180,23 @@ define("partic2/pxprpcClient/pxseedremotefuncs", ["require", "exports", "partic2
             ];
         }
     }).typedecl('sbo->sb');
+    let remoteRpcTaskInfo = new base_1.TaskLocalRef(null);
+    //Only call once for each task that is guaranteed to settle, to avoid remote task leak.
+    function bindToRemoteRpcTask(taskId) {
+        taskId = taskId ?? (0, base_1.GenerateRandomString)();
+        (0, base_1.assert)(base_1.Task.currentTask != null);
+        if (Object.getOwnPropertyNames(base_1.Task.currentTask.locals()).includes(remoteRpcTaskInfo.taskLocalVarName)) {
+            console.error('Only call once for each task that is guaranteed to settle, to avoid remote task leak.\n' + new Error().stack);
+        }
+        let info = { id: taskId, usedInRpc: new Set() };
+        remoteRpcTaskInfo.set(info);
+        function onTaskSettled() {
+            for (let t2 of info.usedInRpc) {
+                t2.freeObjectInRemoteObjectPool({ [exports.RpcSerializeMagicMark]: { id: taskId } });
+            }
+        }
+        base_1.Task.currentTask.then(onTaskSettled, onTaskSettled);
+    }
     class IoOverPxprpc {
         constructor(remoteIo) {
             this.remoteIo = remoteIo;
@@ -229,7 +277,10 @@ define("partic2/pxprpcClient/pxseedremotefuncs", ["require", "exports", "partic2
         async loadModule(name) {
             return this.funcs[0].call(name);
         }
-        async callJsonFunction(moduleNameOrThisObject, functionName, params, objectPool) {
+        async callJsonFunction(moduleNameOrThisObject, functionName, params) {
+            if (this.objectPool == undefined) {
+                this.objectPool = await this.allocateRemoteObjectPool();
+            }
             let request = {
                 method: functionName,
                 params: params
@@ -240,11 +291,10 @@ define("partic2/pxprpcClient/pxseedremotefuncs", ["require", "exports", "partic2
             else {
                 request.module = moduleNameOrThisObject;
             }
-            if (objectPool == undefined) {
-                if (this.defaultObjectPool == undefined) {
-                    this.defaultObjectPool = await this.allocateRemoteObjectPool();
-                }
-                objectPool = this.defaultObjectPool;
+            let t1 = remoteRpcTaskInfo.get();
+            if (t1 != null) {
+                request.task = t1.id;
+                t1.usedInRpc.add(this);
             }
             let extraBytesArray = new Array();
             let requestJson = JSON.stringify(request, (key, value) => {
@@ -262,7 +312,7 @@ define("partic2/pxprpcClient/pxseedremotefuncs", ["require", "exports", "partic2
                 }
                 return value;
             });
-            let [responseJson, extraBytes] = await this.funcs[7].call(requestJson, packExtraBytesArray(extraBytesArray), objectPool);
+            let [responseJson, extraBytes] = await this.funcs[7].call(requestJson, packExtraBytesArray(extraBytesArray), this.objectPool);
             extraBytesArray = unpackExtraBytesArray(extraBytes);
             let response = JSON.parse(responseJson, (key, value) => {
                 if (typeof value === 'object' && value !== null) {
@@ -357,10 +407,9 @@ define("partic2/pxprpcClient/pxseedremotefuncs", ["require", "exports", "partic2
         async allocateRemoteObjectPool() {
             return await this.funcs[10].call();
         }
-        async freeObjectInRemoteObjectPool(object, objectPool) {
-            objectPool = objectPool ?? this.defaultObjectPool;
-            if (objectPool != undefined) {
-                await this.funcs[11].call(objectPool ?? this.defaultObjectPool, object[exports.RpcSerializeMagicMark].id);
+        async freeObjectInRemoteObjectPool(object) {
+            if (this.objectPool != undefined) {
+                await this.funcs[11].call(this.objectPool, object[exports.RpcSerializeMagicMark].id);
             }
         }
         async ensureInit() {

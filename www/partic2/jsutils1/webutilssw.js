@@ -3,15 +3,14 @@
 define("partic2/jsutils1/webutilssw", ["require", "exports", "./base", "./webutils"], function (require, exports, base_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.SimpleGETCache = exports.usingSimpleGETCacheFetchHandler = exports.ServiceWorkerId = exports.serviceWorkerServeRoot = void 0;
-    exports.getUrlForKvStore = getUrlForKvStore;
-    exports.RequestDownloadSW = RequestDownloadSW;
+    exports.SimpleGETCache = exports.__inited__ = exports.usingSimpleGETCacheFetchHandler = exports.ServiceWorkerId = exports.serviceWorkerServeRoot = void 0;
     exports.ensureServiceWorkerInstalled = ensureServiceWorkerInstalled;
     exports.registerServiceWorkerStartupModule = registerServiceWorkerStartupModule;
     exports.unregisterServiceWorkerStartupModule = unregisterServiceWorkerStartupModule;
     exports.reloadServiceWorkerAndCache = reloadServiceWorkerAndCache;
     exports.getServiceWorkerStartupModule = getServiceWorkerStartupModule;
-    exports.asyncInit = asyncInit;
+    exports.installThisModule = installThisModule;
+    exports.uninstallThisModule = uninstallThisModule;
     exports.SimpleGETCacheReloadConfig = SimpleGETCacheReloadConfig;
     const __name__ = base_1.requirejs.getLocalRequireModule(require);
     /*workerentry.js MUST put into the same origin to access storage api on web ,
@@ -85,29 +84,6 @@ define("partic2/jsutils1/webutilssw", ["require", "exports", "./base", "./webuti
         }
     }
     let serviceWorkerThread1;
-    function getUrlForKvStore(dbName, key, options) {
-        dbName ?? (dbName = webutils_1.config.defaultStorePrefix + '/kv-1');
-        let search = [];
-        if (options?.contentType != undefined) {
-            search.push('content-type=' + encodeURIComponent(options.contentType));
-        }
-        let url = exports.serviceWorkerServeRoot + 'kvStore/' + encodeURIComponent(dbName) + '/' + key;
-        if (search.length > 0) {
-            url += '?' + search.join('&');
-        }
-        return url;
-    }
-    async function RequestDownloadSW(buff, fileName) {
-        let kvs = await (0, webutils_1.kvStore)();
-        let tempPath = '__temp/' + (0, base_1.GenerateRandomString)() + '/' + fileName;
-        if (typeof buff === 'string') {
-            buff = new TextEncoder().encode(buff);
-        }
-        await kvs.setItem(tempPath, buff);
-        window.open(getUrlForKvStore(undefined, tempPath, { contentType: 'application/octet-stream' }), '_blank');
-        await (0, base_1.sleep)(3000);
-        kvs.delete(tempPath);
-    }
     async function ensureServiceWorkerInstalled() {
         if (serviceWorkerThread1 == null) {
             serviceWorkerThread1 = new ServiceWorkerThread(exports.ServiceWorkerId);
@@ -144,29 +120,20 @@ define("partic2/jsutils1/webutilssw", ["require", "exports", "./base", "./webuti
         swconfig = await (0, webutils_1.GetPersistentConfig)(serviceworkerName);
         return new Set(swconfig.startupModules ?? []);
     }
-    let config = {};
     const cacheName = (0, webutils_1.getWWWRoot)() + '/' + __name__;
+    let config = {};
     class SimpleGETCacheFetchHandler {
         constructor() {
-            this.policyMap = new Map();
-            this.wwwrootPathLength = 0;
-            this.handler = (ev) => {
+            this.fetch = (ev) => {
                 if (ev.request.method != 'GET') {
                     return null;
                 }
-                let relpath = new URL(ev.request.url).pathname.substring(this.wwwrootPathLength + 1).split('/');
-                let policy = 'not handle';
-                for (let t1 = 0; t1 <= relpath.length; t1++) {
-                    let curpolicy = this.policyMap.get(relpath.slice(0, t1).join('/'));
-                    if (curpolicy != undefined) {
-                        policy = curpolicy;
-                    }
-                }
+                let policy = config.simpleGETCache?.policy ?? 'not handle';
                 switch (policy) {
                     case 'not handle':
                         return null;
                     case 'fetch only':
-                        return this.cacheFirstHandler(ev.request);
+                        return this.fetchOnlyHandler(ev.request);
                     case 'fetch first':
                         return this.fetchFirstHandler(ev.request);
                     case 'cache first':
@@ -176,19 +143,13 @@ define("partic2/jsutils1/webutilssw", ["require", "exports", "./base", "./webuti
                 }
             };
         }
-        async initWithConfig() {
-            config = await (0, webutils_1.GetPersistentConfig)(__name__);
-            this.policyMap.clear();
-            if (exports.SimpleGETCache != undefined) {
-                for (let t1 of config.simpleGETCache) {
-                    this.policyMap.set(t1.path, t1.policy);
-                }
-            }
-            this.wwwrootPathLength = new URL((0, webutils_1.getWWWRoot)()).pathname.length;
-            this.cache = await caches.open(cacheName);
-        }
         async fetchOnlyHandler(request) {
             return await fetch(request);
+        }
+        async updateWithConfig() {
+            if (this.cache == undefined) {
+                this.cache = await caches.open(cacheName);
+            }
         }
         async fetchFirstHandler(request) {
             try {
@@ -223,65 +184,53 @@ define("partic2/jsutils1/webutilssw", ["require", "exports", "./base", "./webuti
     }
     //internal use
     exports.usingSimpleGETCacheFetchHandler = null;
-    async function asyncInit() {
+    exports.__inited__ = (async () => {
         if ('__pxseedInit' in globalThis && __pxseedInit.env == 'service worker') {
             config = await (0, webutils_1.GetPersistentConfig)(__name__);
             let { onfetchHandlers } = await new Promise((resolve_1, reject_1) => { require(['./serviceworker'], resolve_1, reject_1); });
             exports.usingSimpleGETCacheFetchHandler = new SimpleGETCacheFetchHandler();
-            await exports.usingSimpleGETCacheFetchHandler.initWithConfig();
-            onfetchHandlers.push(exports.usingSimpleGETCacheFetchHandler.handler);
+            await exports.usingSimpleGETCacheFetchHandler.updateWithConfig();
+            onfetchHandlers.push({ name: __name__ + '.SimpleGETCache', handler: exports.usingSimpleGETCacheFetchHandler.fetch });
         }
+    })();
+    async function installThisModule() {
+        await registerServiceWorkerStartupModule(__name__);
+    }
+    async function uninstallThisModule() {
+        await unregisterServiceWorkerStartupModule(__name__);
     }
     //Simple "GET Request Cache Manager" for Service Worker 
     exports.SimpleGETCache = {
-        enable: async function () {
-            await registerServiceWorkerStartupModule(__name__);
-        },
-        disable: async function () {
-            await unregisterServiceWorkerStartupModule(__name__);
-        },
         ensurePersistentConfigLoaded: async function () {
             config = await (0, webutils_1.GetPersistentConfig)(__name__);
         },
         //The service worker config must reload manually after modified(ie:setCachePolicy)
-        async reloadConfig() {
+        async reloadServiceWorkerConfig() {
             if ('__pxseedInit' in globalThis && __pxseedInit.env == 'service worker') {
                 if (exports.usingSimpleGETCacheFetchHandler != null) {
                     await this.ensurePersistentConfigLoaded();
-                    await exports.usingSimpleGETCacheFetchHandler.initWithConfig();
+                    await exports.usingSimpleGETCacheFetchHandler.updateWithConfig();
                 }
             }
             else {
                 let sw = await ensureServiceWorkerInstalled();
-                sw.call(__name__, 'SimpleGETCacheReloadConfig', []);
+                await sw.call(__name__, 'SimpleGETCacheReloadConfig', []);
             }
         },
-        //path is relative the wwwroot
-        setCachePolicy: async function (path, policy) {
-            this.ensurePersistentConfigLoaded();
-            if (config.simpleGETCache == undefined) {
-                config.simpleGETCache = [];
-            }
-            path = path.split('/').join('/');
-            let found = config.simpleGETCache.find(t1 => t1.path == path);
-            if (found == undefined) {
-                found = { path, policy };
-                config.simpleGETCache.push(found);
-            }
-            else {
-                found.policy = policy;
-            }
-            (0, webutils_1.SavePersistentConfig)(__name__, config);
-        },
-        getAllCachePolicy: async function () {
+        setCachePolicy: async function (policy) {
             await this.ensurePersistentConfigLoaded();
-            return config.simpleGETCache ?? [];
+            config.simpleGETCache = { policy: policy };
+            await (0, webutils_1.SavePersistentConfig)(__name__, config);
+        },
+        getCachePolicy: async function () {
+            await this.ensurePersistentConfigLoaded();
+            return config.simpleGETCache?.policy;
         },
         clearCache: async function () {
             await caches.delete(cacheName);
         }
     };
     async function SimpleGETCacheReloadConfig() {
-        return await exports.SimpleGETCache.reloadConfig();
+        return await exports.SimpleGETCache.reloadServiceWorkerConfig();
     }
 });

@@ -1,10 +1,11 @@
 define("partic2/jsutils1/base", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.AssertError = exports.logger = exports.TaskLocalRef = exports.Ref2 = exports.requirejs = exports.mutex = exports.ArrayWrap2 = exports.CanceledError = exports.future = exports.Task = void 0;
+    exports.EventSource = exports.logger = exports.TaskLocalLogHandler = exports.AssertError = exports.TaskLocalRef = exports.Ref2 = exports.requirejs = exports.mutex = exports.ArrayWrap2 = exports.future = exports.CanceledError = exports.Task = void 0;
     exports.throwIfAbortError = throwIfAbortError;
     exports.copy = copy;
     exports.clone = clone;
+    exports.objectPickField = objectPickField;
     exports.FormatDate = FormatDate;
     exports.ParseDate = ParseDate;
     exports.sleep = sleep;
@@ -18,8 +19,8 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
     exports.stringToCharCodes = stringToCharCodes;
     exports.ArrayBufferConcat = ArrayBufferConcat;
     exports.WaitUntil = WaitUntil;
-    exports.partial = partial;
     exports.ToDataUrl = ToDataUrl;
+    exports.defaultLogHandler = defaultLogHandler;
     //polyfill globalThis
     try {
         let _ = globalThis;
@@ -97,6 +98,7 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             globalThis.AbortSignal = AbortSignal;
         }
     })();
+    let __name__ = 'partic2/jsutils1/base';
     class Task {
         static locals() {
             return Task.currentTask?.locals();
@@ -120,20 +122,17 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             return (yield p);
         }
         constructor(taskMain, name) {
+            this.taskMain = taskMain;
             this.name = name;
             this.__locals = {};
             this.__abortController = new AbortController();
-            this.__childrenTask = new Array();
-            this.__iter = (typeof taskMain === 'function') ? taskMain() : taskMain;
+            this.parentTask = null;
             let resolver = [undefined, undefined, undefined];
             resolver[0] = new Promise((resolve, reject) => {
                 resolver[1] = resolve;
                 resolver[2] = reject;
             });
             this.__resolver = resolver;
-            this.__abortController.signal.addEventListener('abort', (ev) => {
-                this.onAbort();
-            });
         }
         __step(tNext, error) {
             let savedTask = Task.currentTask;
@@ -165,6 +164,7 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             }
         }
         run() {
+            this.__iter = (typeof this.taskMain === 'function') ? this.taskMain() : this.taskMain;
             this.__step(undefined, undefined);
             return this;
         }
@@ -178,19 +178,38 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             return this.__locals;
         }
         //Fork a child task. 
-        //The default behaviour: set the parent locals as prototype of child locals, propagate abort signal to children.
-        fork(taskMain) {
-            let childTask = new Task(taskMain);
-            Object.setPrototypeOf(childTask.__locals, this.locals());
-            this.__childrenTask.push(childTask);
-            const cleanTask = () => this.__childrenTask.splice(this.__childrenTask.indexOf(childTask));
-            childTask.then(cleanTask, cleanTask);
+        //Will propagate abort signal to children.
+        fork(taskMain, options) {
+            let childTask = new this.constructor(taskMain, options?.name);
+            childTask.parentTask = this;
+            const abortPropagate = () => {
+                childTask.abort();
+            };
+            this.__abortController.signal.addEventListener('abort', abortPropagate);
+            const childTaskEnd = () => {
+                this.__abortController.signal.removeEventListener('abort', abortPropagate);
+            };
+            childTask.then(childTaskEnd, childTaskEnd);
+            let localsPolicy = options?.locals ?? 'extend';
+            switch (localsPolicy) {
+                case 'extend':
+                    Object.setPrototypeOf(childTask.__locals, this.locals());
+                    break;
+                case 'share':
+                    childTask.__locals = this.locals();
+                    break;
+            }
             return childTask;
         }
-        onAbort() {
-            for (let t1 of [...this.__childrenTask]) {
-                t1.abort(this.__abortController.signal.reason);
+        isDescendantTaskOf(ancestor) {
+            let curTask = this.parentTask;
+            while (curTask != null) {
+                if (curTask === ancestor) {
+                    return true;
+                }
+                curTask = curTask.parentTask;
             }
+            return false;
         }
         then(onfulfilled, onrejected) {
             return this.__resolver[0].then(onfulfilled, onrejected);
@@ -199,38 +218,53 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
     exports.Task = Task;
     Task.currentTask = null;
     function throwIfAbortError(e) {
-        if (e.name === 'AbortError') {
+        if (typeof e === 'object' && e !== null && e.name === 'AbortError') {
             throw e;
         }
     }
     function copy(src, dst, depth) {
-        if (depth == 0) {
-            return;
+        if (depth <= 0)
+            return dst;
+        if (Array.isArray(src)) {
+            if (!Array.isArray(dst))
+                dst = [];
+            dst.length = src.length;
+            for (let i = 0; i < src.length; i++) {
+                let v = src[i];
+                if (depth > 1 && v !== null && typeof v === "object") {
+                    dst[i] = copy(v, Array.isArray(v) ? [] : {}, depth - 1);
+                }
+                else {
+                    dst[i] = v;
+                }
+            }
+            return dst;
         }
-        Object.getOwnPropertyNames(src).forEach(function (key, i) {
-            let srcObj = src;
-            let v = srcObj[key];
-            if (v instanceof Function) {
-                dst[key] = srcObj[key];
-            }
-            else if (depth > 1 && (v instanceof Array)) {
-                dst[key] = new Array();
-                copy(srcObj[key], dst[key], depth - 1);
-            }
-            else if (depth > 1 && v instanceof Object) {
-                dst[key] = new Object();
-                copy(srcObj[key], dst[key], depth - 1);
-            }
-            else {
-                dst[key] = srcObj[key];
-            }
-        });
-        Object.setPrototypeOf(dst, Object.getPrototypeOf(src));
+        if (src !== null && typeof src === "object") {
+            if (dst === undefined || dst === null)
+                dst = {};
+            Object.keys(src).forEach(key => {
+                const v = src[key];
+                if (depth > 1 && v !== null && typeof v === "object") {
+                    dst[key] = copy(v, Array.isArray(v) ? [] : {}, depth - 1);
+                }
+                else {
+                    dst[key] = v;
+                }
+            });
+            Object.setPrototypeOf(dst, Object.getPrototypeOf(src));
+        }
+        return dst;
     }
     function clone(src, depth) {
-        let dst = new Object();
-        copy(src, dst, depth);
-        return dst;
+        return copy(src, undefined, depth);
+    }
+    function objectPickField(o, fields) {
+        const r = {};
+        for (const f of fields) {
+            r[f] = o[f];
+        }
+        return r;
     }
     function FormatDate(date, layout) {
         let outstr = layout;
@@ -286,13 +320,17 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             defer.push(() => clearTimeout(timer));
         })).finally(() => defer.forEach((cb) => cb()));
     }
+    class CanceledError extends Error {
+        constructor() {
+            super(__name__ + '.CanceledError');
+            this.name = __name__ + '.CanceledError';
+        }
+    }
+    exports.CanceledError = CanceledError;
     class future {
         constructor() {
             this.done = false;
-            this.resultPromise = new Promise((resolve, reject) => {
-                this.resolveCallback = resolve;
-                this.rejectCallback = reject;
-            });
+            this.reset();
         }
         get() {
             return this.resultPromise;
@@ -311,15 +349,17 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
                 this.rejectCallback(exception);
             }
         }
-    }
-    exports.future = future;
-    class CanceledError extends Error {
-        constructor() {
-            super('canceled.');
-            this.name = 'Canceled';
+        reset() {
+            this.done = false;
+            this.result = undefined;
+            this.exception = undefined;
+            this.resultPromise = new Promise((resolve, reject) => {
+                this.resolveCallback = resolve;
+                this.rejectCallback = reject;
+            });
         }
     }
-    exports.CanceledError = CanceledError;
+    exports.future = future;
     class ArrayWrap2 {
         constructor(wrapped, initPush) {
             this.wrapped = [];
@@ -350,8 +390,8 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
                 t1.setResult(0);
             }
         }
-        cancelWaiting() {
-            this.onQueueChange.forEach(t1 => t1.setException(new CanceledError()));
+        cancelWaiting(throws) {
+            this.onQueueChange.forEach(t1 => t1.setException(throws ?? new CanceledError()));
         }
         async waitForQueueChange() {
             let waitForChange = new future();
@@ -417,7 +457,7 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
                 this.locked = false;
             }
         }
-        async tryLock() {
+        tryLock() {
             if (!this.locked) {
                 this.locked = true;
                 return true;
@@ -450,6 +490,9 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         getFailed: async function () {
             //partic2-iamdee feature
             return require.getFailed();
+        },
+        clearFailed: async function () {
+            Object.keys(require.getFailed()).forEach(t1 => require.undef(t1));
         },
         undef: async function (mod) {
             require.undef(mod);
@@ -487,6 +530,17 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
                 });
             }
             this.definingHook.push(hook);
+        },
+        //partic2-iamdee feature
+        //For AMD module, usage: defineAsynchronousModuleInitializer(exports,async ()=>{...});
+        setAsynchronousInitializer(module, initializer) {
+            module.then = function (resolve, reject) {
+                initializer().then(function () {
+                    delete module.then;
+                    resolve(module);
+                }, reject);
+            };
+            define(module.constructor.name, [], initializer);
         }
     };
     function GenerateRandomString(maxRandLenX4) {
@@ -499,46 +553,30 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         }
         return s;
     }
-    function DateAdd(org, add, field) {
-        if (typeof add === 'number') {
-            assert(field != undefined);
-            switch (field) {
-                case 'date':
-                    return DateAdd(org, { days: add });
-                case 'month':
-                case 'year':
-                case 'hour':
-                case 'minute':
-                case 'second':
-                case 'millisecond':
-                    return DateAdd(org, { [field + 's']: add });
-            }
+    function DateAdd(org, add) {
+        var d = new Date(org);
+        if (add.days != undefined) {
+            d.setDate(d.getDate() + add.days);
         }
-        else {
-            var d = new Date(org);
-            if (add.days != undefined) {
-                d.setDate(d.getDate() + add.days);
-            }
-            if (add.months != undefined) {
-                d.setMonth(d.getMonth() + add.months);
-            }
-            if (add.years != undefined) {
-                d.setFullYear(d.getFullYear() + add.years);
-            }
-            if (add.hours != undefined) {
-                d.setHours(d.getHours() + add.hours);
-            }
-            if (add.minutes != undefined) {
-                d.setMinutes(d.getMinutes() + add.minutes);
-            }
-            if (add.seconds != undefined) {
-                d.setSeconds(d.getSeconds() + add.seconds);
-            }
-            if (add.milliseconds) {
-                d.setMilliseconds(d.getMilliseconds() + add.milliseconds);
-            }
-            return d;
+        if (add.months != undefined) {
+            d.setMonth(d.getMonth() + add.months);
         }
+        if (add.years != undefined) {
+            d.setFullYear(d.getFullYear() + add.years);
+        }
+        if (add.hours != undefined) {
+            d.setHours(d.getHours() + add.hours);
+        }
+        if (add.minutes != undefined) {
+            d.setMinutes(d.getMinutes() + add.minutes);
+        }
+        if (add.seconds != undefined) {
+            d.setSeconds(d.getSeconds() + add.seconds);
+        }
+        if (add.milliseconds) {
+            d.setMilliseconds(d.getMilliseconds() + add.milliseconds);
+        }
+        return d;
     }
     function DateDiff(date1, date2, unit) {
         let diffMs = date1.getTime() - date2.getTime();
@@ -570,11 +608,12 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         get() {
             return this.__val;
         }
-        watch(onUpdated) {
-            this.watcher.add(onUpdated);
+        watch(onChange) {
+            this.watcher.add(onChange);
+            return { unwatch: () => this.unwatch(onChange) };
         }
-        unwatch(onUpdated) {
-            this.watcher.delete(onUpdated);
+        unwatch(onChange) {
+            this.watcher.delete(onChange);
         }
     }
     exports.Ref2 = Ref2;
@@ -585,6 +624,15 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         }
         get() {
             let loc = Task.locals();
+            if (loc != undefined) {
+                return loc[this.taskLocalVarName];
+            }
+            else {
+                return super.get();
+            }
+        }
+        getInTask(t) {
+            let loc = t.locals();
             if (loc != undefined) {
                 return loc[this.taskLocalVarName];
             }
@@ -603,24 +651,6 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         }
     }
     exports.TaskLocalRef = TaskLocalRef;
-    exports.logger = {
-        debug: function (...msg) { console.debug(...msg); },
-        info: function (...msg) { console.info(...msg); },
-        warning: function (...msg) { console.warn(...msg); },
-        error: function (...msg) { console.error(...msg); },
-        setHandler: function (level, handler) {
-            this[level] = handler;
-        },
-        getLogger: function (label) {
-            let that = this;
-            return {
-                debug: (...msg) => { that.debug(label + ':', ...msg); },
-                info: (...msg) => { that.info(label + ':', ...msg); },
-                warning: (...msg) => { that.warning(label + ':', ...msg); },
-                error: (...msg) => { that.error(label + ':', ...msg); },
-            };
-        }
-    };
     class AssertError extends Error {
         init(msg) {
             this.message = msg;
@@ -717,19 +747,15 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             intervalMs = 200;
         }
         ;
+        let task = Task.currentTask;
         for (let i1 = Math.ceil((timeoutMs ?? 30000) / intervalMs); i1 >= 0; i1--) {
             if (cond())
                 return;
+            if (task != undefined)
+                task.getAbortSignal().throwIfAborted();
             await sleep(intervalMs, null);
         }
         throw new Error('WaitUntil timeout');
-    }
-    function partial(o, fields) {
-        let r = {};
-        for (let f of fields) {
-            r[f] = o[f];
-        }
-        return r;
     }
     function ToDataUrl(data, mediaType) {
         if (typeof data === 'string') {
@@ -739,4 +765,65 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             return 'data:' + mediaType + ';base64,' + ArrayBufferToBase64(data);
         }
     }
+    ;
+    exports.TaskLocalLogHandler = new TaskLocalRef(null);
+    function defaultLogHandler(arg0) {
+        let handler = exports.TaskLocalLogHandler.get();
+        if (handler != null) {
+            handler(arg0);
+        }
+        else {
+            switch (arg0.level) {
+                case 'debug':
+                    console.debug(arg0.label + ':', ...arg0.msg);
+                    break;
+                case 'info':
+                    console.info(arg0.label + ':', ...arg0.msg);
+                    break;
+                case 'warning':
+                    console.warn(arg0.label + ':', ...arg0.msg);
+                    break;
+                case 'error':
+                    console.error(arg0.label + ':', ...arg0.msg);
+                    break;
+            }
+        }
+    }
+    exports.logger = {
+        _handler: defaultLogHandler,
+        setHandler: function (handler) {
+            this._handler = handler;
+        },
+        getHandler: function () { return this._handler; },
+        getLogger: function (label) {
+            let that = this;
+            return {
+                debug: (...msg) => { that._handler({ msg, label, level: 'debug' }); },
+                info: (...msg) => { that._handler({ msg, label, level: 'info' }); },
+                warning: (...msg) => { that._handler({ msg, label, level: 'warning' }); },
+                error: (...msg) => { that._handler({ msg, label, level: 'error' }); },
+            };
+        }
+    };
+    class EventSource {
+        constructor() {
+            this.eventStore = new Map();
+        }
+        setListener(name, cb) {
+            name = name ?? GenerateRandomString();
+            this.eventStore.set(name, cb);
+            return name;
+        }
+        clearListener(name) {
+            this.eventStore.delete(name);
+        }
+        clearListenrs() { this.eventStore.clear(); }
+        listListeners() {
+            return this.eventStore.entries();
+        }
+        dispatch(e) {
+            Array.from(this.eventStore.values()).forEach(t1 => t1(e));
+        }
+    }
+    exports.EventSource = EventSource;
 });

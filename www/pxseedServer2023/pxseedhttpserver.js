@@ -33,6 +33,7 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
     async function setupServerPxprpcClient() {
         await (0, registry_1.addClient)({ url: 'pxseedjs:' + exports.__name__ + '.getConnectionForServerHost', name: registry_1.ServerHostRpcName });
         await (0, registry_1.addClient)({ url: 'webworker:partic2/pxprpcClient/registry/worker/1', name: registry_1.ServerHostWorker1RpcName });
+        registry_1.rpcWorkerInitModule.push({ module: exports.__name__, func: 'setupServerPxprpcClient' });
     }
     async function loadConfig() {
         await setupServerPxprpcClient();

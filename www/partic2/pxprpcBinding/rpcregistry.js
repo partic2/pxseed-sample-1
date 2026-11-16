@@ -24,7 +24,8 @@ define("partic2/pxprpcBinding/rpcregistry", ["require", "exports", "pxprpc/exten
                 let config = await webutils.GetPersistentConfig('pxseedServer2023/webentry');
                 let key = config.pxprpcKey ?? '';
                 try {
-                    let io1 = await new backend_1.WebSocketIo().connect(webutils.path.join(wwwroot, '..', 'pxprpc', 'runtime_bridge') + '?key=' + key);
+                    let url1 = webutils.path.join(wwwroot.replace(/^http/, 'ws'), '..', 'pxprpc', 'runtime_bridge') + '?key=' + key;
+                    let io1 = await new backend_1.WebSocketIo().connect(url1);
                     try {
                         await io1.send([new TextEncoder().encode(path)]);
                         let result = new TextDecoder().decode(await io1.receive());

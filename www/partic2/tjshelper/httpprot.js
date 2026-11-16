@@ -565,7 +565,7 @@ define("partic2/tjshelper/httpprot", ["require", "exports", "partic2/CodeRunner/
                 headersString.push(`${key}: ${val}`);
             });
             let nonChunkBody = null;
-            if (!chunked && !req.headers.has('content-length')) {
+            if (!chunked && !req.headers.has('content-length') && req.body != null) {
                 nonChunkBody = await req.arrayBuffer();
                 headersString.push('Content-Length:' + String(nonChunkBody.byteLength));
             }
@@ -574,7 +574,7 @@ define("partic2/tjshelper/httpprot", ["require", "exports", "partic2/CodeRunner/
                 ...headersString,
                 '\r\n'
             ].join('\r\n')));
-            if (req.body != undefined) {
+            if (req.body != null) {
                 if (chunked) {
                     await req.body.pipeTo(new WritableStream({
                         write: async (chunk, controller) => {
@@ -746,60 +746,92 @@ define("partic2/tjshelper/httpprot", ["require", "exports", "partic2/CodeRunner/
         constructor() {
             this.root = { map: {} };
             this.onfetch = async (req) => {
-                let { pathname } = new URL(req.url);
-                let parts = pathname.substring(1).split(/\//).filter(t1 => t1 != '');
-                let cur = this.root;
-                for (let t1 of parts) {
-                    cur = cur.map[t1];
-                    if (cur == undefined) {
-                        return new Response(null, { status: 404 });
-                    }
-                    if (cur.fetch != undefined) {
-                        return await cur.fetch(req);
-                    }
-                }
-                return new Response(null, { status: 404 });
+                return await this.fetch(req);
             };
             this.onwebsocket = async (controller) => {
-                let req = controller.request;
-                let { pathname } = new URL(req.url);
-                let parts = pathname.substring(1).split(/\//).filter(t1 => t1.length > 0);
-                let cur = this.root;
-                for (let t1 of parts) {
-                    cur = cur.map[t1];
-                    if (cur == undefined) {
-                        break;
-                    }
-                    if (cur.websocket != undefined) {
-                        await cur.websocket(controller);
-                        break;
-                    }
-                }
+                await this.websocket(controller);
             };
         }
         ;
+        async fetch(req) {
+            let { pathname } = new URL(req.url);
+            let parts = pathname.substring(1).split(/\//).filter(t1 => t1 != '');
+            let cur = this.root;
+            let validHandler = null;
+            if (cur.fetch != undefined) {
+                validHandler = cur;
+            }
+            for (let t1 of parts) {
+                let next = cur.map?.[t1];
+                if (next == undefined) {
+                    break;
+                }
+                if (next.fetch != undefined) {
+                    validHandler = next;
+                }
+                cur = next;
+            }
+            if (validHandler != null) {
+                return await validHandler.fetch(req);
+            }
+            return new Response(null, { status: 404 });
+        }
+        async websocket(controller) {
+            let req = controller.request;
+            let { pathname } = new URL(req.url);
+            let parts = pathname.substring(1).split(/\//).filter(t1 => t1.length > 0);
+            let cur = this.root;
+            let validHandler = null;
+            if (cur.websocket != undefined) {
+                validHandler = cur;
+            }
+            for (let t1 of parts) {
+                let next = cur.map?.[t1];
+                if (next == undefined) {
+                    break;
+                }
+                if (next.websocket != undefined) {
+                    validHandler = next;
+                }
+                cur = next;
+            }
+            if (validHandler != null) {
+                await validHandler.websocket(controller);
+            }
+        }
         setHandler(prefix, handler) {
             let parts = prefix.substring(1).split(/\//).filter(t1 => t1.length > 0);
-            let cur = this.root;
-            let parent = undefined;
-            if (parts.length == 0 && handler != null) {
-                this.root = handler;
-            }
-            else {
-                for (let t1 of parts) {
-                    parent = cur;
-                    cur = cur.map[t1];
-                    if (cur == undefined) {
-                        cur = { map: {} };
-                        parent.map[t1] = cur;
-                    }
-                }
+            if (parts.length == 0) {
                 if (handler != null) {
-                    parent.map[parts.at(-1)] = handler;
+                    this.root.fetch = handler.fetch != undefined ? (req) => handler.fetch(req) : undefined;
+                    this.root.websocket = handler.websocket != undefined ? (controller) => handler.websocket(controller) : undefined;
                 }
                 else {
-                    delete parent.map[parts.at(-1)];
+                    this.root = { map: {} };
                 }
+                return;
+            }
+            let cur = this.root;
+            for (let i = 0; i < parts.length - 1; i++) {
+                const t1 = parts[i];
+                if (cur.map == undefined) {
+                    cur.map = {};
+                }
+                if (cur.map[t1] == undefined) {
+                    cur.map[t1] = { map: {} };
+                }
+                cur = cur.map[t1];
+            }
+            if (handler == null) {
+                delete cur.map[parts.at(-1)];
+            }
+            else {
+                let t1 = parts.at(-1);
+                if (cur.map[t1] == undefined) {
+                    cur.map[t1] = { map: {} };
+                }
+                cur.map[t1].fetch = handler.fetch != undefined ? (req) => handler.fetch(req) : undefined;
+                cur.map[t1].websocket = handler.websocket != undefined ? (controller) => handler.websocket(controller) : undefined;
             }
         }
     }
@@ -812,71 +844,74 @@ define("partic2/tjshelper/httpprot", ["require", "exports", "partic2/CodeRunner/
             this.cacheControl = async (filepath) => ({ maxAge: 86400 });
             this.interceptor = async () => null;
             this.onfetch = async (req) => {
-                let { pathname } = new URL(req.url);
-                let filepath = decodeURIComponent(pathname.substring(this.pathStartAt));
-                try {
-                    {
-                        let t1 = await this.interceptor(filepath);
-                        if (t1 !== null) {
-                            return t1;
+                return await this.fetch(req);
+            };
+        }
+        async fetch(req) {
+            let { pathname } = new URL(req.url);
+            let filepath = decodeURIComponent(pathname.substring(this.pathStartAt));
+            try {
+                {
+                    let t1 = await this.interceptor(filepath);
+                    if (t1 !== null) {
+                        return t1;
+                    }
+                }
+                let filetype = await this.fs.filetype(filepath);
+                if (filetype === 'file') {
+                    let statResult = await this.fs.stat(filepath);
+                    let headers = new Headers();
+                    headers.set('date', (0, base_1.GetCurrentTime)().toUTCString());
+                    let t1 = await this.cacheControl(filepath);
+                    if (typeof t1 === 'string') {
+                        headers.set('cache-control', t1);
+                    }
+                    else {
+                        headers.set('cache-control', 'max-age=' + t1.maxAge);
+                    }
+                    if (t1 !== 'no-store') {
+                        let etag = String(statResult.mtime.getTime());
+                        headers.set('etag', etag);
+                        let ifNoneMatch = req.headers.get('If-None-Match');
+                        if (ifNoneMatch === etag) {
+                            return new Response(null, { status: 304, headers });
                         }
                     }
-                    let filetype = await this.fs.filetype(filepath);
-                    if (filetype === 'file') {
-                        let statResult = await this.fs.stat(filepath);
-                        let headers = new Headers();
-                        headers.set('date', (0, base_1.GetCurrentTime)().toUTCString());
-                        let t1 = await this.cacheControl(filepath);
-                        if (typeof t1 === 'string') {
-                            headers.set('cache-control', t1);
-                        }
-                        else {
-                            headers.set('cache-control', 'max-age=' + t1.maxAge);
-                        }
-                        if (t1 !== 'no-store') {
-                            let etag = String(statResult.mtime.getTime());
-                            headers.set('etag', etag);
-                            let ifNoneMatch = req.headers.get('If-None-Match');
-                            if (ifNoneMatch === etag) {
-                                return new Response(null, { status: 304, headers });
-                            }
-                        }
-                        let fileNameAt = filepath.lastIndexOf('/');
-                        let fileName = filepath.substring(fileNameAt + 1);
-                        let extStartAt = fileName.lastIndexOf('.');
-                        let ext = '';
-                        if (extStartAt >= 0) {
-                            ext = fileName.substring(extStartAt + 1);
-                        }
-                        if (ext in mimeDb) {
-                            headers.set('content-type', mimeDb[ext]);
-                        }
-                        if (statResult.size < 0x8192) {
-                            headers.set('content-length', String(statResult.size));
-                        }
-                        else {
-                            headers.set('transfer-encoding', 'chunked');
-                        }
-                        return new Response(JsEnviron_1.simpleFileSystemHelper.getFileSystemReadableStream(this.fs, filepath), { status: 200, headers });
+                    let fileNameAt = filepath.lastIndexOf('/');
+                    let fileName = filepath.substring(fileNameAt + 1);
+                    let extStartAt = fileName.lastIndexOf('.');
+                    let ext = '';
+                    if (extStartAt >= 0) {
+                        ext = fileName.substring(extStartAt + 1);
                     }
-                    else if (filetype === 'dir' && this.showIndex) {
-                        let children = await this.fs.listdir(filepath);
-                        let lastName = pathname.substring(Math.max(0, pathname.lastIndexOf('/')));
-                        return new Response(`<!DOCTYPE html>
+                    if (ext in mimeDb) {
+                        headers.set('content-type', mimeDb[ext]);
+                    }
+                    if (statResult.size < 0x8192) {
+                        headers.set('content-length', String(statResult.size));
+                    }
+                    else {
+                        headers.set('transfer-encoding', 'chunked');
+                    }
+                    return new Response(JsEnviron_1.simpleFileSystemHelper.getFileSystemReadableStream(this.fs, filepath), { status: 200, headers });
+                }
+                else if (filetype === 'dir' && this.showIndex) {
+                    let children = await this.fs.listdir(filepath);
+                    let lastName = pathname.substring(Math.max(0, pathname.lastIndexOf('/')));
+                    return new Response(`<!DOCTYPE html>
 				<html><head><meta charset="UTF-8"/></head>
 					<body>${children.map(t1 => `<div><a href=".${lastName}/${t1.name}">${t1.name}</a></div>`).join('')}</body>
 				</html>`, {
-                            headers: { 'content-type': 'text/html' }
-                        });
-                    }
-                    else {
-                        throw new Error('Unsupported filetype');
-                    }
+                        headers: { 'content-type': 'text/html' }
+                    });
                 }
-                catch (err) {
-                    return new Response(err.toString(), { status: 404 });
+                else {
+                    throw new Error('Unsupported filetype');
                 }
-            };
+            }
+            catch (err) {
+                return new Response(err.toString(), { status: 404 });
+            }
         }
     }
     exports.SimpleFileServer = SimpleFileServer;

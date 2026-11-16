@@ -263,7 +263,7 @@ define("partic2/tjshelper/tjsonjserpc", ["require", "exports", "pxprpc/extend", 
                 if (buf2.byteLength === 0) {
                     return null;
                 }
-                buf.set(new Uint8Array(buf2), 0);
+                buf.set(buf2, 0);
                 return buf2.byteLength;
             }
         }

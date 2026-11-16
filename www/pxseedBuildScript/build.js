@@ -13,9 +13,6 @@ define("pxseedBuildScript/build", ["require", "exports", "./loaders", "./buildli
         }
         else if (command == 'clean') {
             await (0, buildlib_1.cleanBuildStatus)(buildlib_1.outputDir);
-            if (process.argv.includes('--js')) {
-                await (0, buildlib_1.cleanJsFiles)(buildlib_1.outputDir);
-            }
         }
         else {
             util_1.console.error(`unknown command ${command}`);

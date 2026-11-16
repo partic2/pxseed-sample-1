@@ -1,4 +1,4 @@
-define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./pxseedLoader", "./jsutils2"], function (require, exports, acornWalk, acorn, base_1, jsutils1, pxseedLoader_1, jsutils2_1) {
+define("partic2/CodeRunner/CodeContext", ["require", "exports", "./prebuilt/acorn-walk", "./prebuilt/acorn", "partic2/jsutils1/base", "partic2/jsutils1/base", "./pxseedLoader", "./jsutils2"], function (require, exports, acornWalk, acorn, base_1, jsutils1, pxseedLoader_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.newCodeCellListData = exports.BaseCodeCellListData = exports.LocalRunCodeContext = exports.__internal__ = exports.CodeContextEvent = exports.CodeContextEventTarget = exports.TaskLocalEnv = void 0;
@@ -14,14 +14,10 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
         constructor() {
             super(...arguments);
             //Used by RemoteCodeContext, to delegate event. 
-            this._cachedEventQueue = new jsutils1.ArrayWrap2();
-            this._eventQueueExpiredTime = 1000;
-            this._lastSeq = 0;
+            this._buffer = new jsutils2_1.EventBuffer();
         }
         dispatchEvent(event) {
-            this._lastSeq++;
-            this._cachedEventQueue.queueSignalPush({ time: jsutils1.GetCurrentTime().getTime(), event, seq: this._lastSeq });
-            setTimeout(() => this._cachedEventQueue.arr().shift(), this._eventQueueExpiredTime);
+            this._buffer.push({ type: event.type, data: event.data });
             return super.dispatchEvent(event);
         }
         addEventListener(type, callback, options) {
@@ -118,17 +114,17 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
                 replacePlan.plan.push({ start: node.start, end: node.id.end, newString: node.id.name + '=' + clsType1 });
             },
             ImportExpression(node, state, ancestors) {
-                replacePlan.plan.push({ start: node.start, end: node.start + 6, newString: '_ENV.__priv_import' });
+                replacePlan.plan.push({ start: node.start, end: node.start + 6, newString: '_ENV.__codeContext.importHandler' });
             },
             ImportDeclaration(node, state, ancestor) {
                 if (node.specifiers.length === 1 && node.specifiers[0].type === 'ImportNamespaceSpecifier') {
                     let spec = node.specifiers[0];
-                    replacePlan.plan.push({ start: node.start, end: node.end, newString: `${spec.local.name}=await _ENV.__priv_import('${node.source.value}');` });
+                    replacePlan.plan.push({ start: node.start, end: node.end, newString: `${spec.local.name}=await _ENV.__codeContext.importHandler('${node.source.value}');` });
                     foundDecl.push(spec.local.name);
                 }
                 else if (node.specifiers.length > 0 && node.specifiers[0].type === 'ImportSpecifier') {
                     let specs = node.specifiers;
-                    let importStat = [`{let __timp=(await _ENV.__priv_import('${node.source.value}'));`];
+                    let importStat = [`{let __timp=(await _ENV.__codeContext.importHandler('${node.source.value}'));`];
                     for (let spec of specs) {
                         importStat.push(`_ENV.${spec.local.name}=__timp.${spec.imported.name};`);
                         foundDecl.push(spec.local.name);
@@ -138,7 +134,7 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
                 }
                 else if (node.specifiers.length === 1 && node.specifiers[0].type === 'ImportDefaultSpecifier') {
                     let spec = node.specifiers[0];
-                    replacePlan.plan.push({ start: node.start, end: node.end, newString: `${spec.local.name}=(await _ENV.__priv_import('${node.source.value}')).default;` });
+                    replacePlan.plan.push({ start: node.start, end: node.end, newString: `${spec.local.name}=(await _ENV.__codeContext.importHandler('${node.source.value}')).default;` });
                     foundDecl.push(spec.local.name);
                 }
                 else {
@@ -167,34 +163,28 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
     class LocalRunCodeContext {
         constructor() {
             this.importHandler = async (source) => {
-                return new Promise((resolve_1, reject_1) => { require([source], resolve_1, reject_1); });
+                try {
+                    let imp = await new Promise((resolve_1, reject_1) => { require([source], resolve_1, reject_1); });
+                    return imp;
+                }
+                catch (err) {
+                    await Promise.all(Object.keys(await base_1.requirejs.getFailed()).map(t1 => base_1.requirejs.undef(t1)));
+                    throw err;
+                }
             };
+            this.sourceProcessors = [
+                { name: __name__ + '.defaultCodeTranspilingProcessor', process: defaultCodeTranspilingProcessor },
+                { name: __name__ + '.builtinCodeContextSourceProcessor', process: builtinCodeContextSourceProcessor }
+            ];
             this.event = new CodeContextEventTarget();
             this.localScope = {
                 //this CodeContext
-                __priv_codeContext: undefined,
-                //import implemention
-                __priv_import: async (module) => {
-                    let imp = await this.importHandler(module);
-                    return imp;
-                },
+                __codeContext: undefined,
                 //transpiler
                 __topLevelTranspileDirective: {},
                 __transpile__: (directive, source) => source,
-                //some utils provide by codeContext
-                __priv_sourceProcessors: [
-                    { name: __name__ + '.defaultCodeTranspilingProcessor', process: defaultCodeTranspilingProcessor },
-                    { name: __name__ + '.builtinCodeContextSourceProcessor', process: builtinCodeContextSourceProcessor }
-                ],
-                callModuleFunction: async (module, func, args) => {
-                    let that = this;
-                    //Use Task to keep TaskLocalEnv valid.
-                    return jsutils1.Task.fork(function* () {
-                        let imp = yield that.importHandler(module);
-                        return yield imp[func](...args);
-                    }).run();
-                },
                 event: null,
+                console: null,
                 CodeContextEvent,
                 Task: jsutils1.Task,
                 tasks: {},
@@ -209,8 +199,11 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
                     this.close();
                 }
             };
+            this.state = 'running';
+            this.contextRunCodeQueue = new jsutils1.ArrayWrap2();
+            this.contextRunCodeTaskSpawner = null;
             this.localScope.event = this.event;
-            this.localScope.__priv_codeContext = this;
+            this.localScope.__codeContext = this;
             this.localScope._ENV = this.localScope;
             this.localScope.console = console;
             this.localScopeProxy = new Proxy(this.localScope, {
@@ -231,6 +224,10 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
         }
         async close() {
             try {
+                if (this.state != 'running')
+                    return;
+                this.contextRunCodeQueue.cancelWaiting();
+                this.state = 'closing';
                 this.event.dispatchEvent(new CodeContextEvent('close'));
                 let that = this;
                 await jsutils1.Task.fork(function* () {
@@ -247,40 +244,84 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
                 }).run();
             }
             catch (err) { }
+            finally {
+                this.state = 'closed';
+            }
         }
-        async callFunction(name, args) {
-            let taskName = 'task' + jsutils1.GenerateRandomString();
+        runInContextTask(task, opt) {
+            if (this.contextRunCodeTaskSpawner === null) {
+                let codeContext = this;
+                this.contextRunCodeTaskSpawner = jsutils1.Task.fork(function* () {
+                    //Mute log by default
+                    jsutils1.TaskLocalLogHandler.set(() => { });
+                    while (codeContext.state == 'running') {
+                        try {
+                            let next = yield* jsutils1.Task.yieldWrap(codeContext.contextRunCodeQueue.queueBlockShift());
+                            function* taskMain() {
+                                let taskName = 'task' + jsutils1.GenerateRandomString();
+                                let curtask = jsutils1.Task.currentTask;
+                                curtask.name = taskName;
+                                codeContext.localScope.tasks[taskName] = curtask;
+                                exports.TaskLocalEnv.set(codeContext.localScope);
+                                try {
+                                    next.r.setResult(yield* next.g());
+                                }
+                                catch (err) {
+                                    next.r.setException(err);
+                                }
+                                finally {
+                                    delete codeContext.localScope.tasks[taskName];
+                                }
+                            }
+                            if (next.fork === false) {
+                                yield* taskMain();
+                            }
+                            else {
+                                jsutils1.Task.fork(taskMain).run();
+                            }
+                        }
+                        catch (err) { }
+                        ;
+                    }
+                }).run();
+            }
+            ;
+            let r = new jsutils1.future();
+            this.contextRunCodeQueue.queueSignalPush({ g: task, r, fork: opt?.fork });
+            return r.get();
+        }
+        async callFunction(func, args) {
             let that = this;
-            let t = jsutils1.Task.fork(function* () {
-                let curtask = jsutils1.Task.currentTask;
-                curtask.name = taskName;
-                that.localScope.tasks[taskName] = curtask;
-                exports.TaskLocalEnv.set(that.localScope);
-                try {
-                    let r = that.localScope[name](...args);
+            return this.runInContextTask(function* () {
+                if (typeof func === 'string') {
+                    let r = that.localScope[func](...args);
                     if (typeof r === 'object' && r !== null && typeof r.then === 'function') {
                         r = yield r;
                     }
                     return r;
                 }
-                finally {
-                    delete that.localScope.tasks[curtask.name];
+                else {
+                    let m = yield new Promise((resolve_2, reject_2) => { require([func.module], resolve_2, reject_2); });
+                    let r = m[func.name](...args);
+                    if (typeof r === 'object' && r !== null && typeof r.then === 'function') {
+                        r = yield r;
+                    }
+                    return r;
                 }
-            }).run();
-            return await t;
+            });
         }
         async processSource(source) {
             let that = this;
             let processContext = { _ENV: this.localScope, source, declVars: new Array() };
-            await jsutils1.Task.fork(function* () {
+            await this.runInContextTask(function* () {
                 exports.TaskLocalEnv.set(that.localScope);
-                for (let processor of that.localScope.__priv_sourceProcessors) {
+                for (let processor of that.sourceProcessors) {
                     let isAsync = processor.process(processContext);
                     if (isAsync != null && typeof isAsync === 'object' && typeof isAsync.then === 'function') {
                         yield isAsync;
                     }
                 }
-            }).run();
+            });
             return processContext;
         }
         async runCode(source, resultVariable) {
@@ -288,7 +329,14 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
             let processResult = await this.processSource(source);
             source = processResult.source;
             try {
-                let result = await this.runCodeInScope(source);
+                let withBlockBegin = 'with(_ENV){';
+                let code = new Function('_ENV', withBlockBegin +
+                    'return (async ()=>{Promise.__onAsyncEnter();try{\n' + source + '\n}finally{Promise.__onAsyncExit();}})();}');
+                let that = this;
+                let rt = this.runInContextTask(function* () {
+                    return (yield code(that.localScopeProxy));
+                });
+                let result = await rt;
                 if (resultVariable !== '')
                     this.localScope[resultVariable] = result;
                 let stringResult = (typeof (result) === 'string') ? result : null;
@@ -299,26 +347,6 @@ define("partic2/CodeRunner/CodeContext", ["require", "exports", "acorn-walk", "a
                     this.localScope[resultVariable] = e;
                 return { stringResult: null, err: e.toString() };
             }
-        }
-        async runCodeInScope(source) {
-            let withBlockBegin = 'with(_ENV){';
-            let code = new Function('_ENV', withBlockBegin +
-                'return (async ()=>{Promise.__onAsyncEnter();try{\n' + source + '\n}finally{Promise.__onAsyncExit();}})();}');
-            let that = this;
-            let taskName = 'task' + jsutils1.GenerateRandomString();
-            let r = jsutils1.Task.fork(function* () {
-                let curtask = jsutils1.Task.currentTask;
-                curtask.name = taskName;
-                that.localScope.tasks[taskName] = curtask;
-                exports.TaskLocalEnv.set(that.localScope);
-                try {
-                    return (yield code(that.localScopeProxy));
-                }
-                finally {
-                    delete that.localScope.tasks[curtask.name];
-                }
-            }).run();
-            return await r;
         }
     }
     exports.LocalRunCodeContext = LocalRunCodeContext;

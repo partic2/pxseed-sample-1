@@ -1,11 +1,11 @@
-define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner/CodeContext", "partic2/CodeRunner/WebUi", "partic2/jsutils1/base", "preact", "partic2/pxprpcClient/registry", "./fileviewer", "partic2/pComponentUi/domui", "partic2/pxprpcClient/ui", "partic2/CodeRunner/RemoteCodeContext", "partic2/pComponentUi/window", "partic2/CodeRunner/jsutils2", "partic2/pComponentUi/workspace", "partic2/jsutils1/webutils"], function (require, exports, CodeContext_1, WebUi_1, base_1, React, registry_1, fileviewer_1, domui_1, ui_1, RemoteCodeContext_1, window_1, jsutils2_1, workspace_1, webutils_1) {
+define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner/CodeContext", "partic2/CodeRunner/WebUi", "partic2/jsutils1/base", "preact", "partic2/pxprpcClient/registry", "./fileviewer", "partic2/pComponentUi/domui", "partic2/pxprpcClient/ui", "partic2/CodeRunner/RemoteCodeContext", "partic2/pComponentUi/window", "partic2/CodeRunner/jsutils2", "partic2/jsutils1/webutils"], function (require, exports, CodeContext_1, WebUi_1, base_1, React, registry_1, fileviewer_1, domui_1, ui_1, RemoteCodeContext_1, window_1, jsutils2_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__internal__ = exports.NotebookViewer = exports.__inited__ = exports.__name__ = void 0;
     exports.__name__ = 'partic2/JsNotebook/notebook';
     let webworkercall;
     exports.__inited__ = (async function () {
-        webworkercall = await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)('webworker 1')).ensureConnected(), 'partic2/JsNotebook/webworkercall');
+        webworkercall = await (0, registry_1.importRemoteModule)(registry_1.WebWorker1ForComputeRpc, 'partic2/JsNotebook/webworkercall');
     })();
     class RpcChooser extends React.Component {
         constructor() {
@@ -58,7 +58,7 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
     class NotebookViewerContainer extends React.Component {
         render(props, state, context) {
             let Nbimpl = this.state.notebookViewerImpl ?? NotebookViewer;
-            return React.createElement(Nbimpl, { context: this.props.context, path: this.props.path, switchNotebookViewerImpl: (impl) => this.setState({ notebookViewerImpl: impl }) });
+            return React.createElement(Nbimpl, { contextRpc: this.props.context.rpc, notebookPath: this.props.path, onSwitchNotebookViewerImpl: (impl) => this.setState({ notebookViewerImpl: impl }) });
         }
     }
     class IJSNBFileHandler extends fileviewer_1.FileTypeHandlerBase {
@@ -76,13 +76,12 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             });
         }
     }
-    class NotebookViewer extends React.Component {
+    class NotebookViewer extends domui_1.JsxClassComponent {
         constructor() {
             super(...arguments);
-            this.rref = {
-                ccl: new domui_1.ReactRefEx(),
-                container: new domui_1.ReactRefEx()
-            };
+            this.reactCodeCellList = new domui_1.ReactRefEx();
+            this.reactContainer = new domui_1.ReactRefEx();
+            this.usingRpcName = null;
             this.__notebookViewerEventHandler = async (ev) => {
                 let { call, argv } = ev.data;
                 let resultFuture = ev.data.result;
@@ -128,7 +127,7 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             this.containsWindow = new base_1.Ref2(null);
         }
         async openRpcChooser() {
-            let r = await openRpcChooser(await this.props.context.rpc.ensureConnected());
+            let r = await openRpcChooser(await this.contextRpc.ensureConnected());
             if (r == '<No RPC>') {
                 this.useRpc({ name: null });
             }
@@ -150,7 +149,7 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
                         await this.notebookFile.useRpc(rpc.name);
                     }
                     let connector = await this.notebookFile.ensureRunCodeContextConnector();
-                    this.codeContext = new RemoteCodeContext_1.RemoteRunCodeContext(await this.props.context.rpc.ensureConnected(), connector);
+                    this.codeContext = new RemoteCodeContext_1.RemoteRunCodeContext(await this.contextRpc.ensureConnected(), connector);
                     this.codeContext.event.addEventListener(`${exports.__name__}.NotebookViewer`, this.__notebookViewerEventHandler);
                     await this.codeContext.runCode(`(await import('partic2/JsNotebook/inspector')).setupInspectorHelper(_ENV)`, '');
                     this.codeContext.event.dispatchEvent(new CodeContext_1.CodeContextEvent(`${exports.__name__}.NotebookViewer.connect`));
@@ -177,14 +176,14 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
         }
         async doLoad() {
             try {
-                let workerinit = await (0, registry_1.importRemoteModule)(await this.props.context.rpc.ensureConnected(), 'partic2/JsNotebook/workerinit');
-                this.notebookFile = await workerinit.openNotebookFile(this.props.path, {});
+                let workerinit = await (0, registry_1.importRemoteModule)(await this.contextRpc.ensureConnected(), 'partic2/JsNotebook/workerinit');
+                this.notebookFile = await workerinit.openNotebookFile(this.notebookPath, {});
                 let usingRpcName = await this.notebookFile.getRpcName();
                 await this.useRpc();
                 this.setState({ usingRpcName });
                 let cellsData = await this.notebookFile.getRawCellsData();
                 if (cellsData != null) {
-                    let ccl = await this.rref.ccl.waitValid();
+                    let ccl = await this.reactCodeCellList.waitValid();
                     await ccl.loadFrom(cellsData);
                     for (let t2 of ccl.getCellList()) {
                         if (t2.ref.current != undefined)
@@ -205,7 +204,7 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             }
         }
         async doSave() {
-            let ccl = await this.rref.ccl.waitValid();
+            let ccl = await this.reactCodeCellList.waitValid();
             let cells = ccl.saveTo();
             if (this.notebookFile != null) {
                 await this.notebookFile.setRawCellsData(cells);
@@ -214,20 +213,20 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
         }
         async callFunctionInNotebookWebui(module, fnName, args) {
             let fn = (await new Promise((resolve_1, reject_1) => { require([module], resolve_1, reject_1); }))[fnName];
-            return await fn(...args, { rpc: this.props.context.rpc, codeContext: this.codeContext, notebookViewer: this });
+            return await fn(...args, { rpc: this.contextRpc, codeContext: this.codeContext, notebookViewer: this });
         }
         async updateNotebookCodeCellsData(cellsData) {
-            let ccl = await this.rref.ccl.waitValid();
+            let ccl = await this.reactCodeCellList.waitValid();
             ccl.loadFrom(cellsData);
         }
         async setCodeCellsDataOnRemoteJsNotebook() {
-            let ccl = await this.rref.ccl.waitValid();
+            let ccl = await this.reactCodeCellList.waitValid();
             await this.codeContext?.runCode(`jsnotebook.codeCellsData=${JSON.stringify(ccl.saveTo())}`);
         }
         async reconnectCodeContextSoon(opt) {
             await (0, base_1.sleep)(opt?.wait ?? 1000);
             try {
-                await this.useRpc({ name: this.state.usingRpcName });
+                await this.useRpc({ name: this.usingRpcName });
             }
             catch (err) {
                 (0, window_1.alert)(err.message + err.stack);
@@ -238,46 +237,42 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             this.DoCodeCellsHightlight.call();
         }
         renderCodeCellList() {
-            return React.createElement(WebUi_1.CodeCellList, { codeContext: this.codeContext, ref: this.rref.ccl, cellProps: {
+            return React.createElement(WebUi_1.CodeCellList, { codeContext: this.codeContext, ref: this.reactCodeCellList, cellProps: {
                     onInputChange: (target) => this.onCellInputChange(target)
                 } });
         }
-        render() {
-            return React.createElement(workspace_1.WorkspaceWindowContext.Consumer, null, (value) => {
-                this.containsWindow.set(value.lastWindow ?? null);
-                return React.createElement("div", { style: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }, onKeyDown: (ev) => this.onKeyDown(ev), ref: this.rref.container },
-                    React.createElement("div", { style: { flexGrow: '0', flexShrink: '0' } },
-                        React.createElement("a", { href: "javascript:;", onClick: () => this.openRpcChooser() },
-                            "RPC:",
-                            this.state.usingRpcName ?? '<No RPC>'),
-                        React.createElement("span", null, "\u00A0\u00A0"),
-                        React.createElement("a", { onClick: () => this.doSave(), href: "javascript:;" }, "Save")),
-                    (this.codeContext != undefined) ?
-                        React.createElement("div", { style: { flexShrink: 1, minHeight: '0px' } }, this.renderCodeCellList()) :
-                        'No CodeContext');
-            });
+        jsx() {
+            return React.createElement("div", { style: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }, onKeyDown: (ev) => this.onKeyDown(ev), ref: this.reactContainer },
+                React.createElement("div", { style: { flexGrow: '0', flexShrink: '0' } },
+                    React.createElement("a", { href: "javascript:;", onClick: () => this.openRpcChooser() },
+                        "RPC:",
+                        this.usingRpcName ?? '<No RPC>'),
+                    React.createElement("span", null, "\u00A0\u00A0"),
+                    React.createElement("a", { onClick: () => this.doSave(), href: "javascript:;" }, "Save")),
+                (this.codeContext != undefined) ?
+                    React.createElement("div", { style: { flexShrink: 1, minHeight: '0px' } }, this.renderCodeCellList()) :
+                    'No CodeContext');
         }
         hasMethod(name) {
             return typeof this[name] === 'function';
         }
         async switchNotebookViewerImpl(implFactory) {
-            (0, base_1.assert)(this.props.switchNotebookViewerImpl != undefined);
+            (0, base_1.assert)(this.onSwitchNotebookViewerImpl != undefined);
             let impl = undefined;
             if (implFactory != undefined) {
                 impl = await (await new Promise((resolve_2, reject_2) => { require([implFactory.module], resolve_2, reject_2); }))[implFactory.func]();
             }
-            this.props.switchNotebookViewerImpl(impl);
+            this.onSwitchNotebookViewerImpl(impl);
         }
     }
     exports.NotebookViewer = NotebookViewer;
     let resource = (0, webutils_1.getResourceManager)(exports.__name__);
     (0, webutils_1.useCssFile)(resource.getUrl('prism/theme-one-light.css'));
-    class RunCodeReplView extends React.Component {
+    class RunCodeReplView extends domui_1.JsxClassComponent {
         constructor() {
             super(...arguments);
-            this.rref = {
-                list: new domui_1.ReactRefEx(),
-            };
+            this.maxCellCount = 100;
+            this.reactList = new domui_1.ReactRefEx();
             this.autoScrollToBottom = true;
             this.codeCellHighlightQueue = new Set();
             this.DoCodeCellsHightlight = new jsutils2_1.DebounceCall(async () => {
@@ -303,17 +298,16 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
                     }
                 }
             }, 200);
-            this.containsWindow = new base_1.Ref2(null);
         }
-        async onCellRun(cellKey) {
-            let ccl = await this.rref.list.waitValid();
+        async _onCellRun(cellKey) {
+            let ccl = await this.reactList.waitValid();
             let cellList = ccl.getCellList();
-            if (cellList.length >= (this.props.maxCellCount ?? 100)) {
+            if (cellList.length >= this.maxCellCount) {
                 ccl.deleteCell(cellList.at(0).key);
             }
         }
         async doRunCode(code) {
-            let cl = (await this.rref.list.waitValid());
+            let cl = (await this.reactList.waitValid());
             let cl2 = cl.getCellList();
             if (cl2.length == 0) {
                 await cl.newCell('');
@@ -329,16 +323,13 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             this.DoCodeCellsHightlight.call();
         }
         renderCodeCellList() {
-            return React.createElement(WebUi_1.CodeCellList, { codeContext: this.props.codeContext, onRun: (key) => this.onCellRun(key), ref: this.rref.list, cellProps: {
+            return React.createElement(WebUi_1.CodeCellList, { codeContext: this.codeContext, onRun: (key) => this._onCellRun(key), ref: this.reactList, cellProps: {
                     runCodeKey: 'Enter',
                     onInputChange: (target) => this.onCellInputChange(target)
                 } });
         }
-        render(props, state, context) {
-            return React.createElement(workspace_1.WorkspaceWindowContext.Consumer, null, (value) => {
-                this.containsWindow.set(value.lastWindow ?? null);
-                return this.renderCodeCellList();
-            });
+        jsx() {
+            return this.renderCodeCellList();
         }
     }
     exports.__internal__ = {

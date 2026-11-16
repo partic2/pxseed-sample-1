@@ -1,7 +1,7 @@
 define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "./transform", "partic2/pxseedMedia1/index1"], function (require, exports, React, domui_1, base_1, webutils_1, transform_1, index1_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.dialogBoxProvider = exports.rootWindowsList = exports.WindowsList = exports.WindowComponent = exports.DefaultWindowComponent = exports.css = exports.language = void 0;
+    exports.dialogBoxProvider = exports.rootWindowGroup = exports.WindowGroup = exports.WindowComponent = exports.DefaultWindowComponent = exports.css = exports.language = void 0;
     exports.setDefaultWindowComponentImplemention = setDefaultWindowComponentImplemention;
     exports.ensureRootWindowContainer = ensureRootWindowContainer;
     exports.appendFloatWindow = appendFloatWindow;
@@ -20,49 +20,60 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
         defaultContentDiv: cssPrefix + '-defaultContentDiv',
         defaultTitleStyle: cssPrefix + '-defaultTitleStyle',
     };
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultWindowDiv, ['box-sizing: border-box', 'pointer-events:auto']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultContentDiv, ['box-sizing: border-box', 'flex-grow:1', 'background-color:white', 'overflow:auto', 'border:solid black 1px', 'min-height:0px', 'min-width:0px']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.borderlessWindowContentDiv, ['pointer-events:auto', 'flex-grow:1', 'box-sizing: border-box', 'min-height:0px', 'min-width:0px']);
-    webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultTitleStyle, ['box-sizing: border-box', 'background-color:silver', 'color:balck', 'border-left:solid black 1px', 'border-top:solid black 1px', 'border-right:solid black 1px']);
-    class DefaultWindowComponent extends domui_1.ReactEventTarget {
-        static getDerivedStateFromError(error) {
-            return { errorOccured: error };
-        }
-        constructor(props, ctx) {
-            super(props, ctx);
+    if (globalThis.document != undefined) {
+        webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultWindowDiv, ['box-sizing: border-box', 'pointer-events:auto']);
+        webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultContentDiv, ['box-sizing: border-box', 'flex-grow:1', 'background-color:white', 'overflow:auto', 'border:solid black 1px', 'min-height:0px', 'min-width:0px']);
+        webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.borderlessWindowContentDiv, ['pointer-events:auto', 'flex-grow:1', 'box-sizing: border-box', 'min-height:0px', 'min-width:0px']);
+        webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.defaultTitleStyle, ['box-sizing: border-box', 'background-color:silver', 'color:balck', 'border-left:solid black 1px', 'border-top:solid black 1px', 'border-right:solid black 1px']);
+    }
+    class DefaultWindowComponent extends domui_1.JsxClassComponent {
+        constructor() {
+            super(...arguments);
+            this.closeIcon = (0, index1_1.getIconUrl)('x.svg');
+            this.title = 'untitled';
+            this.activateTime = 0;
+            this.currentLayout = { left: 0, top: 0 };
+            this.errorOccured = null;
+            this.children = null;
             this.rref = {
                 container: new domui_1.ReactRefEx(),
                 contentDiv: new domui_1.ReactRefEx()
             };
-            this.__resizeObserver = new ResizeObserver(() => this.dispatchEvent(new Event('resize')));
+            this.resizeEvent = domui_1.JsxClassComponent.defineEventSlot();
+            this.moveEvent = domui_1.JsxClassComponent.defineEventSlot();
+            this.__resizeObserver = new ResizeObserver(() => this.resizeEvent.dispatch());
+            this.userMoveEvent = domui_1.JsxClassComponent.defineEventSlot();
             this.__wndMove = new transform_1.PointTrace({
                 onMove: (curr, start) => {
-                    this.setState({ layout: { ...this.state.layout, left: curr.x - start.x, top: curr.y - start.y } }, () => this.dispatchEvent(new Event('move')));
-                    this.dispatchEvent(new Event('user-move'));
+                    this.layout({ left: curr.x - start.x, top: curr.y - start.y });
+                    this.userMoveEvent.dispatch();
                 }
             });
             this.__onTitleMouseDownHandler = (evt) => {
-                this.__wndMove.start({ x: evt.clientX - this.state.layout.left, y: evt.clientY - this.state.layout.top }, true);
+                this.__wndMove.start({ x: evt.clientX - this.currentLayout.left, y: evt.clientY - this.currentLayout.top }, true);
                 evt.preventDefault();
             };
+            this.userResizeEvent = domui_1.JsxClassComponent.defineEventSlot();
             this.__wndResize = new transform_1.PointTrace({
                 onMove: (curr, start) => {
-                    this.setState({ layout: { ...this.state.layout, width: curr.x - start.x, height: curr.y - start.y } }, () => this.dispatchEvent(new Event('resize')));
-                    this.dispatchEvent(new Event('user-resize'));
+                    this.layout({ ...this.currentLayout, width: curr.x - start.x, height: curr.y - start.y });
+                    this.userResizeEvent.dispatch();
                 }
             });
             this.__onResizeIconMouseDownHandler = (evt) => {
-                this.__wndResize.start({ x: this.state.layout.left, y: this.state.layout.top }, true);
+                this.__wndResize.start({ x: this.currentLayout.left, y: this.currentLayout.top }, true);
                 evt.preventDefault();
             };
+            this.closeEvent = domui_1.JsxClassComponent.defineEventSlot();
             this.sizeMeasuring = new base_1.Ref2(false);
-            this.setState({ activateTime: -1, layout: this.props.initialLayout ?? { left: 0, top: 0 }, errorOccured: null });
+        }
+        static getDerivedStateFromError(error) {
+            return { errorOccured: error };
         }
         componentDidMount() {
             if (this.rref.container.current != undefined) {
                 this.__resizeObserver.observe(this.rref.container.current);
             }
-            this.setState({ titleBarButton: this.props.titleBarButton });
         }
         componentWillUnmount() {
             this.__resizeObserver.disconnect();
@@ -80,28 +91,53 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
             }
         }
         activate(activateTime) {
-            if (this.props.keepTop) {
+            if (this.keepTop) {
                 activateTime = 95617573200000;
             }
-            this.setState({ activateTime: activateTime ?? (0, base_1.GetCurrentTime)().getTime() }, () => {
-                windowsContainerForceUpdate();
-            });
+            this.activateTime = activateTime ?? (0, base_1.GetCurrentTime)().getTime();
+            this.setState({}, () => { windowsContainerForceUpdate(); });
         }
         hide() {
-            this.setState({ activateTime: -1 });
-            windowsContainerForceUpdate();
+            this.activateTime = -1;
+            this.setState({}, () => { windowsContainerForceUpdate(); });
         }
         isHidden() {
-            return this.state.activateTime < 0 && !this.props.keepTop;
+            return this.activateTime < 0 && !this.keepTop;
         }
         renderTitleIcons() {
             return [
-                ...(this.state.titleBarButton ?? []).map(t1 => this.renderIcon(t1.icon, t1.onClick)),
-                this.renderIcon(this.props.closeIcon, () => this.onCloseClick())
+                ...(this.titleBarButton ?? []).map(t1 => this.renderIcon(t1.icon, t1.onClick)),
+                this.renderIcon(this.closeIcon, () => this.onCloseClick())
             ];
         }
+        getLayout() {
+            return this.currentLayout;
+        }
+        async layout(layout) {
+            return new Promise((resolve) => {
+                let newLayout = { ...this.currentLayout, ...layout };
+                let oldLayout = this.currentLayout;
+                let windowGroup = this.getAncestorJsxClassComponents({ clazz: WindowGroup, count: 1 }).at(0);
+                if (windowGroup != undefined) {
+                    let windowGroupSize = windowGroup.getSize();
+                    if (newLayout.width != undefined && newLayout.left + newLayout.width > windowGroupSize.width) {
+                        newLayout.width = windowGroupSize.width - newLayout.left;
+                    }
+                    if (newLayout.height != undefined && newLayout.top + newLayout.height > windowGroupSize.height) {
+                        newLayout.height = windowGroupSize.height - newLayout.top;
+                    }
+                }
+                this.currentLayout = newLayout;
+                this.setState({}, () => {
+                    if (newLayout.left != oldLayout.left || newLayout.top != oldLayout.top) {
+                        this.moveEvent.dispatch();
+                    }
+                    resolve();
+                });
+            });
+        }
         renderTitle() {
-            let titleString = this.props.title;
+            let titleString = this.title;
             if (typeof titleString !== 'string') {
                 titleString = '';
             }
@@ -111,9 +147,9 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
                 this.renderTitleIcons());
         }
         renderContent() {
-            return React.createElement("div", { className: [this.props.borderless ? exports.css.borderlessWindowContentDiv : exports.css.defaultContentDiv].join(' '), ref: this.rref.contentDiv }, this.state.errorOccured == null ? this.props.children : React.createElement("pre", { style: { backgroundColor: 'white', color: 'black' } },
-                this.state.errorOccured.message,
-                this.state.errorOccured.stack));
+            return React.createElement("div", { className: [this.borderless ? exports.css.borderlessWindowContentDiv : exports.css.defaultContentDiv].join(' '), ref: this.rref.contentDiv }, this.errorOccured == null ? this.children : React.createElement("pre", { style: { backgroundColor: 'white', color: 'black' } },
+                this.errorOccured.message,
+                this.errorOccured.stack));
         }
         renderResizeHandler() {
             return React.createElement("img", { src: (0, index1_1.getIconUrl)('arrow-down-right.svg'), style: {
@@ -124,8 +160,8 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
         }
         async onCloseClick() {
             this.hide();
-            this.dispatchEvent(new Event('close'));
-            this.props.onClose?.();
+            this.closeEvent.dispatch();
+            this.onClose?.();
         }
         async sizeToContent() {
             this.sizeMeasuring.set(true);
@@ -147,87 +183,70 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
                 if (stableCount >= 8)
                     break;
             }
-            if (this.sizeMeasuring.get() && this.rref.container.current != null && this.props.windowsList != null && (this.state.layout.width == undefined || this.state.layout.height == undefined)) {
-                let layout = { ...this.state.layout, width: width + 1, height: height + 1 };
-                if (this.rref.container.current.offsetLeft + this.rref.container.current.offsetWidth > this.props.windowsList.container.current.offsetWidth) {
-                    layout.width = this.props.windowsList.container.current.offsetWidth - this.rref.container.current.offsetLeft;
-                }
-                if (this.rref.container.current.offsetTop + this.rref.container.current.offsetHeight > this.props.windowsList.container.current.offsetHeight) {
-                    layout.height = this.props.windowsList.container.current.offsetHeight - this.rref.container.current.offsetTop;
-                }
-                this.setState({ layout });
+            let windowGroup = this.getAncestorJsxClassComponents({ clazz: WindowGroup, count: 1 }).at(0);
+            if (this.sizeMeasuring.get() && this.rref.container.current != null && windowGroup != undefined && (this.currentLayout.width == undefined || this.currentLayout.height == undefined)) {
+                let layout = { ...this.currentLayout, width: width + 1, height: height + 1 };
+                this.layout(layout);
             }
             this.sizeMeasuring.set(false);
         }
         renderWindowMain() {
             try {
-                if ((this.state.layout.width == undefined || this.state.layout.height == undefined) && !this.sizeMeasuring.get() && this.props.windowsList != null) {
-                    this.sizeToContent();
-                }
-                else if (this.state.layout.width != undefined && this.state.layout.height && this.sizeMeasuring.get()) {
-                    this.sizeMeasuring.set(false);
+                if (!this.borderless) {
+                    if ((this.currentLayout.width == undefined || this.currentLayout.height == undefined) && !this.sizeMeasuring.get()) {
+                        let windowGroup = this.getAncestorJsxClassComponents({ clazz: WindowGroup, count: 1 }).at(0);
+                        if (windowGroup != undefined)
+                            this.sizeToContent();
+                    }
+                    else if (this.currentLayout.width != undefined && this.currentLayout.height != undefined && this.sizeMeasuring.get()) {
+                        this.sizeMeasuring.set(false);
+                    }
                 }
                 let windowDivStyle = {
                     position: 'absolute',
-                    left: this.state.layout.left + 'px',
-                    top: this.state.layout.top + 'px',
+                    left: this.currentLayout.left + 'px',
+                    top: this.currentLayout.top + 'px',
                     touchAction: 'none'
                 };
-                if (typeof this.state.layout.width === 'number') {
-                    windowDivStyle.width = this.state.layout.width + 'px';
+                if (this.currentLayout.width != undefined) {
+                    windowDivStyle.width = this.currentLayout.width + 'px';
                 }
-                else if (typeof this.state.layout.width === 'string') {
-                    windowDivStyle.width = this.state.layout.width;
-                }
-                if (typeof this.state.layout.height === 'number') {
-                    windowDivStyle.height = this.state.layout.height + 'px';
-                }
-                else if (typeof this.state.layout.height === 'string') {
-                    windowDivStyle.height = this.state.layout.height;
+                if (this.currentLayout.height != undefined) {
+                    windowDivStyle.height = this.currentLayout.height + 'px';
                 }
                 return React.createElement("div", { className: [domui_1.css.flexColumn, exports.css.defaultWindowDiv].join(' '), style: windowDivStyle, ref: this.rref.container, onPointerDown: () => {
-                        if (this.state.activateTime >= 0 && !this.props.disableUserInputActivate)
+                        if (this.activateTime >= 0 && !this.disableUserInputActivate)
                             this.activate();
                     } },
-                    this.props.borderless ? null : this.renderTitle(),
+                    this.borderless ? null : this.renderTitle(),
                     [
                         this.renderContent(),
-                        (this.props.borderless) ? null : this.renderResizeHandler()
+                        (this.borderless) ? null : this.renderResizeHandler()
                     ]);
             }
             catch (err) {
                 return React.createElement("div", null, err.message + err.stack);
             }
         }
-        componentDidUpdate(previousProps, previousState, snapshot) {
-            if (this.props.titleBarButton != previousProps.titleBarButton)
-                this.setState({ titleBarButton: this.props.titleBarButton });
-            this.props.onComponentDidUpdate?.();
+        componentDidUpdate() {
+            this.onComponentDidUpdate?.();
         }
-        render(props, state, context) {
-            return React.createElement(domui_1.FloatLayerComponent, { activateTime: this.state.activateTime }, this.renderWindowMain());
+        jsx() {
+            return React.createElement(domui_1.FloatLayerComponent, { activateTime: this.activateTime }, this.renderWindowMain());
         }
     }
     exports.DefaultWindowComponent = DefaultWindowComponent;
-    DefaultWindowComponent.defaultProps = {
-        closeIcon: (0, index1_1.getIconUrl)('x.svg'),
-        title: 'untitled'
-    };
     exports.WindowComponent = DefaultWindowComponent;
     function setDefaultWindowComponentImplemention(impl) {
         exports.WindowComponent = impl;
     }
-    class WindowsList extends React.Component {
-        constructor(prop, ctx) {
-            super(prop, ctx);
+    class WindowGroup extends domui_1.JsxClassComponent {
+        constructor() {
+            super(...arguments);
             this.container = new domui_1.ReactRefEx();
-            this.onResize = new Set();
-            this.resizeObserver = new ResizeObserver((ent) => {
-                for (let t1 of this.onResize) {
-                    t1();
-                }
-            });
-            this.setState({ floatWindowVNodes: [] });
+            this.floatWindowVNodes = new Array();
+            this.resizeEvent = domui_1.JsxClassComponent.defineEventSlot();
+            this.resizeObserver = new ResizeObserver((ent) => { this.resizeEvent.dispatch(); });
         }
         async componentDidMount() {
             this.resizeObserver.observe(await this.container.waitValid());
@@ -235,18 +254,17 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
         async componentWillUnmount() {
             this.resizeObserver.disconnect();
         }
-        render(props, state, context) {
-            return React.createElement("div", { style: { width: '100%', height: '100%', ...this.props.divStyle }, ref: this.container }, this.state.floatWindowVNodes);
+        jsx() {
+            return React.createElement("div", { style: { width: '100%', height: '100%', ...this.props.divStyle }, ref: this.container }, this.floatWindowVNodes);
         }
         appendFloatWindow(window, active) {
             active = active ?? true;
-            window.props.windowsList = this;
             let ref2 = new domui_1.ReactRefEx().forward([window.ref].filter(v => v != undefined));
             window.ref = ref2;
             if (window.key == undefined) {
                 window.key = (0, base_1.GenerateRandomString)();
             }
-            this.state.floatWindowVNodes.push(window);
+            this.floatWindowVNodes.push(window);
             if (active) {
                 ref2.waitValid().then((v) => {
                     if (v instanceof exports.WindowComponent) {
@@ -255,18 +273,24 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
                 });
             }
             ;
-            this.forceUpdate();
+            this.setState({});
         }
         removeFloatWindow(window) {
-            let index = this.state.floatWindowVNodes.findIndex(v => v === window);
+            let index = this.floatWindowVNodes.findIndex(v => v === window);
             if (index >= 0) {
-                this.state.floatWindowVNodes.splice(index, 1);
-                this.forceUpdate();
+                this.floatWindowVNodes.splice(index, 1);
+                this.setState({});
             }
         }
+        getSize() {
+            return {
+                width: this.container.current?.clientWidth ?? 0,
+                height: this.container.current?.clientHeight ?? 0
+            };
+        }
     }
-    exports.WindowsList = WindowsList;
-    exports.rootWindowsList = new domui_1.ReactRefEx();
+    exports.WindowGroup = WindowGroup;
+    exports.rootWindowGroup = new domui_1.ReactRefEx();
     let windowDomRootComponent = null;
     function ensureRootWindowContainer() {
         if (windowDomRootComponent == null) {
@@ -280,26 +304,26 @@ define("partic2/pComponentUi/window", ["require", "exports", "preact", "./domui"
             div.style.top = '0px';
             div.style.pointerEvents = 'none';
             domui_1.DomRootComponent.addChild(windowDomRootComponent).then(() => domui_1.DomRootComponent.update());
-            (0, domui_1.ReactRender)(React.createElement(WindowsList, { ref: exports.rootWindowsList }), windowDomRootComponent);
+            (0, domui_1.ReactRender)(React.createElement(WindowGroup, { ref: exports.rootWindowGroup }), windowDomRootComponent);
             //To fix bug in EDGE --app mode
             document.body.style.overflow = 'hidden';
         }
     }
     function appendFloatWindow(window, active) {
         ensureRootWindowContainer();
-        exports.rootWindowsList.current?.appendFloatWindow(window, active);
+        exports.rootWindowGroup.current?.appendFloatWindow(window, active);
     }
     function removeFloatWindow(window) {
         ensureRootWindowContainer();
-        exports.rootWindowsList.current?.removeFloatWindow(window);
+        exports.rootWindowGroup.current?.removeFloatWindow(window);
     }
     async function windowsContainerForceUpdate() {
         ensureRootWindowContainer();
-        return new Promise((resolve) => exports.rootWindowsList.current?.forceUpdate(resolve));
+        return new Promise((resolve) => exports.rootWindowGroup.current?.forceUpdate(resolve));
     }
     function getFloatWindowVNodeList() {
         ensureRootWindowContainer();
-        return exports.rootWindowsList.current?.state.floatWindowVNodes ?? [];
+        return exports.rootWindowGroup.current?.floatWindowVNodes ?? [];
     }
     exports.language.set(navigator.language);
     exports.dialogBoxProvider = {};

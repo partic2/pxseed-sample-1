@@ -10,6 +10,7 @@ define("partic2/CodeRunner/jsutils2", ["require", "exports", "partic2/jsutils1/b
     exports.setupAsyncHook = setupAsyncHook;
     exports.ensureFunctionHookSetup = ensureFunctionHookSetup;
     exports.newEventBuffer = newEventBuffer;
+    exports.setTaskLocalLogBuffer = setTaskLocalLogBuffer;
     Object.defineProperty(exports, "TaskLocalRef", { enumerable: true, get: function () { return base_1.TaskLocalRef; } });
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
     let utf8decoder = new TextDecoder();
@@ -374,7 +375,12 @@ define("partic2/CodeRunner/jsutils2", ["require", "exports", "partic2/jsutils1/b
     class ArrayWrap3 extends base_1.ArrayWrap2 {
         async forEach2(cb) {
             let arr = this.arr();
-            let input = { index: 0, break2() { this.iterating = false; }, iterating: true };
+            let input = {
+                index: 0, wrap: this,
+                break2() { this.iterating = false; }, iterating: true,
+                pickByOffset(offset) { return this.wrap.arr()[this.index + offset]; },
+                value: undefined,
+            };
             for (let t1 = 0; t1 < arr.length && input.iterating; t1++) {
                 input.index = t1;
                 input.value = arr[t1];
@@ -390,7 +396,7 @@ define("partic2/CodeRunner/jsutils2", ["require", "exports", "partic2/jsutils1/b
             return new this.constructor(r);
         }
         async forEach(cb) {
-            this.forEach2(async ({ value, index }) => {
+            await this.forEach2(async ({ value, index }) => {
                 await cb(value, index, this);
             });
         }
@@ -407,7 +413,7 @@ define("partic2/CodeRunner/jsutils2", ["require", "exports", "partic2/jsutils1/b
         }
         async findIndexs(condition) {
             let found = new Array();
-            this.forEach2(async (i) => {
+            await this.forEach2(async (i) => {
                 let b = await condition(i, found);
                 if (b && i.iterating) {
                     found.push(i.index);
@@ -453,7 +459,7 @@ define("partic2/CodeRunner/jsutils2", ["require", "exports", "partic2/jsutils1/b
         }
         async groupBy2(cb) {
             let r = {};
-            this.forEach2(async (input) => {
+            await this.forEach2(async (input) => {
                 let id = await cb(input);
                 if (input.iterating) {
                     if (r[id] == undefined) {
@@ -522,30 +528,65 @@ define("partic2/CodeRunner/jsutils2", ["require", "exports", "partic2/jsutils1/b
         constructor() {
             //[RpcSerializeMagicMark]={}; BUT we must use literal to avoid recursive import
             this.__DUz66NYkWuMdex9k2mvwBbYN__ = {};
-            this._cachedEvent = new base_1.ArrayWrap2();
+            this._bufferedEvent = new base_1.ArrayWrap2();
             this.eventQueueExpiredTime = 1000;
             this._lastSeq = 0;
+            this._cleanupInterval = null;
+            this._trackingConsumer = new Map();
+        }
+        _cleanupExpired() {
+            let now = (0, base_1.GetCurrentTime)().getTime();
+            let arr = this._bufferedEvent.arr();
+            while (arr.length > 0 && arr[0].time + this.eventQueueExpiredTime <= now) {
+                arr.shift();
+            }
+            if (this._bufferedEvent.arr().length > 0) {
+                let firstSeq = this._bufferedEvent.arr().at(0).seq;
+                for (let t1 of this._trackingConsumer.entries()) {
+                    if (t1[1].lastSeq < firstSeq) {
+                        this._trackingConsumer.delete(t1[0]);
+                    }
+                }
+            }
+            else {
+                this._trackingConsumer.clear();
+                clearInterval(this._cleanupInterval);
+                this._cleanupInterval = null;
+            }
         }
         push(event) {
             this._lastSeq++;
-            this._cachedEvent.queueSignalPush({ time: (0, base_1.GetCurrentTime)().getTime(), event, seq: this._lastSeq });
-            setTimeout(() => this._cachedEvent.arr().shift(), this.eventQueueExpiredTime);
+            this._bufferedEvent.queueSignalPush({ time: (0, base_1.GetCurrentTime)().getTime(), event, seq: this._lastSeq });
+            if (this._cleanupInterval === null) {
+                this._cleanupInterval = setInterval(() => this._cleanupExpired(), this.eventQueueExpiredTime);
+            }
+        }
+        async take(ConsumerId) {
+            ConsumerId = ConsumerId ?? '';
+            let ConsumerInfo = this._trackingConsumer.get(ConsumerId) ?? { lastSeq: 0 };
+            let events = await this.peek({ seqGt: ConsumerInfo.lastSeq });
+            if (events.length > 0) {
+                ConsumerInfo.lastSeq = events.at(-1).seq;
+                this._trackingConsumer.set(ConsumerId, ConsumerInfo);
+            }
+            this._cleanupExpired();
+            return events;
         }
         async peek(cond) {
             let events = [];
             const checkEvent = () => {
-                let evs = this._cachedEvent.arr();
+                let evs = this._bufferedEvent.arr();
                 if (cond.seqGt != undefined) {
                     evs = evs.filter(t1 => t1.seq > cond.seqGt);
                 }
                 if (cond.timeGt != undefined) {
                     evs = evs.filter(t1 => t1.time > cond.timeGt);
                 }
-                return evs.map(t1 => t1.event);
+                return evs;
             };
             events = checkEvent();
             if (events.length === 0) {
-                await this._cachedEvent.waitForQueueChange();
+                await this._bufferedEvent.waitForQueueChange();
                 events = checkEvent();
             }
             return events;
@@ -554,5 +595,10 @@ define("partic2/CodeRunner/jsutils2", ["require", "exports", "partic2/jsutils1/b
     exports.EventBuffer = EventBuffer;
     async function newEventBuffer() {
         return new EventBuffer();
+    }
+    async function setTaskLocalLogBuffer(buffer) {
+        base_1.TaskLocalLogHandler.set((arg0) => {
+            buffer.push(arg0);
+        });
     }
 });

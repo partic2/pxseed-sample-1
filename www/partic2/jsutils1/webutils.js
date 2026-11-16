@@ -217,34 +217,17 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
         return GetUrlQueryVariable2(location.toString(), name);
     }
     function GetUrlQueryVariable2(url, name) {
-        var startOfQuery = url.indexOf('?');
-        if (startOfQuery < 0) {
-            return null;
-        }
-        else {
-            var query = url.substring(startOfQuery + 1);
-            var vars = query.split("&");
-            for (var i = 0; i < vars.length; i++) {
-                var pair = vars[i].split("=");
-                if (pair[0] == name) {
-                    return pair[1];
-                }
-            }
-            return null;
-        }
+        let params = new URLSearchParams(new URL(url).search);
+        return params.get(name);
     }
     function AddUrlQueryVariable(url, vars) {
-        var startOfQuery = url.indexOf('&');
-        let split = '&';
-        if (startOfQuery < 0) {
-            url += '?';
-            split = '';
-        }
+        let url2 = new URL(url);
+        let search = new URLSearchParams(url2.search);
         for (let k in vars) {
-            url += split + k + '=' + encodeURI(vars[k]);
-            split = '&';
+            search.set(k, vars[k]);
         }
-        return url;
+        url2.search = search.toString();
+        return url2.href;
     }
     function RequestDownload(buff, fileName) {
         let downloadAnchor = document.createElement('a');
@@ -299,12 +282,17 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
         constructor(cssSheetIn) {
             this.cssSheet = cssSheetIn ?? AddStyleSheetNode();
         }
-        PutCss(selector, rules) {
+        PutCss(selector, rules, pos) {
             let found = this.FindRuleFor(selector);
             if (found != undefined) {
                 this.cssSheet.deleteRule(found.index);
             }
-            this.cssSheet.insertRule(selector + '{' + rules.join(';') + '}', 0);
+            if (pos == 'start') {
+                this.cssSheet.insertRule(selector + '{' + rules.join(';') + '}', 0);
+            }
+            else {
+                this.cssSheet.insertRule(selector + '{' + rules.join(';') + '}', this.cssSheet.cssRules.length);
+            }
         }
         *IterCss() {
             for (let t1 = 0; t1 < this.cssSheet.cssRules.length; t1++) {
@@ -597,26 +585,6 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
                 (0, base_1.assert)(resp.ok, 'fetch failed with error HTTP error:' + resp.status + ' ' + resp.statusText);
                 (0, base_1.assert)(resp.body != null);
                 return resp.body;
-            },
-            async getConfig(path2) {
-                path2 = path2 ?? '.';
-                if (path2.startsWith('/')) {
-                    path2 = path2.substring(1);
-                }
-                else {
-                    path2 = exports.path.join(modNameOrLocalRequire, path2);
-                }
-                return await GetPersistentConfig(path2);
-            },
-            async saveConfig(config, path2) {
-                path2 = path2 ?? '.';
-                if (path2.startsWith('/')) {
-                    path2 = path2.substring(1);
-                }
-                else {
-                    path2 = exports.path.join(modNameOrLocalRequire, path2);
-                }
-                return await SavePersistentConfig(path2, config);
             }
         };
     };
@@ -626,11 +594,18 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
     function getResourceManager(modNameOrLocalRequire) {
         return getResourceManagerImpl(modNameOrLocalRequire);
     }
-    function useDeviceWidth() {
-        let headmeta = document.createElement('meta');
-        headmeta.name = 'viewport';
-        headmeta.content = 'width=device-width user-scalable=no';
-        document.head.append(headmeta);
+    let useDeviceWidthTag = null;
+    function useDeviceWidth(enable) {
+        if (useDeviceWidthTag != null) {
+            document.head.removeChild(useDeviceWidthTag);
+            useDeviceWidthTag = null;
+        }
+        if (enable === false)
+            return;
+        useDeviceWidthTag = document.createElement('meta');
+        useDeviceWidthTag.name = 'viewport';
+        useDeviceWidthTag.content = 'width=device-width initial-scale=1';
+        document.head.append(useDeviceWidthTag);
     }
     function useCssFile(cssUrl) {
         let linkTag = document.createElement('link');
@@ -638,11 +613,13 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
         linkTag.type = 'text/css';
         linkTag.href = cssUrl;
         document.head.appendChild(linkTag);
+        return linkTag;
     }
     let iconLinkTag = null;
     function usePageIcon(iconUrl, iconType) {
         if (iconLinkTag != null) {
             document.head.removeChild(iconLinkTag);
+            iconLinkTag = null;
         }
         iconType = iconType ?? 'image/x-icon';
         iconLinkTag = document.createElement('link');

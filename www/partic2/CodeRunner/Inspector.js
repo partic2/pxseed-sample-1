@@ -1,20 +1,31 @@
 define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "partic2/jsutils1/base", "./JsEnviron", "partic2/jsutils1/webutils", "./jsutils2", "partic2/pxprpcClient/registry"], function (require, exports, CodeContext_1, base_1, JsEnviron_1, webutils_1, jsutils2_1, registry_1) {
     "use strict";
+    var _a, _b;
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.defaultTooltipsHandlers = exports.defaultCompletionHandlers = exports.builtInCompletionHandlers = exports.builtInTooltipsHandlers = exports.CustomObjectTooltipsSymbol = exports.CustomFunctionParameterCompletionSymbol = exports.MiscObject = exports.UnidentifiedArray = exports.UnidentifiedObject = exports.RemoteCodeContextInspector = exports.serializingEscapeMark = void 0;
+    exports.defaultTooltipsHandlers = exports.defaultCompletionHandlers = exports.builtInCompletionHandlers = exports.builtInTooltipsHandlers = exports.CustomObjectTooltipsSymbol = exports.CustomFunctionParameterCompletionSymbol = exports.MiscObject = exports.UnidentifiedArray = exports.UnidentifiedObject = exports.RemoteCodeContextInspector = exports.magicPropertyName = void 0;
     exports.toSerializableObject = toSerializableObject;
     exports.fromSerializableObject = fromSerializableObject;
     exports.inspectCodeContextVariable = inspectCodeContextVariable;
     exports.importNameCompletion = importNameCompletion;
+    exports.__priv_codeContext_accessVariableAsSerializableObject = __priv_codeContext_accessVariableAsSerializableObject;
+    exports.__priv_codeContext_requestCodeCompletion = __priv_codeContext_requestCodeCompletion;
+    exports.__priv_codeContext_requestExtraTooltips = __priv_codeContext_requestExtraTooltips;
     exports.installJavascriptInspectorForCodeContext = installJavascriptInspectorForCodeContext;
     exports.ensureJavascriptInspectorForCodeContextInstalled = ensureJavascriptInspectorForCodeContextInstalled;
+    exports.createViewableHtml = createViewableHtml;
+    exports.createViewableImage = createViewableImage;
+    exports.createCustomViewerObject = createCustomViewerObject;
     const __name__ = base_1.requirejs.getLocalRequireModule(require);
     let DefaultSerializingOption = {
         maxDepth: 6,
         maxKeyCount: 100,
         enumerateMode: 'for in'
     };
-    exports.serializingEscapeMark = '__Zag7QaCUiZb1ABgL__';
+    exports.magicPropertyName = {
+        serializingEscapeMark: '__Zag7QaCUiZb1ABgL__',
+        customViewerFactoryProp: '__Zag7QaCUiZb1ABgL__.customViewerFactoryProp',
+        objectConstructorName: '__Zag7QaCUiZb1ABgL__.objectConstructorName'
+    };
     function forInListProps(obj) {
         let t1 = [];
         for (let t2 in obj) {
@@ -23,7 +34,7 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
         return t1;
     }
     //The return value should be JSON-serializable.
-    //using serializingEscapeMark to represent non-JSON-serializable object.
+    //using magicPropertyName.serializingEscapeMark to represent non-JSON-serializable object.
     function toSerializableObject(v, opt) {
         let listProps = forInListProps;
         let TypedArray = Object.getPrototypeOf(Object.getPrototypeOf(new Uint8Array())).constructor;
@@ -35,40 +46,40 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
             return null;
         if (typeof (v) !== 'object') {
             if (typeof (v) === 'function') {
-                return { [exports.serializingEscapeMark]: 'function', name: v.name };
+                return { [exports.magicPropertyName.serializingEscapeMark]: 'function', name: v.name };
             }
             else if (v === undefined) {
-                return { [exports.serializingEscapeMark]: 'undefined' };
+                return { [exports.magicPropertyName.serializingEscapeMark]: 'undefined' };
             }
             else if (typeof v === 'bigint') {
-                return { [exports.serializingEscapeMark]: 'bigint', value: v.toString() };
+                return { [exports.magicPropertyName.serializingEscapeMark]: 'bigint', value: v.toString() };
             }
             else {
                 return v;
             }
         }
         else if (opt.maxDepth == 0) {
-            let isArray = v instanceof Array;
+            let isArray = Array.isArray(v);
             let keyCount = isArray ? v.length : listProps(v).length;
-            return { [exports.serializingEscapeMark]: 'unidentified', isArray, keyCount };
+            return { [exports.magicPropertyName.serializingEscapeMark]: 'unidentified', isArray, keyCount, [exports.magicPropertyName.objectConstructorName]: v.constructor?.name };
         }
         else {
             if (v instanceof Array) {
                 if (v.length > opt.maxKeyCount) {
-                    return { [exports.serializingEscapeMark]: 'unidentified', isArray: true, keyCount: v.length };
+                    return { [exports.magicPropertyName.serializingEscapeMark]: 'unidentified', isArray: true, keyCount: v.length, [exports.magicPropertyName.objectConstructorName]: v.constructor?.name };
                 }
                 else {
                     return v.map(v2 => toSerializableObject(v2, { ...opt, maxDepth: opt.maxDepth - 1 }));
                 }
             }
-            else if (v[exports.serializingEscapeMark] != undefined) {
+            else if (v[exports.magicPropertyName.serializingEscapeMark] != undefined) {
                 let v2 = { ...v };
-                delete v2[exports.serializingEscapeMark];
-                return { [exports.serializingEscapeMark]: 'unescape', value: toSerializableObject(v2, opt),
-                    markValue: toSerializableObject(v[exports.serializingEscapeMark], { ...opt, maxDepth: opt.maxDepth - 1 }) };
+                delete v2[exports.magicPropertyName.serializingEscapeMark];
+                return { [exports.magicPropertyName.serializingEscapeMark]: 'unescape', value: toSerializableObject(v2, opt),
+                    markValue: toSerializableObject(v[exports.magicPropertyName.serializingEscapeMark], { ...opt, maxDepth: opt.maxDepth - 1 }) };
             }
             else if (v instanceof Date) {
-                return { [exports.serializingEscapeMark]: 'date', time: v.getTime() };
+                return { [exports.magicPropertyName.serializingEscapeMark]: 'date', time: v.getTime() };
             }
             else if (v instanceof TypedArray) {
                 let typename = v.constructor.name;
@@ -76,12 +87,12 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
                     //For node
                     typename = 'Uint8Array';
                 }
-                return { [exports.serializingEscapeMark]: typename,
+                return { [exports.magicPropertyName.serializingEscapeMark]: typename,
                     value: (0, base_1.ArrayBufferToBase64)(new Uint8Array(v.buffer, v.byteOffset, v.length * v.BYTES_PER_ELEMENT))
                 };
             }
             else if (v instanceof ArrayBuffer) {
-                return { [exports.serializingEscapeMark]: 'ArrayBuffer',
+                return { [exports.magicPropertyName.serializingEscapeMark]: 'ArrayBuffer',
                     value: (0, base_1.ArrayBufferToBase64)(v)
                 };
             }
@@ -92,7 +103,7 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
                 let r = {};
                 let keys = listProps(v);
                 if (keys.length > opt.maxKeyCount) {
-                    return { [exports.serializingEscapeMark]: 'unidentified', isArray: false, keyCount: keys.length };
+                    return { [exports.magicPropertyName.serializingEscapeMark]: 'unidentified', isArray: false, keyCount: keys.length, [exports.magicPropertyName.objectConstructorName]: v.constructor?.name };
                 }
                 else {
                     for (let k1 of keys) {
@@ -103,13 +114,13 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
                         }
                         catch (e) {
                             r[k1] = {
-                                [exports.serializingEscapeMark]: 'error',
+                                [exports.magicPropertyName.serializingEscapeMark]: 'error',
                                 message: e.toString()
                             };
                         }
                     }
-                    if (v.constructor != undefined) {
-                        r.constructor = v.constructor.name;
+                    if (v.constructor != undefined && r[exports.magicPropertyName.objectConstructorName] == undefined) {
+                        r[exports.magicPropertyName.objectConstructorName] = v.constructor.name;
                     }
                     //Error.stack Error.message
                     if (v.message != undefined) {
@@ -123,34 +134,40 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
             }
         }
     }
-    let remoteName = {
-        accessVariableAsSerializableObject: '__priv_' + __name__ + '.accessVariableAsSerializableObject',
-        requestCodeCompletion: '__priv_' + __name__ + '.requestCodeCompletion',
-        requestExtraTooltips: '__priv_' + __name__ + '.requestExtraTooltips'
-    };
     class RemoteCodeContextInspector {
         constructor(codeContext) {
             this.codeContext = codeContext;
         }
         async fetchObject(accessPath, opt) {
-            let resp = await this.codeContext.callFunction(remoteName.accessVariableAsSerializableObject, [accessPath, opt]);
+            let resp = await this.codeContext.callFunction({ module: __name__, name: '__priv_codeContext_accessVariableAsSerializableObject' }, [accessPath, opt]);
             return fromSerializableObject(resp, { fetcher: this, accessPath });
         }
         async requestCodeCompletion(code, caret) {
-            let resp = await this.codeContext.callFunction(remoteName.requestCodeCompletion, [code, caret]);
+            let resp = await this.codeContext.callFunction({ module: __name__, name: '__priv_codeContext_requestCodeCompletion' }, [code, caret]);
             return resp;
         }
         async requestExtraTooltips(code, caret) {
-            let resp = await this.codeContext.callFunction(remoteName.requestExtraTooltips, [code, caret]);
+            let resp = await this.codeContext.callFunction({ module: __name__, name: '__priv_codeContext_requestExtraTooltips' }, [code, caret]);
             return resp;
         }
     }
     exports.RemoteCodeContextInspector = RemoteCodeContextInspector;
     class UnidentifiedObject {
+        static async identifyRecursive(obj, opt) {
+            for (let t1 in obj) {
+                if (obj[t1] instanceof UnidentifiedObject) {
+                    obj[t1] = await obj[t1].identify(opt);
+                }
+                else if (typeof obj[t1] === 'object' && obj[t1] != null) {
+                    await this.identifyRecursive(obj[t1], opt);
+                }
+            }
+        }
         constructor() {
             //keyCount=-1 for non array iteratable.
             this.keyCount = 0;
             this.accessPath = [];
+            this[_a] = 'Object';
         }
         async identify(opt) {
             opt = { ...DefaultSerializingOption, ...opt };
@@ -158,12 +175,19 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
         }
         toJSON(key) {
             return {
-                [exports.serializingEscapeMark]: 'unidentified', isArray: false, keyCount: this.keyCount, accessPath: this.accessPath
+                [exports.magicPropertyName.serializingEscapeMark]: 'unidentified',
+                isArray: false, keyCount: this.keyCount, accessPath: this.accessPath,
+                [exports.magicPropertyName.objectConstructorName]: this[exports.magicPropertyName.objectConstructorName]
             };
         }
     }
     exports.UnidentifiedObject = UnidentifiedObject;
+    _a = exports.magicPropertyName.objectConstructorName;
     class UnidentifiedArray extends UnidentifiedObject {
+        constructor() {
+            super(...arguments);
+            this[_b] = 'Array';
+        }
         toJSON(key) {
             let objectJson = super.toJSON(key);
             objectJson.isArray = true;
@@ -171,6 +195,7 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
         }
     }
     exports.UnidentifiedArray = UnidentifiedArray;
+    _b = exports.magicPropertyName.objectConstructorName;
     class MiscObject {
         constructor() {
             //"serializingError" represent the error throw during serializing, Not the real JS Error object.
@@ -179,10 +204,10 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
         }
         toJSON(key) {
             if (this.type === 'serializingError') {
-                return { [exports.serializingEscapeMark]: 'error', message: this.errorMessage };
+                return { [exports.magicPropertyName.serializingEscapeMark]: 'error', message: this.errorMessage };
             }
             else if (this.type === 'function') {
-                return { [exports.serializingEscapeMark]: 'function', name: this.functionName };
+                return { [exports.magicPropertyName.serializingEscapeMark]: 'function', name: this.functionName };
             }
             return '--- unknown object ---';
         }
@@ -198,8 +223,8 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
             if (v instanceof Array) {
                 return v.map((v2, i2) => fromSerializableObject(v2, { ...opt, accessPath: [...opt.accessPath, i2] }));
             }
-            else if (v[exports.serializingEscapeMark] != undefined) {
-                let type1 = v[exports.serializingEscapeMark];
+            else if (v[exports.magicPropertyName.serializingEscapeMark] != undefined) {
+                let type1 = v[exports.magicPropertyName.serializingEscapeMark];
                 switch (type1) {
                     case 'unidentified':
                         {
@@ -214,6 +239,7 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
                             t1.fetcher = opt.fetcher;
                             t1.keyCount = keyCount;
                             t1.accessPath = v.accessPath ?? opt.accessPath;
+                            t1[exports.magicPropertyName.objectConstructorName] = v[exports.magicPropertyName.objectConstructorName];
                             return t1;
                         }
                         ;
@@ -225,7 +251,7 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
                     case 'unescape':
                         {
                             let t1 = fromSerializableObject(v.value, opt);
-                            t1[exports.serializingEscapeMark] = fromSerializableObject(v.markValue, { ...opt, accessPath: [...opt.accessPath, exports.serializingEscapeMark] });
+                            t1[exports.magicPropertyName.serializingEscapeMark] = fromSerializableObject(v.markValue, { ...opt, accessPath: [...opt.accessPath, exports.magicPropertyName.serializingEscapeMark] });
                             return t1;
                         }
                         ;
@@ -532,6 +558,53 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
             }
         }
     };
+    async function __priv_codeContext_accessVariableAsSerializableObject(accessPath, serializeOption) {
+        let obj = CodeContext_1.TaskLocalEnv.get();
+        for (let t1 of accessPath) {
+            if (typeof t1 === 'string' || typeof t1 === 'number') {
+                obj = obj[t1];
+            }
+        }
+        return toSerializableObject(obj, serializeOption);
+    }
+    async function __priv_codeContext_requestCodeCompletion(code, caret) {
+        let obj = CodeContext_1.TaskLocalEnv.get();
+        let codeContext = obj.__codeContext;
+        return base_1.Task.fork(function* () {
+            let completeContext = {
+                code, caret, codeContext: codeContext, completionItems: []
+            };
+            for (let t1 of exports.defaultCompletionHandlers) {
+                //Mute error
+                try {
+                    yield t1(completeContext);
+                }
+                catch (e) {
+                    (0, base_1.throwIfAbortError)(e);
+                }
+            }
+            return completeContext.completionItems;
+        }).run();
+    }
+    async function __priv_codeContext_requestExtraTooltips(code, caret) {
+        let obj = CodeContext_1.TaskLocalEnv.get();
+        let codeContext = obj.__codeContext;
+        return base_1.Task.fork(function* () {
+            let tooltipsContext = {
+                code, caret, codeContext: codeContext, tooltips: null
+            };
+            for (let t1 of exports.defaultTooltipsHandlers) {
+                //Mute error
+                try {
+                    yield t1(tooltipsContext);
+                }
+                catch (e) {
+                    (0, base_1.throwIfAbortError)(e);
+                }
+            }
+            return tooltipsContext.tooltips;
+        }).run();
+    }
     async function installJavascriptInspectorForCodeContext(codeContext) {
         if (codeContext.localScope.autoClosable[__name__ + '.consoleDataHookForCodeContext'] == undefined) {
             const onConsoleLogListener = (level, argv) => {
@@ -556,54 +629,15 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
                     jsutils2_1.OnConsoleData.delete(onConsoleLogListener);
                 } };
             jsutils2_1.OnConsoleData.add(onConsoleLogListener);
+            codeContext.runInContextTask(function* () {
+                base_1.TaskLocalLogHandler.set((arg0) => {
+                    onConsoleLogListener(arg0.level, [arg0.label + ':', ...arg0.msg]);
+                });
+            }, { fork: false });
         }
-        if (codeContext.localScope[remoteName.accessVariableAsSerializableObject] == undefined) {
-            codeContext.localScope[remoteName.accessVariableAsSerializableObject] = (accessPath, serializeOption) => {
-                let obj = CodeContext_1.TaskLocalEnv.get();
-                for (let t1 of accessPath) {
-                    obj = obj[t1];
-                }
-                return toSerializableObject(obj, serializeOption);
-            };
-        }
-        if (codeContext.localScope[remoteName.requestCodeCompletion] == undefined) {
-            codeContext.localScope[remoteName.requestCodeCompletion] = async (code, caret) => {
-                let completeContext = {
-                    code, caret, codeContext: codeContext, completionItems: []
-                };
-                for (let t1 of exports.defaultCompletionHandlers) {
-                    //Mute error
-                    try {
-                        await t1(completeContext);
-                    }
-                    catch (e) {
-                        (0, base_1.throwIfAbortError)(e);
-                    }
-                }
-                return completeContext.completionItems;
-            };
-        }
-        if (codeContext.localScope[remoteName.requestExtraTooltips] == undefined) {
+        if (codeContext.localScope.deleteVariables[exports.CustomObjectTooltipsSymbol] == undefined) {
             codeContext.localScope.deleteVariables[exports.CustomObjectTooltipsSymbol] = (context) => {
                 context.tooltips = 'TYPE:deleteVariables(names:string[])=>void';
-            };
-            codeContext.localScope.callModuleFunction[exports.CustomObjectTooltipsSymbol] = (context) => {
-                context.tooltips = 'TYPE:callModuleFunction(module:string,func:string,args:any[])=>Promise&lt;any&gt;';
-            };
-            codeContext.localScope[remoteName.requestExtraTooltips] = async (code, caret) => {
-                let tooltipsContext = {
-                    code, caret, codeContext: codeContext, tooltips: null
-                };
-                for (let t1 of exports.defaultTooltipsHandlers) {
-                    //Mute error
-                    try {
-                        await t1(tooltipsContext);
-                    }
-                    catch (e) {
-                        (0, base_1.throwIfAbortError)(e);
-                    }
-                }
-                return tooltipsContext.tooltips;
             };
         }
         if (globalThis?.process?.versions?.node != undefined && codeContext.localScope['__priv_enableDebugger'] == undefined) {
@@ -619,7 +653,7 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
     let codeContextAttachedInspector = Symbol(__name__ + '.codeContextAttachedInspector');
     async function ensureJavascriptInspectorForCodeContextInstalled(codeContext) {
         if (codeContext[codeContextAttachedInspector] == undefined) {
-            await codeContext.runCode(`(await import('${__name__}')).installJavascriptInspectorForCodeContext(__priv_codeContext)`, '');
+            await codeContext.runCode(`(await import('${__name__}')).installJavascriptInspectorForCodeContext(__codeContext)`, '');
             codeContext[codeContextAttachedInspector] = new RemoteCodeContextInspector(codeContext);
         }
         return codeContext[codeContextAttachedInspector];
@@ -635,4 +669,33 @@ define("partic2/CodeRunner/Inspector", ["require", "exports", "./CodeContext", "
         exports.builtInTooltipsHandlers.getCalleeInFuncCallExpr,
         exports.builtInTooltipsHandlers.customFunctionTooltips
     ];
+    function createViewableHtml(source) {
+        return createCustomViewerObject({ module: webutils_1.path.join(__name__, '..', 'Component1'), name: 'HtmlViewer' }, source);
+    }
+    function createViewableImage(source) {
+        let opt = {};
+        if (source.url != undefined) {
+            opt.url = source.url;
+        }
+        else if (source.svg != undefined) {
+            opt.url = (0, base_1.ToDataUrl)(source.svg, 'image/svg+xml');
+        }
+        else if (source.pngdata != undefined) {
+            opt.url = (0, base_1.ToDataUrl)(source.pngdata, 'image/png');
+        }
+        else if (source.jpegdata != undefined) {
+            opt.url = (0, base_1.ToDataUrl)(source.jpegdata, 'image/jpeg');
+        }
+        else if (source.bmpdata != undefined) {
+            opt.url = (0, base_1.ToDataUrl)(source.bmpdata, 'image/bmp');
+        }
+        return createCustomViewerObject({ module: webutils_1.path.join(__name__, '..', 'Component1'), name: 'ImageViewer' }, opt);
+    }
+    //viewer should be a Class extend React.Component<{name:string,object:any,variableName?:string,codeContext?:RunCodeContext}>
+    function createCustomViewerObject(viewer, object) {
+        return {
+            [exports.magicPropertyName.customViewerFactoryProp]: viewer,
+            ...object
+        };
+    }
 });

@@ -140,7 +140,7 @@ define("pxprpc/extend", ["require", "exports", "./base"], function (require, exp
             this.baseClient = baseClient;
             this.__usedSid = {};
             this.__sidStart = 1;
-            this.__sidEnd = 0xffff;
+            this.__sidEnd = 0x7fffffff;
             this.__nextSid = this.__sidStart;
         }
         async init() {

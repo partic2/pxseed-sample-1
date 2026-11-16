@@ -20,15 +20,30 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
         bracketMatch += (s.match(/\[/g)?.length ?? 0) - (s.match(/\]/g)?.length ?? 0);
         return bracketMatch;
     }
-    class CodeCell extends React.Component {
-        constructor(props, ctx) {
-            super(props, ctx);
+    class CodeCell extends domui_1.JsxClassComponent {
+        set codeContext(v) {
+            let prev = this.__codeContext;
+            this.__codeContext = v;
+        }
+        get codeContext() {
+            return this.__codeContext;
+        }
+        constructor(prop, ctx) {
+            super(prop, ctx);
             this.rref = {
                 codeInput: new domui_1.ReactRefEx(),
                 container: new domui_1.ReactRefEx(),
                 focusingCompletionCandidateDiv: new domui_1.ReactRefEx,
                 tooltipsDiv: new domui_1.ReactRefEx
             };
+            this.completion = {
+                candidate: null,
+                focusingIndex: -1
+            };
+            this.extraTooltips = null;
+            this.focusin = false;
+            this.errorCatched = null;
+            this.initialized = new base_1.future();
             this.ensureCandidateScroll = new jsutils2_1.ThrottleCall(async () => {
                 let focusDiv = await this.rref.focusingCompletionCandidateDiv.waitValid();
                 let tooltips = await this.rref.tooltipsDiv.waitValid();
@@ -36,71 +51,70 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                     tooltips.scrollTo({ behavior: 'smooth', top: focusDiv.offsetTop });
                 }
             }, 300);
-            this.requestCodeComplete = new jsutils2_1.DebounceCall(async () => {
-                let codeCompleteCandidate = await (await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.codeContext)).requestCodeCompletion(this.getCellInput(), this.rref.codeInput.current.getTextCaretOffset());
-                this.setState({
-                    codeCompleteCandidate
-                });
-            }, 200);
-            this.requestTooltips = new jsutils2_1.DebounceCall(async () => {
-                let extraTooltips = await (await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.codeContext)).requestExtraTooltips(this.getCellInput(), this.rref.codeInput.current.getTextCaretOffset());
-                this.setState({
-                    extraTooltips
-                });
-            }, 200);
-            this.__focusIn = 'blur';
-            this.codeContextCallMethodEvent = async (ev) => {
-                let { module, functionName, argv } = ev.data;
-                (await new Promise((resolve_1, reject_1) => { require([module], resolve_1, reject_1); }))[functionName](...argv, { codeCell: this, codeContext: this.codeContext });
+            this.requestDebouncer = {
+                requestCodeComplete: new jsutils2_1.DebounceCall(async () => this.requestCodeComplete(), 200),
+                requestTooltips: new jsutils2_1.DebounceCall(async () => this.requestTooltips(), 200),
             };
-            this.setState({ codeCompleteCandidate: null, focusin: false, extraTooltips: null, errorCatched: null, focusingCompletionCandidate: 0 });
+            this.__focusIn = 'blur';
+            this.initialize().then(() => this.initialized.setResult(), (err) => this.initialized.setException(err)).then(() => this.setState({}));
+        }
+        async initialize() {
         }
         getContainerDiv() {
             return this.rref.container.current;
         }
         async runCode() {
-            this.props.onRun?.();
+            this.onRun?.();
             try {
-                this.setState({ cellOutput: 'Running...', codeCompleteCandidate: [] });
-                let resultVariable = this.state.resultVariable ?? ('__result_' + (0, base_1.GenerateRandomString)());
-                let runStatus = await this.codeContext.runCode(this.getCellInput(), resultVariable);
+                this.cellOutput = 'Running...';
+                this.completion.candidate = null;
+                this.setState({});
+                this.resultVariable = this.resultVariable ?? ('__result_' + (0, base_1.GenerateRandomString)());
+                let runStatus = await this.codeContext.runCode(this.getCellInput(), this.resultVariable);
                 if (runStatus.err === null && runStatus.stringResult != null) {
-                    let cellOutput = runStatus.stringResult;
-                    this.setState({ cellOutput, resultVariable });
+                    this.cellOutput = runStatus.stringResult;
+                    this.setState({});
                 }
                 else {
-                    let cellOutput = await (0, Inspector_1.inspectCodeContextVariable)(await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.codeContext), [resultVariable], { maxDepth: 1 });
-                    this.setState({ cellOutput, resultVariable, errorCatched: runStatus.err });
+                    this.cellOutput = await (0, Inspector_1.inspectCodeContextVariable)(await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.codeContext), [this.resultVariable], { maxDepth: 1 });
+                    this.errorCatched = runStatus.err;
+                    this.setState({});
                 }
             }
             catch (e) {
                 let err = e;
-                this.setState({ cellOutput: { message: err.message, stack: err.stack } });
+                (0, base_1.throwIfAbortError)(err);
+                this.cellOutput = { message: err.message, stack: err.stack };
+                this.setState({});
             }
             finally {
-                this.props.onRunResult?.();
+                this.onRunResult?.();
             }
         }
         renderTooltipsContent() {
-            if (this.state.extraTooltips == null && this.state.codeCompleteCandidate == null)
+            if (this.extraTooltips == null && this.completion.candidate == null)
                 return null;
             let coor = this.getInputCaretCoordinate();
             if (coor == null)
                 return null;
             return React.createElement("div", { style: { position: 'absolute', left: coor?.left, top: coor.bottom, zIndex: '1', overflow: 'auto', maxHeight: '300px', backgroundColor: 'white', border: 'solid black 1px' }, ref: this.rref.tooltipsDiv },
-                this.state.extraTooltips ? React.createElement("div", { dangerouslySetInnerHTML: { __html: this.state.extraTooltips } }) : null,
+                this.extraTooltips ? React.createElement("div", { dangerouslySetInnerHTML: { __html: this.extraTooltips } }) : null,
                 (() => {
-                    if (this.state.codeCompleteCandidate != null) {
-                        return React.createElement("div", { style: { display: 'flex', flexDirection: 'column' }, tabIndex: 0 }, this.state.codeCompleteCandidate.map((v, idx) => {
+                    if (this.completion.candidate != null) {
+                        return React.createElement("div", { style: { display: 'flex', flexDirection: 'column' }, tabIndex: 0 }, this.completion.candidate.map((v, idx) => {
                             let className = [];
                             let ref = null;
-                            if (idx === this.state.focusingCompletionCandidate) {
+                            if (idx === this.completion.focusingIndex) {
                                 className.push(domui_1.css.selected);
                                 ref = this.rref.focusingCompletionCandidateDiv;
                             }
                             return React.createElement("div", { ref: ref, className: className.join(' '), onClick: () => {
                                     this.insertCodeComplete(v);
-                                } }, v.candidate);
+                                } },
+                                "[",
+                                v.type.charAt(0).toUpperCase(),
+                                "]",
+                                v.candidate);
                         }));
                     }
                     else {
@@ -108,8 +122,19 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                     }
                 })());
         }
+        async requestCodeComplete() {
+            let codeCompleteCandidate = await (await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.codeContext)).requestCodeCompletion(this.getCellInput(), this.rref.codeInput.current.getTextCaretOffset());
+            this.completion.candidate = codeCompleteCandidate;
+            this.completion.focusingIndex = 0;
+            this.setState({});
+        }
+        async requestTooltips() {
+            let extraTooltips = await (await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.codeContext)).requestExtraTooltips(this.getCellInput(), this.rref.codeInput.current.getTextCaretOffset());
+            this.extraTooltips = extraTooltips;
+            this.setState({});
+        }
         getRunCodeKey() {
-            return this.props.runCodeKey ?? 'Ctl+Ent';
+            return this.runCodeKey ?? 'Ctl+Ent';
         }
         async onCellKeyDown(ev) {
             if (ev.code === 'Enter') {
@@ -120,7 +145,7 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                     if (ev.ctrlKey) {
                         //prevent trigger input('\n').Is there better way?
                         this.rref.codeInput.current?.insertText('\n');
-                        this.props.onInputChange?.(this);
+                        this.onInputChange?.(this);
                     }
                     else {
                         let fullText = (await this.rref.codeInput.waitValid()).getPlainText();
@@ -134,37 +159,39 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 }
             }
             else if (ev.code == 'Tab') {
-                if (this.state.codeCompleteCandidate != null) {
-                    if (this.state.codeCompleteCandidate.length > 0) {
-                        this.insertCodeComplete(this.state.codeCompleteCandidate[this.state.focusingCompletionCandidate]);
+                if (this.completion.candidate != null) {
+                    if (this.completion.candidate.length > 0) {
+                        this.insertCodeComplete(this.completion.candidate[this.completion.focusingIndex]);
                     }
                 }
                 ev.preventDefault();
             }
             else if (ev.code == 'ArrowUp') {
-                if (this.state.codeCompleteCandidate != null && this.state.codeCompleteCandidate.length > 0) {
-                    let nextFocus = this.state.focusingCompletionCandidate - 1;
+                if (this.completion.candidate != null && this.completion.candidate.length > 0) {
+                    let nextFocus = this.completion.focusingIndex - 1;
                     if (nextFocus < 0) {
-                        nextFocus += this.state.codeCompleteCandidate.length;
+                        nextFocus += this.completion.candidate.length;
                     }
-                    this.setState({ focusingCompletionCandidate: nextFocus });
+                    this.completion.focusingIndex = nextFocus;
+                    this.setState({});
                     ev.preventDefault();
                     await new Promise(requestAnimationFrame);
                     this.ensureCandidateScroll.call();
                 }
                 else if (this.rref.codeInput.current != null && this.rref.codeInput.current.isEditing()) {
                     if (this.rref.codeInput.current.getTextCaretOffset() === 0) {
-                        this.props.onPreviousCell?.();
+                        this.onPreviousCell?.();
                     }
                 }
             }
             else if (ev.code == 'ArrowDown') {
-                if (this.state.codeCompleteCandidate != null && this.state.codeCompleteCandidate.length > 0) {
-                    let nextFocus = this.state.focusingCompletionCandidate + 1;
-                    if (nextFocus >= this.state.codeCompleteCandidate.length) {
-                        nextFocus -= this.state.codeCompleteCandidate.length;
+                if (this.completion.candidate != null && this.completion.candidate.length > 0) {
+                    let nextFocus = this.completion.focusingIndex + 1;
+                    if (nextFocus >= this.completion.candidate.length) {
+                        nextFocus -= this.completion.candidate.length;
                     }
-                    this.setState({ focusingCompletionCandidate: nextFocus });
+                    this.completion.focusingIndex = nextFocus;
+                    this.setState({});
                     ev.preventDefault();
                     await new Promise(requestAnimationFrame);
                     this.ensureCandidateScroll.call();
@@ -172,11 +199,11 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 else if (this.rref.codeInput.current != null && this.rref.codeInput.current.isEditing()) {
                     let plainText = this.rref.codeInput.current.getPlainText();
                     if (this.rref.codeInput.current.getTextCaretOffset() >= plainText.length) {
-                        this.props.onNextCell?.();
+                        this.onNextCell?.();
                     }
                 }
             }
-            else if (ev.code == 'Escape' && this.state.codeCompleteCandidate != null) {
+            else if (ev.code == 'Escape' && this.completion.candidate != null) {
                 this.resetTooltips();
             }
         }
@@ -195,29 +222,32 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 }
             }
             if ((inputData.char != null && inputData.char.search(/[a-zA-Z_\.\/]/) >= 0) || inputData.type === 'deleteContentBackward') {
-                this.requestCodeComplete.call();
+                this.requestDebouncer.requestCodeComplete.call();
             }
             if (inputData.char == '(') {
-                this.requestTooltips.call();
+                this.requestDebouncer.requestTooltips.call();
             }
             else {
                 //BUG?: "setState" before "onInput" return trigger by full-width character lead to double input sometimes.
                 requestAnimationFrame(() => this.setState({ extraTooltips: null }));
             }
-            this.props.onInputChange?.(this);
+            this.onInputChange?.(this);
         }
         getCellInput() {
             let t1 = this.rref.codeInput.current.getPlainText();
             return t1;
         }
         getCellOutput() {
-            return [this.state.cellOutput, this.state.resultVariable ?? null];
+            return [this.cellOutput, this.resultVariable ?? null];
         }
         setCellInput(input) {
             this.rref.codeInput.current.setPlainText(input);
         }
         setCellOutput(output, resultVariable) {
-            this.setState({ cellOutput: output, resultVariable, errorCatched: null });
+            this.cellOutput = output;
+            this.resultVariable = resultVariable;
+            this.errorCatched = null;
+            this.setState({});
         }
         getCellInputHtml() {
             return this.rref.codeInput.current?.getHtml() ?? null;
@@ -236,19 +266,22 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             }
         }
         resetTooltips() {
-            this.setState({ focusingCompletionCandidate: 0, codeCompleteCandidate: null, extraTooltips: null });
+            this.completion.candidate = null;
+            this.completion.focusingIndex = -1;
+            this.extraTooltips = null;
+            this.setState({});
         }
         insertCodeComplete(cc) {
             this.rref.codeInput.current.setTextCaretOffset(cc.replaceRange[1]);
             let delCount = cc.replaceRange[1] - cc.replaceRange[0];
             this.rref.codeInput.current.deleteText(delCount);
             this.rref.codeInput.current.insertText(cc.candidate);
-            this.props.onInputChange?.(this);
+            this.onInputChange?.(this);
             this.resetTooltips();
         }
         async doOnFocusChange(focusin, ev) {
-            if (this.props.onFocusChange != undefined) {
-                this.props.onFocusChange(focusin);
+            if (this.onFocusChange != undefined) {
+                this.onFocusChange(focusin);
             }
             if (focusin) {
                 this.setState({ focusin: true });
@@ -268,16 +301,16 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             this.runCode();
         }
         async onBtnClearOutputs() {
-            if (this.state.resultVariable != null) {
-                this.codeContext.callFunction('deleteVariables', [[this.state.resultVariable]]);
+            if (this.resultVariable != null) {
+                this.codeContext.callFunction('deleteVariables', [[this.resultVariable]]);
             }
-            this.props.onClearOutputs?.();
-            this.setCellOutput('', null);
+            this.onClearOutputs?.();
+            this.setCellOutput(undefined, null);
         }
         renderActionButton() {
             let result = [];
-            if (this.props.customBtns != undefined) {
-                for (let t1 of this.props.customBtns) {
+            if (this.customBtns != undefined) {
+                for (let t1 of this.customBtns) {
                     result.push(React.createElement("a", { href: "javascript:;", onClick: () => t1.cb(), title: t1.title }, t1.label));
                 }
             }
@@ -286,40 +319,40 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             result = result.map(v => [React.createElement("span", null, "\u00A0\u00A0"), v, React.createElement("span", null, "\u00A0\u00A0")]);
             return result;
         }
-        beforeRender() {
-            if (this.codeContext != this.props.codeContext) {
-                if (this.codeContext != undefined) {
-                    this.codeContext.event.removeEventListener(`${__name__}.CodeCell.callWebuiFunction`, this.codeContextCallMethodEvent);
-                }
-                this.codeContext = this.props.codeContext;
-                this.codeContext.event.addEventListener(`${__name__}.CodeCell.callWebuiFunction`, this.codeContextCallMethodEvent);
-            }
+        renderCellInput() {
+            return React.createElement(texteditor_1.TextEditor, { ref: this.rref.codeInput, divAttr: { onKeyDown: (ev) => this.onCellKeyDown(ev), onClick: () => {
+                        if (this.completion.candidate != null || this.extraTooltips != null) {
+                            this.resetTooltips();
+                        }
+                    } }, onInput: (target, inputData) => this.onCellInput(target, inputData), divClass: [exports.css.inputCell, ...(this.inputClass ?? [])] });
         }
-        render(props, state, context) {
-            this.beforeRender();
-            return React.createElement("div", { style: { display: 'flex', flexDirection: 'column', position: 'relative', ...this.props.divStyle }, ref: this.rref.container, ...this.props.divAttr, onFocusIn: (ev) => {
-                    this.props.divAttr?.onFocusIn?.(ev);
+        renderCellOutput() {
+            return [
+                React.createElement("div", null, this.errorCatched != null ? 'THROW:' : null),
+                React.createElement("div", { style: { overflow: 'auto' } }, this.cellOutput === undefined ? null : React.createElement(Component1_1.ObjectViewer, { object: this.cellOutput, name: '', codeContext: this.codeContext, variableName: this.resultVariable ?? undefined }))
+            ];
+        }
+        jsx(props, state, context) {
+            if (!this.initialized.done) {
+                return null;
+            }
+            return React.createElement("div", { style: { display: 'flex', flexDirection: 'column', position: 'relative', ...this.divStyle }, ref: this.rref.container, ...this.divAttr, onFocusIn: (ev) => {
+                    this.divAttr?.onFocusIn?.(ev);
                     if (!ev.defaultPrevented) {
                         this.doOnFocusChange(true, ev);
                     }
                 }, onFocusOut: (ev) => {
-                    this.props.divAttr?.onFocusOut?.(ev);
+                    this.divAttr?.onFocusOut?.(ev);
                     if (!ev.defaultPrevented) {
                         this.doOnFocusChange(false, ev);
                     }
                 } },
-                React.createElement(texteditor_1.TextEditor, { ref: this.rref.codeInput, divAttr: { onKeyDown: (ev) => this.onCellKeyDown(ev), onClick: () => {
-                            if (this.state.codeCompleteCandidate != null || this.state.extraTooltips != null) {
-                                this.resetTooltips();
-                            }
-                        } }, onInput: (target, inputData) => this.onCellInput(target, inputData), divClass: [exports.css.inputCell, ...(this.props.inputClass ?? [])] }),
-                this.state.focusin ? React.createElement("div", { style: { position: 'relative', display: 'flex', flexDirection: 'row-reverse' } },
+                this.renderCellInput(),
+                this.focusin ? React.createElement("div", { style: { position: 'relative', display: 'flex', flexDirection: 'row-reverse' } },
                     React.createElement("div", { style: { position: 'absolute', backgroundColor: 'white', maxWidth: '50%', wordBreak: 'break-all' } },
                         React.createElement("div", null, this.renderActionButton()))) : null,
                 this.renderTooltipsContent(),
-                React.createElement("div", null, this.state.errorCatched != null ? 'THROW:' : null),
-                React.createElement("div", { style: { overflow: 'auto' } },
-                    React.createElement(Component1_1.ObjectViewer, { object: this.state.cellOutput, name: '', codeContext: this.codeContext, variableName: this.state.resultVariable ?? undefined })));
+                this.renderCellOutput());
         }
         getInputCaretCoordinate() {
             let codeInput = this.rref.codeInput.current;
@@ -339,9 +372,9 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             this.rref.codeInput.current?.setTextCaretOffset('end');
         }
         async close() {
-            if (this.state.resultVariable != null) {
+            if (this.resultVariable != null) {
                 try {
-                    this.codeContext.callFunction('deleteVariables', [[this.state.resultVariable]]);
+                    this.codeContext.callFunction('deleteVariables', [[this.resultVariable]]);
                 }
                 catch (e) { }
                 ;
@@ -349,117 +382,136 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
         }
     }
     exports.CodeCell = CodeCell;
-    class DefaultCodeCellList extends React.Component {
+    class DefaultCodeCellList extends domui_1.JsxClassComponent {
+        set codeContext(cur) {
+            let pre = this.__codeContext;
+            this.__codeContext = cur;
+            if (pre != null) {
+                this.detachCodeContext(pre);
+            }
+            if (cur != null) {
+                this.attachCodeContext(cur);
+            }
+        }
+        get codeContext() {
+            return this.__codeContext;
+        }
         constructor(prop, ctx) {
             super(prop, ctx);
+            this.list = [];
+            this.consoleOutput = {};
+            this.error = null;
+            this.lastFocusCellKey = null;
             this.lastRunCellKey = '';
+            this.initialized = new base_1.future();
             this.__currentCodeContext = null;
             this.rref = {
                 container: new domui_1.ReactRefEx()
             };
+            this.codeContextCallMethodEvent = async (ev) => {
+                let { module, functionName, argv } = ev.data;
+                (await new Promise((resolve_1, reject_1) => { require([module], resolve_1, reject_1); }))[functionName](...argv, { codeCell: this, codeContext: this.codeContext });
+            };
             this.onConsoleData = (event) => {
-                let index = this.state.list.findIndex(v => v.key === this.lastRunCellKey);
+                let index = this.list.findIndex(v => v.key === this.lastRunCellKey);
                 if (index < 0)
                     index = 0;
-                let cell = this.state.list[index];
-                if (!(cell.key in this.state.consoleOutput)) {
-                    this.state.consoleOutput[cell.key] = { content: '' };
+                let cell = this.list[index];
+                if (!(cell.key in this.consoleOutput)) {
+                    this.consoleOutput[cell.key] = { content: '' };
                 }
-                this.state.consoleOutput[cell.key].content += `[${event.data?.level ?? ''}]:${event.data?.message ?? ''}\n`;
+                this.consoleOutput[cell.key].content += `[${event.data?.level ?? ''}]:${event.data?.message ?? ''}\n`;
                 this.forceUpdate();
             };
-            this.resetState();
+            this.initialize().then(() => this.initialized.setResult(), (err) => this.initialized.setException(err)).then(() => this.setState({}));
+        }
+        async initialize() {
+            this.setState({ list: [], consoleOutput: {}, error: null, codeContext: null, lastFocusCellKey: '' });
         }
         async detachCodeContext(codeContext) {
             codeContext.event.removeEventListener('console.data', this.onConsoleData);
+            codeContext.event.removeEventListener(`${__name__}.CodeCellList.callWebuiFunction`, this.codeContextCallMethodEvent);
+            this.codeContext.event.dispatchEvent(new CodeContext_1.CodeContextEvent(`${__name__}.CodeCellList.webuiDetach`));
         }
         async attachCodeContext(codeContext) {
             (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(codeContext);
-            this.props.codeContext.event.addEventListener('console.data', this.onConsoleData);
+            this.codeContext.event.addEventListener('console.data', this.onConsoleData);
+            this.codeContext.event.addEventListener(`${__name__}.CodeCellList.callWebuiFunction`, this.codeContextCallMethodEvent);
+            this.codeContext.event.dispatchEvent(new CodeContext_1.CodeContextEvent(`${__name__}.CodeCellList.webuiAttached`));
         }
-        beforeRender() {
-            if (this.props.codeContext != this.state.codeContext) {
-                if (this.state.codeContext != null) {
-                    this.detachCodeContext(this.state.codeContext);
-                }
-                this.setState({ codeContext: this.props.codeContext });
-                if (this.props.codeContext != null) {
-                    this.attachCodeContext(this.props.codeContext);
-                }
+        async componentDidUpdate() {
+            if (this.getCellList().length == 0) {
+                await this.newCell();
             }
         }
         componentWillUnmount() {
-            if (this.props.codeContext != null) {
-                this.detachCodeContext(this.props.codeContext);
+            if (this.codeContext != null) {
+                this.detachCodeContext(this.codeContext);
             }
-            if (this.props.codeContext != null) {
-                this.detachCodeContext(this.props.codeContext);
+            if (this.codeContext != null) {
+                this.detachCodeContext(this.codeContext);
             }
         }
         async newCell(afterCellKey) {
-            let pos = afterCellKey == undefined ? -1 : this.state.list.findIndex(v => v.key === afterCellKey);
+            let pos = afterCellKey == undefined ? -1 : this.list.findIndex(v => v.key === afterCellKey);
             let newKey = (0, base_1.GenerateRandomString)();
             if (pos < 0) {
-                this.state.list.push({ ref: new domui_1.ReactRefEx(), key: newKey });
+                this.list.push({ ref: new domui_1.ReactRefEx(), key: newKey });
             }
             else {
-                this.state.list.splice(pos + 1, 0, { ref: new domui_1.ReactRefEx(), key: newKey });
+                this.list.splice(pos + 1, 0, { ref: new domui_1.ReactRefEx(), key: newKey });
             }
             this.setState({});
-            this.props.onCellListChange?.();
+            this.onCellListChange?.();
             return newKey;
         }
         async deleteCell(cellKey) {
-            let pos = this.state.list.findIndex(v => v.key == cellKey);
+            let pos = this.list.findIndex(v => v.key == cellKey);
             try {
-                this.state.list[pos].ref.current?.close();
+                this.list[pos].ref.current?.close();
             }
             catch (e) { }
             ;
             if (pos >= 0) {
-                this.state.list.splice(pos, 1);
+                this.list.splice(pos, 1);
                 this.setState({});
             }
-            this.props.onCellListChange?.();
+            this.onCellListChange?.();
         }
         getCellList() {
-            return this.state.list;
+            return this.list;
         }
         async runCell(cellKey) {
-            let cell = this.state.list.find(v => v.key == cellKey);
+            let cell = this.list.find(v => v.key == cellKey);
             (0, base_1.assert)(cell != undefined);
             cell.ref.current.runCode();
         }
         async setCurrentEditing(cellKey) {
-            let cell2 = this.state.list.find(v => v.key == cellKey);
+            let cell2 = this.list.find(v => v.key == cellKey);
             if (cell2 != undefined && cell2.ref.current != undefined) {
                 await cell2.ref.current.setAsEditTarget();
             }
         }
         async setCellInput(cellKey, input) {
-            let cell = this.state.list.find(v => v.key == cellKey);
+            let cell = this.list.find(v => v.key == cellKey);
             (0, base_1.assert)(cell != undefined);
             cell.ref.current.setCellInput(input);
         }
         clearConsoleOutput(key) {
-            delete this.state.consoleOutput[key];
+            delete this.consoleOutput[key];
             this.forceUpdate();
         }
         async resetState() {
             this.lastRunCellKey = '';
-            await new Promise(resolve => this.setState({
-                list: [],
-                consoleOutput: {},
-                error: null,
-                codeContext: null,
-                lastFocusCellKey: ''
-            }, resolve));
-            await this.newCell();
+            for (let t1 of [...this.getCellList()].reverse()) {
+                await this.deleteCell(t1.key);
+            }
+            this.setState({});
         }
         async scrollToCell(cellIndex) {
             //To prevent user agent scroll handler overwrite the scrollTo position.
             await new Promise(requestAnimationFrame);
-            let v = this.state.list.at(cellIndex);
+            let v = this.list.at(cellIndex);
             let cellDiv = v.ref.current?.getContainerDiv();
             let listDiv = this.rref.container.current;
             if (cellDiv != null && listDiv != null) {
@@ -473,71 +525,73 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             }
         }
         renderCodeCell(v, index, cellCssStyle) {
-            return React.createElement(CodeCell, { ref: v.ref, key: v.key, codeContext: this.state.codeContext, customBtns: [
+            return React.createElement(CodeCell, { ref: v.ref, key: v.key, codeContext: this.codeContext, customBtns: [
                     { label: 'New', cb: () => this.newCell(v.key) },
                     { label: 'Del', cb: () => this.deleteCell(v.key) }
                 ], onClearOutputs: () => this.clearConsoleOutput(v.key), onRun: async () => {
-                    this.props.onRun?.(v.key);
+                    this.onRun?.(v.key);
                     this.lastRunCellKey = v.key;
-                    if (v.key == this.state.list.at(-1)?.key) {
+                    if (v.key == this.list.at(-1)?.key) {
                         await this.newCell(v.key);
-                        let ccelem = this.state.list.at(-1);
+                        let ccelem = this.list.at(-1);
                         let cc = await ccelem.ref.waitValid();
                         await cc.setAsEditTarget();
                     }
                 }, onFocusChange: (focusin) => {
-                    this.props.onCellFocusChange?.({ cellKey: v.key, focusIn: focusin });
+                    this.onCellFocusChange?.({ cellKey: v.key, focusIn: focusin });
                     if (focusin) {
                         this.setState({ lastFocusCellKey: v.key });
                         this.scrollToCell(index);
                     }
                 }, onPreviousCell: async () => {
-                    let cc = this.state.list.at(index - 1);
+                    let cc = this.list.at(index - 1);
                     if (cc != undefined) {
                         await cc.ref.current?.setAsEditTarget();
                     }
                 }, onNextCell: async () => {
-                    let cc = this.state.list.at(index + 1);
+                    let cc = this.list.at(index + 1);
                     if (cc != undefined) {
                         await cc.ref.current?.setAsEditTarget();
                     }
-                }, divStyle: cellCssStyle, ...this.props.cellProps });
+                }, divStyle: cellCssStyle, ...this.cellProps });
         }
-        render(props, state, context) {
-            this.beforeRender();
-            return (this.state.codeContext != null && this.state.error == null) ?
+        jsx(props, state, context) {
+            if (!this.initialized.done) {
+                return null;
+            }
+            return (this.codeContext != null && this.error == null) ?
                 React.createElement("div", { style: { width: '100%', height: '100%', overflow: 'auto', position: 'relative' }, ref: this.rref.container },
-                    (0, jsutils2_1.FlattenArraySync)(this.state.list.map((v, index) => {
+                    (0, jsutils2_1.FlattenArraySync)(this.list.map((v, index) => {
                         let cellCssStyle = {};
-                        if (this.state.lastFocusCellKey === v.key) {
+                        if (this.lastFocusCellKey === v.key) {
                             cellCssStyle.zIndex = 100;
                         }
                         let r = [this.renderCodeCell(v, index, cellCssStyle)];
-                        if (v.key in this.state.consoleOutput) {
-                            r.push(React.createElement("div", { style: { wordBreak: 'break-all' }, dangerouslySetInnerHTML: { __html: (0, utils_1.text2html)(this.state.consoleOutput[v.key].content) } }));
+                        if (v.key in this.consoleOutput) {
+                            r.push(React.createElement("div", { style: { wordBreak: 'break-all' }, dangerouslySetInnerHTML: { __html: (0, utils_1.text2html)(this.consoleOutput[v.key].content) } }));
                         }
                         return r;
                     })),
                     React.createElement("div", { style: { minHeight: '300px' } })) :
                 React.createElement("div", { style: { width: '100%', overflow: 'auto', position: 'relative' }, ref: this.rref.container },
-                    React.createElement("pre", null, this.state.error),
+                    React.createElement("pre", null, this.error),
                     React.createElement("a", { href: "javascript:;", onClick: () => this.resetState() }, "Reset"));
         }
         saveTo() {
             let cellData = CodeContext_1.newCodeCellListData.get()();
-            cellData.cellList = this.state.list.map((cell, index) => ({
+            cellData.cellList = this.list.map((cell, index) => ({
                 cellInput: cell.ref.current.getCellInput(),
                 cellOutput: (0, Inspector_1.toSerializableObject)(cell.ref.current.getCellOutput(), {}),
                 key: cell.key
             }));
-            cellData.consoleOutput = this.state.consoleOutput;
+            cellData.consoleOutput = this.consoleOutput;
             return cellData.saveTo();
         }
         async loadFrom(data) {
+            await this.initialized.get();
             try {
                 let cellData = CodeContext_1.newCodeCellListData.get()();
                 cellData.loadFrom(data);
-                ;
                 while (this.getCellList().length < cellData.cellList.length) {
                     await this.newCell();
                 }
@@ -545,7 +599,7 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 for (let k1 in cellData.consoleOutput) {
                     let index = cellData.cellList.findIndex(v => v.key === k1);
                     if (index >= 0) {
-                        consoleOutput[this.state.list[index].key] = cellData.consoleOutput[k1];
+                        consoleOutput[this.list[index].key] = cellData.consoleOutput[k1];
                     }
                 }
                 let cellList = this.getCellList();
@@ -553,7 +607,7 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                     let cell = await cellList[t1].ref.waitValid();
                     let val = cellData.cellList[t1];
                     cell.setCellInput(val.cellInput);
-                    cell.setCellOutput((0, Inspector_1.fromSerializableObject)(val.cellOutput[0], { fetcher: await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.state.codeContext), accessPath: [val.cellOutput[1] ?? ''] }), val.cellOutput[1]);
+                    cell.setCellOutput((0, Inspector_1.fromSerializableObject)(val.cellOutput[0], { fetcher: await (0, Inspector_1.ensureJavascriptInspectorForCodeContextInstalled)(this.codeContext), accessPath: [val.cellOutput[1] ?? ''] }), val.cellOutput[1]);
                 }
                 this.setState({ consoleOutput });
                 this.forceUpdate();

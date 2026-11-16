@@ -458,17 +458,31 @@ define("partic2/nodehelper/tjsadapt", ["require", "exports", "partic2/jsutils1/b
         async function listen(transport, host, port, options) {
             if (transport == 'tcp') {
                 let serv = new net_1.Server();
+                let result = new base_1.future();
+                serv.on('listening', () => {
+                    result.setResult(new NodeListener(serv));
+                });
+                serv.on('error', (err) => {
+                    result.setException(err);
+                });
                 serv.listen({
                     host: host, port: Number(port ?? 0)
                 });
-                return new NodeListener(serv);
+                return await result.get();
             }
-            else if (transport == 'udp') {
+            else if (transport == 'pipe') {
                 let serv = new net_1.Server();
+                let result = new base_1.future();
+                serv.on('listening', () => {
+                    result.setResult(new NodeListener(serv));
+                });
+                serv.on('error', (err) => {
+                    result.setException(err);
+                });
                 serv.listen({
                     path: host
                 });
-                return new NodeListener(serv);
+                return await result.get();
             }
             else {
                 throw new Error('Not implemented');

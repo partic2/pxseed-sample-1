@@ -5,6 +5,8 @@ define("partic2/JsNotebook/tjseasyapi", ["require", "exports", "partic2/CodeRunn
     exports.files = exports.TjsUtilsProcess = void 0;
     exports.newTjsUtilsProcess = newTjsUtilsProcess;
     exports.then = then;
+    const __name__ = base_1.requirejs.getLocalRequireModule(require);
+    let log = base_1.logger.getLogger(__name__);
     class TjsUtilsProcess {
         constructor(tjsProc, args) {
             this.tjsProc = tjsProc;
@@ -117,6 +119,25 @@ define("partic2/JsNotebook/tjseasyapi", ["require", "exports", "partic2/CodeRunn
                     }]);
             }
         }
+        logStdoutAndStderr() {
+            let that = this;
+            return base_2.Task.fork(function* () {
+                yield Promise.any([
+                    base_2.Task.fork(function* () {
+                        while (true) {
+                            let r = yield* base_2.Task.yieldWrap(that.readStdoutUtf8());
+                            log.info(r);
+                        }
+                    }).run(),
+                    base_2.Task.fork(function* () {
+                        while (true) {
+                            let r = yield* base_2.Task.yieldWrap(that.readStderrUtf8());
+                            log.warning(r);
+                        }
+                    }).run()
+                ]);
+            }).run();
+        }
         async wait() {
             return this.tjsProc.wait();
         }
@@ -126,10 +147,10 @@ define("partic2/JsNotebook/tjseasyapi", ["require", "exports", "partic2/CodeRunn
     }
     exports.TjsUtilsProcess = TjsUtilsProcess;
     _a = registry_1.RpcSerializeMagicMark;
-    async function newTjsUtilsProcess(args, tjsImpl) {
+    async function newTjsUtilsProcess(args, tjsImpl, opt) {
         if (tjsImpl == undefined)
             tjsImpl = await (0, tjsbuilder_1.buildTjs)();
-        return new TjsUtilsProcess(await tjsImpl.spawn(args, { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' }), args);
+        return new TjsUtilsProcess(await tjsImpl.spawn(args, { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', cwd: opt?.cwd }), args);
     }
     exports.files = {
         tjs: null,

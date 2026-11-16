@@ -3,15 +3,15 @@ define("partic2/packageManager/modtools", ["require", "exports", "partic2/pxprpc
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.HotModuleReload = exports.CHotModuleReload = void 0;
     exports.getConnectedPxseedWebuiRpcClientFromServerHostUrl = getConnectedPxseedWebuiRpcClientFromServerHostUrl;
-    let remoteMisc = new jsutils2_1.Singleton(async () => {
-        return await (0, registry_1.importRemoteModule)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName)).ensureConnected(), 'partic2/packageManager/misc');
-    });
+    let remoteMisc = new jsutils2_1.Singleton(async () => {Promise.__onAsyncEnter();try{
+        return await  Promise.__onAwait((0, registry_1.importRemoteModule)(await  Promise.__onAwait((await  Promise.__onAwait((0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName))).ensureConnected()), 'partic2/packageManager/misc'));
+    }finally{Promise.__onAsyncExit();}});
     class CHotModuleReload {
         constructor() {
             this.registry = new Map();
             this.watcher = null;
         }
-        async checkAndReloadHmrModule(rebuildMods) {
+        async checkAndReloadHmrModule(rebuildMods) {Promise.__onAsyncEnter();try{
             let reloadList = new Array();
             for (let t1 of this.registry.values()) {
                 let found = rebuildMods.find(t2 => t1.moduleName.startsWith(t2.pkgName + '/'));
@@ -20,18 +20,18 @@ define("partic2/packageManager/modtools", ["require", "exports", "partic2/pxprpc
                 }
             }
             reloadList.forEach(t1 => this.registry.delete(t1.moduleName));
-            await Promise.allSettled(reloadList.map((t1) => (async () => {
+            await  Promise.__onAwait(Promise.allSettled(reloadList.map((t1) => (async () => {Promise.__onAsyncEnter();try{
                 if (t1.onUnload != undefined) {
-                    let mod1 = await new Promise((resolve_1, reject_1) => { require([t1.moduleName], resolve_1, reject_1); });
-                    await mod1[t1.onUnload]?.();
+                    let mod1 = await  Promise.__onAwait(new Promise((resolve_1, reject_1) => { require([t1.moduleName], resolve_1, reject_1); }));
+                    await  Promise.__onAwait(mod1[t1.onUnload]?.());
                 }
-                await base_1.requirejs.undef(t1.moduleName);
-                let mod1 = await new Promise((resolve_2, reject_2) => { require([t1.moduleName], resolve_2, reject_2); });
+                await  Promise.__onAwait(base_1.requirejs.undef(t1.moduleName));
+                let mod1 = await  Promise.__onAwait(new Promise((resolve_2, reject_2) => { require([t1.moduleName], resolve_2, reject_2); }));
                 if (t1.onLoad != undefined) {
-                    await mod1[t1.onLoad]?.();
+                    await  Promise.__onAwait(mod1[t1.onLoad]?.());
                 }
-            })()));
-        }
+            }finally{Promise.__onAsyncExit();}})())));
+        }finally{Promise.__onAsyncExit();}}
         setModuleState(s) {
             if (s.hmr === false) {
                 this.registry.delete(s.moduleName);
@@ -69,17 +69,17 @@ define("partic2/packageManager/modtools", ["require", "exports", "partic2/pxprpc
     }
     exports.CHotModuleReload = CHotModuleReload;
     exports.HotModuleReload = new CHotModuleReload();
-    async function getConnectedPxseedWebuiRpcClientFromServerHostUrl(serverHostUrl, index) {
-        let conn = await (0, registry_1.openConnectionFromUrl)(serverHostUrl);
+    async function getConnectedPxseedWebuiRpcClientFromServerHostUrl(serverHostUrl, index) {Promise.__onAsyncEnter();try{
+        let conn = await  Promise.__onAwait((0, registry_1.openConnectionFromUrl)(serverHostUrl));
         (0, base_1.assert)(conn != null);
         let prefix = `/pxprpc/pxseed_webui/partic2.packageManager.webui/`;
-        let client = await new extend_1.RpcExtendClient1(new base_2.Client(conn)).init();
-        let lookupresult = await bus_1.RemotePxseedJsIoServer.prefixQuery(prefix, client);
+        let client = await  Promise.__onAwait(new extend_1.RpcExtendClient1(new base_2.Client(conn)).init());
+        let lookupresult = await  Promise.__onAwait(bus_1.RemotePxseedJsIoServer.prefixQuery(prefix, client));
         index = index ?? 0;
         let choice = lookupresult.at(index);
         if (choice == undefined) {
             return null;
         }
-        return await new extend_1.RpcExtendClient1(new base_2.Client(await bus_1.RemotePxseedJsIoServer.connect(choice, client))).init();
-    }
+        return await  Promise.__onAwait(new extend_1.RpcExtendClient1(new base_2.Client(await  Promise.__onAwait(bus_1.RemotePxseedJsIoServer.connect(choice, client)))).init());
+    }finally{Promise.__onAsyncExit();}}
 });

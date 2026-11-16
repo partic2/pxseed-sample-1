@@ -2,9 +2,12 @@ define("pxseedBuildScript/buildlib", ["require", "exports", "./loaders", "./util
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.outputDir = exports.sourceDir = void 0;
+    exports.getWWWLastBuildTime = getWWWLastBuildTime;
+    exports.setWWWLastBuildTime = setWWWLastBuildTime;
+    exports.processDirectoryInRecursive = processDirectoryInRecursive;
     exports.processDirectory = processDirectory;
+    exports.cleanPackage = cleanPackage;
     exports.cleanBuildStatus = cleanBuildStatus;
-    exports.cleanJsFiles = cleanJsFiles;
     Object.defineProperty(exports, "sourceDir", { enumerable: true, get: function () { return loaders_1.sourceDir; } });
     Object.defineProperty(exports, "outputDir", { enumerable: true, get: function () { return loaders_1.outputDir; } });
     function makeDefaultStatus() {
@@ -17,7 +20,34 @@ define("pxseedBuildScript/buildlib", ["require", "exports", "./loaders", "./util
             loadersData: {}
         };
     }
-    async function processDirectory(dir, context) {
+    async function getWWWLastBuildTime() {
+        const { fs, path } = await (0, util_1.getNodeCompatApi)();
+        let buildstatusFile = path.join(loaders_1.outputDir, 'pxseedBuildScript', 'data', 'buildstatus.json');
+        let status = {};
+        try {
+            status = await util_1.__internal__.readJson(buildstatusFile);
+        }
+        catch (err) { }
+        return status.WWWLastBuildTime ?? 0;
+    }
+    //Concurrent file issue if used in multi-thread.
+    async function setWWWLastBuildTime(time) {
+        const { fs, path } = await (0, util_1.getNodeCompatApi)();
+        let buildstatusFile = path.join(loaders_1.outputDir, 'pxseedBuildScript', 'data', 'buildstatus.json');
+        let status = {};
+        try {
+            status = await util_1.__internal__.readJson(buildstatusFile);
+        }
+        catch (err) { }
+        status.WWWLastBuildTime = time ?? new Date().getTime();
+        await util_1.__internal__.writeJson(buildstatusFile, status);
+    }
+    function throwIfAbortError(e) {
+        if (e.name === 'AbortError') {
+            throw e;
+        }
+    }
+    async function processDirectoryInRecursive(dir, context) {
         await loaders_1.inited;
         context = context ?? {};
         context._ensuredPackages = context._ensuredPackages ?? new Set();
@@ -34,9 +64,10 @@ define("pxseedBuildScript/buildlib", ["require", "exports", "./loaders", "./util
             for (let child of children) {
                 if (child.isDirectory()) {
                     try {
-                        await processDirectory(path.join(dir, child.name), context);
+                        await processDirectoryInRecursive(path.join(dir, child.name), context);
                     }
                     catch (err) {
+                        throwIfAbortError(err);
                         util_1.console.warn('recursive pxseed process failed.' + err.toString() + '\n' + err.stack);
                     }
                     ;
@@ -59,7 +90,7 @@ define("pxseedBuildScript/buildlib", ["require", "exports", "./loaders", "./util
                         if (packages != undefined) {
                             for (let p1 of packages) {
                                 if (!context._ensuredPackages.has(p1)) {
-                                    await processDirectory(path.join(loaders_1.sourceDir, p1), context);
+                                    await processDirectoryInRecursive(path.join(loaders_1.sourceDir, p1), context).catch(() => { });
                                     context._ensuredPackages.add(p1);
                                 }
                             }
@@ -85,12 +116,20 @@ define("pxseedBuildScript/buildlib", ["require", "exports", "./loaders", "./util
                     }
                 }
                 catch (e) {
+                    throwIfAbortError(e);
                     pstat.currentBuildError.push(`loader "${loaderConfig.name}" failed with error ${String(e)}`);
                 }
             }
             if (pstat.subpackages.length > 0) {
                 for (let t1 of pstat.subpackages) {
-                    await processDirectory(path.join(dir, t1), context);
+                    try {
+                        await processDirectoryInRecursive(path.join(dir, t1), context).catch(() => { });
+                    }
+                    catch (e) {
+                        throwIfAbortError(e);
+                        util_1.console.warn(`Failed to process subpackage ${t1} with message ${e.toString()}`);
+                        pstat.currentBuildError.push(`Failed to process subpackage ${t1} with message ${e.toString()}`);
+                    }
                 }
                 //Don't save ".subpackages" to file.
                 pstat.subpackages = [];
@@ -109,43 +148,50 @@ define("pxseedBuildScript/buildlib", ["require", "exports", "./loaders", "./util
             await util_1.__internal__.writeJson(path.join(loaders_1.outputDir, ...pxseedConfig.name.split('/'), '.pxseed.status.json'), pstat);
         }
     }
+    let buildmutex = new util_1.mutex();
+    async function processDirectory(dir) {
+        await buildmutex.exec(async () => {
+            try {
+                await setWWWLastBuildTime();
+            }
+            finally {
+                await processDirectoryInRecursive(dir);
+            }
+        });
+    }
+    async function cleanPackage(pkgOutDir) {
+        await loaders_1.inited;
+        const { fs, path } = await (0, util_1.getNodeCompatApi)();
+        let statusJson = await util_1.__internal__.readJson(path.join(pkgOutDir, '.pxseed.status.json'));
+        let pxseedConfig = statusJson.pxseedConfig;
+        if (pxseedConfig != undefined && pxseedConfig.clean != undefined) {
+            let cleanConfig = pxseedConfig.clean;
+            if (cleanConfig.include != undefined) {
+                for (let t1 of await (0, util_1.simpleGlob)(cleanConfig.include, { cwd: pkgOutDir, exclude: cleanConfig.exclude })) {
+                    await fs.rm(path.join(pkgOutDir, t1));
+                }
+            }
+        }
+    }
     async function cleanBuildStatus(dir) {
         await loaders_1.inited;
         const { fs, path } = await (0, util_1.getNodeCompatApi)();
         let children = await fs.readdir(dir, { withFileTypes: true });
-        for (let t1 of children) {
-            if (t1.isDirectory()) {
-                await cleanBuildStatus(path.join(dir, t1.name));
+        if (children.some(t1 => t1.name == '.pxseed.status.json')) {
+            try {
+                await cleanPackage(dir);
+                await fs.rm(path.join(dir, '.pxseed.status.json'));
             }
-            else if (t1.name == '.pxseed.status.json') {
-                try {
-                    //How to clean unused file?
+            catch (err) {
+                util_1.console.warn(err);
+            }
+        }
+        else {
+            for (let t1 of children) {
+                if (t1.isDirectory()) {
+                    await cleanBuildStatus(path.join(dir, t1.name));
                 }
-                catch (err) {
-                    util_1.console.warn(err.toString(), err.stack);
-                }
-                await fs.rm(path.join(dir, t1.name));
             }
         }
-    }
-    async function cleanJsFiles(dir) {
-        await loaders_1.inited;
-        const { fs, path } = await (0, util_1.getNodeCompatApi)();
-        let children = await fs.readdir(dir, { withFileTypes: true });
-        for (let t1 of children) {
-            if (t1.isDirectory() && !t1.isSymbolicLink()) {
-                await cleanJsFiles(path.join(dir, t1.name));
-            }
-            else if (t1.name.endsWith('.js') || t1.name.endsWith('.js.map')) {
-                await fs.rm(path.join(dir, t1.name));
-            }
-        }
-        children = await fs.readdir(dir, { withFileTypes: true });
-        try {
-            if (children.length == 0) {
-                await fs.rmdir(dir);
-            }
-        }
-        catch (e) { }
     }
 });

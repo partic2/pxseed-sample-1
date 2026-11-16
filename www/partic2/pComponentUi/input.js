@@ -1,9 +1,25 @@
 define("partic2/pComponentUi/input", ["require", "exports", "./domui", "preact", "./window"], function (require, exports, domui_1, React, window_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.SimpleReactForm1 = exports.ReactInputValueCollection = exports.ValueCheckBox = void 0;
+    exports.SimpleReactForm1 = exports.ReactInputValueCollection = exports.ValueCheckBox = exports.ReactEventTarget = void 0;
     exports.promptWithForm = promptWithForm;
-    class ValueCheckBox extends domui_1.ReactEventTarget {
+    class ReactEventTarget extends React.Component {
+        constructor() {
+            super(...arguments);
+            this.eventTarget = new EventTarget();
+        }
+        addEventListener(type, callback, options) {
+            this.eventTarget.addEventListener(type, callback, options);
+        }
+        dispatchEvent(event) {
+            return this.eventTarget.dispatchEvent(event);
+        }
+        removeEventListener(type, callback, options) {
+            this.eventTarget.removeEventListener(type, callback, options);
+        }
+    }
+    exports.ReactEventTarget = ReactEventTarget;
+    class ValueCheckBox extends ReactEventTarget {
         constructor() {
             super(...arguments);
             this.cbref = React.createRef();
@@ -80,7 +96,7 @@ define("partic2/pComponentUi/input", ["require", "exports", "./domui", "preact",
         }
     }
     exports.ReactInputValueCollection = ReactInputValueCollection;
-    class SimpleReactForm1 extends domui_1.ReactEventTarget {
+    class SimpleReactForm1 extends ReactEventTarget {
         constructor(props, ctx) {
             super(props, ctx);
             this._onChangeListener = () => {

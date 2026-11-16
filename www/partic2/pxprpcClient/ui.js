@@ -133,10 +133,7 @@ define("partic2/pxprpcClient/ui", ["require", "exports", "preact", "./registry",
             }
             let r = await this._getRegistyModule();
             let clients = await r.listPersistentRegistered();
-            this.setState({ clients: clients }, () => {
-                let div = this.rref.div.current;
-                div?.dispatchEvent(new Event(domui_1.event.layout, { bubbles: true }));
-            });
+            this.setState({ clients: clients });
         }
         componentDidMount() {
             this.doLoadConfig();

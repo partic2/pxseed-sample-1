@@ -6,16 +6,22 @@ define("partic2/packageManager/pkgfetcher", ["require", "exports", "pxseedBuildS
     exports.fetchPackage = fetchPackage;
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
     let log = base_1.logger.getLogger(__name__);
-    exports.defaultGitClient = new jsutils2_1.Singleton(async () => {
-        const { fs } = await (0, util_1.getNodeCompatApi)();
-        globalThis.Buffer = (await new Promise((resolve_1, reject_1) => { require(['buffer'], resolve_1, reject_1); })).Buffer;
-        async function request(c) {
+    exports.defaultGitClient = new jsutils2_1.Singleton(async () => {Promise.__onAsyncEnter();try{
+        const { fs } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
+        globalThis.Buffer = (await  Promise.__onAwait(new Promise((resolve_1, reject_1) => { require(['buffer'], resolve_1, reject_1); }))).Buffer;
+        async function request(c) {Promise.__onAsyncEnter();try{
             c.method = c.method ?? 'GET';
             c.headers = c.headers ?? {};
             if (typeof c.body === 'object' && (Symbol.asyncIterator in c.body)) {
                 let bodyPart = [];
-                for await (let t1 of c.body) {
-                    bodyPart.push(t1);
+                let t2 = c.body[Symbol.asyncIterator]();
+                try {
+                    for (let t1 = await  Promise.__onAwait(t2.next()); !t1.done; t1 = await  Promise.__onAwait(t2.next())) {
+                        bodyPart.push(t1.value);
+                    }
+                }
+                finally {
+                    t2.return?.();
                 }
                 c.body = new Uint8Array((0, base_1.ArrayBufferConcat)(bodyPart));
             }
@@ -24,7 +30,7 @@ define("partic2/packageManager/pkgfetcher", ["require", "exports", "pxseedBuildS
                 let targetUrl = new URL(c.url);
                 c.url = wwwrootUrl.protocol + '//' + wwwrootUrl.host + '/corsBuster/' + encodeURIComponent(targetUrl.protocol + '//' + targetUrl.host) + targetUrl.pathname + targetUrl.search;
             }
-            const res = await webutils_1.defaultHttpClient.fetch(c.url, { method: c.method, headers: c.headers, body: c.body });
+            const res = await  Promise.__onAwait(webutils_1.defaultHttpClient.fetch(c.url, { method: c.method, headers: c.headers, body: c.body }));
             let body = res.body == null ? null : function (stream) {
                 const reader = stream.getReader();
                 return {
@@ -53,34 +59,34 @@ define("partic2/packageManager/pkgfetcher", ["require", "exports", "pxseedBuildS
                 body,
                 headers: headers,
             };
-        }
+        }finally{Promise.__onAsyncExit();}}
         ;
         return { fs: { promises: fs }, http: { request } };
-    });
-    async function fetchGitPackageFromUrl(url, fetchDir) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        let { clone } = await new Promise((resolve_2, reject_2) => { require(['isomorphic-git'], resolve_2, reject_2); });
+    }finally{Promise.__onAsyncExit();}});
+    async function fetchGitPackageFromUrl(url, fetchDir) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
+        let { clone } = await  Promise.__onAwait(new Promise((resolve_2, reject_2) => { require(['./prebuilt/isomorphic-git'], resolve_2, reject_2); }));
         let tempdir = fetchDir ?? path.join(wwwroot, ...__name__.split('/'), '..', '__temp', (0, base_1.GenerateRandomString)());
         try {
-            await fs.access(tempdir);
-            await fs.rm(tempdir, { recursive: true });
+            await  Promise.__onAwait(fs.access(tempdir));
+            await  Promise.__onAwait(fs.rm(tempdir, { recursive: true }));
         }
         catch (e) {
         }
         ;
-        await fs.mkdir(tempdir, { recursive: true });
-        await clone({ ...await exports.defaultGitClient.get(), dir: tempdir, url, depth: 1 });
+        await  Promise.__onAwait(fs.mkdir(tempdir, { recursive: true }));
+        await  Promise.__onAwait(clone({ ...await  Promise.__onAwait(exports.defaultGitClient.get()), dir: tempdir, url, depth: 1 }));
         return tempdir;
-    }
-    async function fetchPackageFromUrl(url) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
+    }finally{Promise.__onAsyncExit();}}
+    async function fetchPackageFromUrl(url) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
         if (url.startsWith('pxseedjs:')) {
             let url1 = new URL(url);
             let pxseedjspath = url1.pathname;
             let t1 = pxseedjspath.lastIndexOf('.');
             let moduleName = pxseedjspath.substring(0, t1);
             let functionName = pxseedjspath.substring(t1 + 1);
-            return await (await new Promise((resolve_3, reject_3) => { require([moduleName], resolve_3, reject_3); }))[functionName](url);
+            return await  Promise.__onAwait((await  Promise.__onAwait(new Promise((resolve_3, reject_3) => { require([moduleName], resolve_3, reject_3); })))[functionName](url));
         }
         if (url.startsWith('file://')) {
             let filePath = url.substring(7);
@@ -91,20 +97,20 @@ define("partic2/packageManager/pkgfetcher", ["require", "exports", "pxseedBuildS
             return filePath;
         }
         else if (url.endsWith('.git')) {
-            return await fetchGitPackageFromUrl(url);
+            return await  Promise.__onAwait(fetchGitPackageFromUrl(url));
         }
-    }
-    async function publishPackage(dir) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        let children = await fs.readdir(dir, { withFileTypes: true });
+    }finally{Promise.__onAsyncExit();}}
+    async function publishPackage(dir) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
+        let children = await  Promise.__onAwait(fs.readdir(dir, { withFileTypes: true }));
         if (children.find(v => v.name == 'pxseed.config.json') != undefined) {
-            let { add, commit, push, listRemotes, currentBranch } = await new Promise((resolve_4, reject_4) => { require(['isomorphic-git'], resolve_4, reject_4); });
+            let { add, commit, push, listRemotes, currentBranch } = await  Promise.__onAwait(new Promise((resolve_4, reject_4) => { require(['./prebuilt/isomorphic-git'], resolve_4, reject_4); }));
             ;
-            let remotes = await listRemotes({ ...await exports.defaultGitClient.get(), dir });
-            await add({ ...await exports.defaultGitClient.get(), dir, filepath: '.' });
-            await commit({ ...await exports.defaultGitClient.get(), dir, message: 'auto commit' });
+            let remotes = await  Promise.__onAwait(listRemotes({ ...await  Promise.__onAwait(exports.defaultGitClient.get()), dir }));
+            await  Promise.__onAwait(add({ ...await  Promise.__onAwait(exports.defaultGitClient.get()), dir, filepath: '.' }));
+            await  Promise.__onAwait(commit({ ...await  Promise.__onAwait(exports.defaultGitClient.get()), dir, message: 'auto commit' }));
             for (let t1 of remotes) {
-                let pushResult = await push({ ...await exports.defaultGitClient.get(), dir, remote: t1.remote });
+                let pushResult = await  Promise.__onAwait(push({ ...await  Promise.__onAwait(exports.defaultGitClient.get()), dir, remote: t1.remote }));
                 log.debug(JSON.stringify(pushResult));
             }
         }
@@ -115,22 +121,22 @@ define("partic2/packageManager/pkgfetcher", ["require", "exports", "pxseedBuildS
                 }
             }
         }
-    }
-    async function initGitPackage(dir) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        let { getRepoInfoFromPkgName } = await new Promise((resolve_5, reject_5) => { require(['./registry'], resolve_5, reject_5); });
-        let children = await fs.readdir(dir, { withFileTypes: true });
+    }finally{Promise.__onAsyncExit();}}
+    async function initGitPackage(dir) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
+        let { getRepoInfoFromPkgName } = await  Promise.__onAwait(new Promise((resolve_5, reject_5) => { require(['./registry'], resolve_5, reject_5); }));
+        let children = await  Promise.__onAwait(fs.readdir(dir, { withFileTypes: true }));
         if (children.find(v => v.name == '.git') != undefined) {
             return;
         }
         if (children.find(v => v.name == 'pxseed.config.json') != undefined) {
-            let config = await util_1.__internal__.readJson(path.join(dir, 'pxseed.config.json'));
+            let config = await  Promise.__onAwait(util_1.__internal__.readJson(path.join(dir, 'pxseed.config.json')));
             let name = config.name;
-            let { init, addRemote } = await new Promise((resolve_6, reject_6) => { require(['isomorphic-git'], resolve_6, reject_6); });
+            let { init, addRemote } = await  Promise.__onAwait(new Promise((resolve_6, reject_6) => { require(['./prebuilt/isomorphic-git'], resolve_6, reject_6); }));
             ;
-            await init({ ...await exports.defaultGitClient.get(), dir });
-            await fs.writeFile(path.join(dir, '.gitignore'), new TextEncoder().encode('/.pxseed.status.json'));
-            let repo = await getRepoInfoFromPkgName(name);
+            await  Promise.__onAwait(init({ ...await  Promise.__onAwait(exports.defaultGitClient.get()), dir }));
+            await  Promise.__onAwait(fs.writeFile(path.join(dir, '.gitignore'), new TextEncoder().encode('/.pxseed.status.json')));
+            let repo = await  Promise.__onAwait(getRepoInfoFromPkgName(name));
             let remoteName = [];
             let repoUrls = Array.from(repo.urls);
             for (let t1 of repoUrls) {
@@ -146,45 +152,48 @@ define("partic2/packageManager/pkgfetcher", ["require", "exports", "pxseedBuildS
                 }
             }
             for (let t1 of base_1.ArrayWrap2.IntSequence(0, remoteName.length)) {
-                await addRemote({ ...await exports.defaultGitClient.get(), dir, remote: remoteName[t1], url: repoUrls[t1] });
+                await  Promise.__onAwait(addRemote({ ...await  Promise.__onAwait(exports.defaultGitClient.get()), dir, remote: remoteName[t1], url: repoUrls[t1] }));
             }
         }
-    }
-    async function upgradeGitPackage(localPath) {
-        let git = await new Promise((resolve_7, reject_7) => { require(['isomorphic-git'], resolve_7, reject_7); });
-        let gitClient = await exports.defaultGitClient.get();
+    }finally{Promise.__onAsyncExit();}}
+    async function upgradeGitPackage(localPath) {Promise.__onAsyncEnter();try{
+        let git = await  Promise.__onAwait(new Promise((resolve_7, reject_7) => { require(['./prebuilt/isomorphic-git'], resolve_7, reject_7); }));
+        let gitClient = await  Promise.__onAwait(exports.defaultGitClient.get());
         let dir = localPath;
-        let { fetchHead } = await git.fetch({ ...gitClient, dir });
-        await git.merge({ ...gitClient, dir, theirs: fetchHead, fastForwardOnly: true });
+        let { fetchHead } = await  Promise.__onAwait(git.fetch({ ...gitClient, dir }));
+        await  Promise.__onAwait(git.merge({ ...gitClient, dir, theirs: fetchHead, fastForwardOnly: true }));
         //FIXME: git merge add current content into stage, which prevent checkout if force=false.
-        await git.checkout({ ...gitClient, dir, force: true });
-    }
-    async function fetchPackage(nameOrUrl) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
+        await  Promise.__onAwait(git.checkout({ ...gitClient, dir, force: true }));
+    }finally{Promise.__onAsyncExit();}}
+    async function fetchPackage(nameOrUrl) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
         let tryResult = new Array();
         if (nameOrUrl.includes(':')) {
             try {
-                let localPath = await fetchPackageFromUrl(nameOrUrl);
+                let localPath = await  Promise.__onAwait(fetchPackageFromUrl(nameOrUrl));
                 if (localPath != undefined) {
                     return { localPath };
                 }
             }
             catch (err) {
+                log.info(`fetch package ${nameOrUrl} failed. \n ${err}`);
                 tryResult.push(err);
             }
         }
         else {
-            let { getRepoInfoFromPkgName } = await new Promise((resolve_8, reject_8) => { require(['./registry'], resolve_8, reject_8); });
-            let info = await getRepoInfoFromPkgName(nameOrUrl);
+            let { getRepoInfoFromPkgName } = await  Promise.__onAwait(new Promise((resolve_8, reject_8) => { require(['./registry'], resolve_8, reject_8); }));
+            let info = await  Promise.__onAwait(getRepoInfoFromPkgName(nameOrUrl));
             for (let t1 of info.urls) {
                 try {
-                    let repoLocalPath = await fetchPackageFromUrl(t1);
+                    log.info(`try to fetch from source ${t1}`);
+                    let repoLocalPath = await  Promise.__onAwait(fetchPackageFromUrl(t1));
                     if (repoLocalPath == undefined)
                         continue;
                     let path2 = info.path;
                     return { localPath: path.join(repoLocalPath, ...path2) };
                 }
                 catch (err) {
+                    log.info(`fetch package ${nameOrUrl} from source ${t1} failed. \n ${err}`);
                     tryResult.push(err);
                 }
             }
@@ -192,7 +201,7 @@ define("partic2/packageManager/pkgfetcher", ["require", "exports", "pxseedBuildS
         let err = new Error('Failed to fetch package.');
         err.tryResult = tryResult;
         throw err;
-    }
+    }finally{Promise.__onAsyncExit();}}
     exports.__internal__ = {
         initGitPackage, upgradeGitPackage, fetchGitPackageFromUrl, publishPackage
     };

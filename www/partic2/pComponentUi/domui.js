@@ -1,10 +1,11 @@
 define("partic2/pComponentUi/domui", ["require", "exports", "preact", "partic2/jsutils1/base", "partic2/jsutils1/webutils"], function (require, exports, React, base_1, webutils_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.FloatLayerComponent = exports.ReactRefEx = exports.floatLayerZIndexBase = exports.event = exports.ReactEventTarget = exports.__inited__ = exports.css = exports.DomRootComponent = exports.DomDivComponent = exports.DomComponentGroup = exports.DomComponent = void 0;
+    exports.FloatLayerComponent = exports.ReactRefEx = exports.floatLayerZIndexBase = exports.JsxClassComponent = exports.JsxClassComponentParent = exports.__inited__ = exports.css = exports.DomRootComponent = exports.DomDivComponent = exports.DomComponentGroup = exports.DomComponent = void 0;
     exports.ReactRender = ReactRender;
     exports.SetComponentFullScreen = SetComponentFullScreen;
     exports.RequestUserAgentPrint = RequestUserAgentPrint;
+    let __name__ = base_1.requirejs.getLocalRequireModule(require);
     class DomComponent {
         constructor() {
             this.mounted = false;
@@ -131,25 +132,27 @@ define("partic2/pComponentUi/domui", ["require", "exports", "preact", "partic2/j
             return this.get().removeChild(comp);
         }
     }
+    let cssPrefix = __name__.replace(/\//g, '-');
     exports.css = {
-        flexRow: (0, base_1.GenerateRandomString)(),
-        flexColumn: (0, base_1.GenerateRandomString)(),
-        selected: (0, base_1.GenerateRandomString)(),
-        simpleCard: (0, base_1.GenerateRandomString)(),
-        simpleTable: (0, base_1.GenerateRandomString)(),
-        simpleTableCell: (0, base_1.GenerateRandomString)(),
-        selectable: (0, base_1.GenerateRandomString)(),
-        floatLayer: (0, base_1.GenerateRandomString)()
+        flexRow: cssPrefix + '-flexRow',
+        flexColumn: cssPrefix + '-flexColumn',
+        selected: cssPrefix + '-selected',
+        simpleCard: cssPrefix + '-simpleCard',
+        simpleTable: cssPrefix + '-simpleTable',
+        simpleTableCell: cssPrefix + '-simpleTableCell',
+        selectable: cssPrefix + '-selectable',
+        floatLayer: cssPrefix + '-floatLayer'
     };
     exports.__inited__ = (async () => {
         if (globalThis.document != undefined) {
+            (0, webutils_1.useDeviceWidth)();
             webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.flexRow, ['display:flex', 'flex-direction:row']);
             webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.flexColumn, ['display:flex', 'flex-direction:column']);
-            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.selectable + ':hover', ['background-color:rgb(200,200,200)']);
-            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.selected, ['background-color:rgb(150,150,255)']);
-            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleCard, ['display:inline-block', 'border:solid black 2px', 'margin:2px', 'padding:2px', 'background-color:white']);
+            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleCard, ['border:solid black 2px', 'margin:2px', 'padding:2px', 'background-color:white']);
             webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleTable, ['border-collapse:collapse']);
             webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.simpleTableCell, ['border:solid black 2px']);
+            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.selectable + ':hover', ['background-color:rgb(200,200,200)']);
+            webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.selected, ['background-color:rgb(150,150,255)']);
             webutils_1.DynamicPageCSSManager.PutCss('.' + exports.css.floatLayer, ['position:absolute', 'left:0px', 'top:0px', 'width:100%', 'height:100%', 'pointer-events:none']);
             exports.DomRootComponent = new DomRootComponentProxy(new CDomRootComponent());
             //To fix preact BUG
@@ -164,25 +167,44 @@ define("partic2/pComponentUi/domui", ["require", "exports", "preact", "partic2/j
             ;
         }
     })();
-    class ReactEventTarget extends React.Component {
-        constructor() {
-            super(...arguments);
-            this.eventTarget = new EventTarget();
+    exports.JsxClassComponentParent = React.createContext(null);
+    class JsxClassComponent extends React.Component {
+        __updateStateToField(state) {
+            for (let k1 in state) {
+                let v1 = state[k1];
+                if (v1 !== undefined && this[k1] != v1) {
+                    this[k1] = v1;
+                }
+            }
         }
-        addEventListener(type, callback, options) {
-            this.eventTarget.addEventListener(type, callback, options);
+        static defineEventSlot() {
+            return new base_1.EventSource();
         }
-        dispatchEvent(event) {
-            return this.eventTarget.dispatchEvent(event);
+        getAncestorJsxClassComponents(options) {
+            let result = new Array();
+            let curr = this.context;
+            while (curr != null) {
+                if (options?.clazz == undefined || curr instanceof options.clazz) {
+                    result.push(curr);
+                }
+                if (options?.count != undefined && result.length >= options.count) {
+                    break;
+                }
+                curr = curr.context;
+            }
+            return result;
         }
-        removeEventListener(type, callback, options) {
-            this.eventTarget.removeEventListener(type, callback, options);
+        render() {
+            this.__updateStateToField(this.props);
+            return React.createElement(exports.JsxClassComponentParent.Provider, { value: this }, this.jsx());
+        }
+        setState(state, callback) {
+            this.__updateStateToField(state);
+            super.setState({}, callback);
         }
     }
-    exports.ReactEventTarget = ReactEventTarget;
-    exports.event = {
-        layout: 'partic2-layout'
-    };
+    exports.JsxClassComponent = JsxClassComponent;
+    JsxClassComponent.contextType = exports.JsxClassComponentParent;
     exports.floatLayerZIndexBase = 600;
     let FloatLayerManager = {
         layerComponents: new Map(),

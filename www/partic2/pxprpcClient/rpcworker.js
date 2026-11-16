@@ -75,8 +75,15 @@ define("partic2/pxprpcClient/rpcworker", ["require", "exports", "pxprpc/backend"
         if (!rpcWorkerInited) {
             rpcWorkerInited = true;
             webutils_1.lifecycle.addEventListener('exit', () => servingConn.forEach((io) => io.close()));
-            await Promise.allSettled(workerInitModule.map(v => new Promise((resolve_1, reject_1) => { require([v], resolve_1, reject_1); })));
-            let { rpcWorkerInitModule } = await new Promise((resolve_2, reject_2) => { require(['./registry'], resolve_2, reject_2); });
+            for (let t1 of workerInitModule) {
+                if (typeof t1 === 'string') {
+                    await new Promise((resolve_1, reject_1) => { require([t1], resolve_1, reject_1); });
+                }
+                else {
+                    await (await new Promise((resolve_2, reject_2) => { require([t1.module], resolve_2, reject_2); }))[t1.func]();
+                }
+            }
+            let { rpcWorkerInitModule } = await new Promise((resolve_3, reject_3) => { require(['./registry'], resolve_3, reject_3); });
             rpcWorkerInitModule.push(...workerInitModule);
             await savedAsBootModules();
         }

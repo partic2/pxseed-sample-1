@@ -1,1 +1,1 @@
-{"lastBuildTime":1785737275199,"lastSuccessBuildTime":1785737275199,"lastBuildError":[],"currentBuildError":[],"subpackages":[],"loadersData":{},"pxseedConfig":{"loaders":[{"name":"typescript"}],"name":"partic2/nodehelper"}}
+{"lastBuildTime":1794804880307,"lastSuccessBuildTime":1794804880307,"lastBuildError":[],"currentBuildError":[],"subpackages":[],"loadersData":{},"pxseedConfig":{"loaders":[{"name":"typescript"}],"clean":{"include":["**/*.js"],"exclude":["data"]},"name":"partic2/nodehelper"}}

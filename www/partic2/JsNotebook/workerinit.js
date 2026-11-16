@@ -37,12 +37,14 @@ define("partic2/JsNotebook/workerinit", ["require", "exports", "partic2/CodeRunn
         constructor() {
             this.cells = null;
             this.startupScript = '';
+            this.extra = {};
         }
         dump() {
-            return (0, jsutils2_1.utf8conv)(JSON.stringify({ ver: 1, rpc: this.rpc, startupScript: this.startupScript, cells: this.cells }));
+            return (0, jsutils2_1.utf8conv)(JSON.stringify({ ver: 1, rpc: this.rpc, startupScript: this.startupScript, cells: this.cells, extra: this.extra }));
         }
         load(data) {
             let r = JSON.parse((0, jsutils2_1.utf8conv)(data));
+            this.extra = r.extra ?? {};
             if (r.rpc != undefined)
                 this.rpc = r.rpc;
             this.startupScript = r.startupScript ?? '';
@@ -98,7 +100,7 @@ define("partic2/JsNotebook/workerinit", ["require", "exports", "partic2/CodeRunn
                     throw new Error('File not existed');
                 }
                 let js = new TextDecoder().decode(jsbin);
-                let cc = _ENV.__priv_codeContext;
+                let cc = _ENV.__codeContext;
                 let savedCodePath = this.codePath;
                 this.codePath = path;
                 await cc.runCode(js, '');
@@ -162,10 +164,11 @@ define("partic2/JsNotebook/workerinit", ["require", "exports", "partic2/CodeRunn
                 switchNotebookViewerImpl: (implFactory) => callMethodAttachedOnNotebookViewer('switchNotebookViewerImpl', [implFactory], true)
             },
             startupScript: opt?.startupScript ?? '',
+            extra: opt?.extra ?? {},
         };
         _ENV.jsnotebook = jsnotebook;
         if (opt?.startupScript != undefined) {
-            let cc = _ENV.__priv_codeContext;
+            let cc = _ENV.__codeContext;
             await cc.runCode(opt.startupScript, '');
         }
     }
@@ -196,11 +199,14 @@ define("partic2/JsNotebook/workerinit", ["require", "exports", "partic2/CodeRunn
             await (0, JsEnviron_1.ensureDefaultFileSystem)();
             try {
                 let c1 = await this.ensureRunCodeContextConnector();
-                let { startupScript } = JSON.parse((await c1.runCode(`
-return JSON.stringify({startupScript:jsnotebook.startupScript})
+                let jsnbData = JSON.parse((await c1.runCode(`
+return JSON.stringify({startupScript:jsnotebook.startupScript,extra:jsnotebook.extra})
 `)).stringResult ?? '{}');
-                if (startupScript != undefined) {
-                    this.notebookFileData.startupScript = startupScript;
+                if (jsnbData.startupScript != undefined) {
+                    this.notebookFileData.startupScript = jsnbData.startupScript;
+                }
+                if (jsnbData.extra != undefined) {
+                    this.notebookFileData.extra = jsnbData.extra;
                 }
                 await JsEnviron_1.defaultFileSystem.writeAll(this.notebookFilePath, this.notebookFileData.dump());
             }
@@ -248,7 +254,7 @@ return JSON.stringify({startupScript:jsnotebook.startupScript})
         return new Promise((resolve)=>event.addEventListener('close',()=>resolve('close')))`, '').then((r) => {
                 codeContextClosed.setResult();
             }).catch((err) => log.warning(err.stack));
-            await this.connector.runCode(`await (await import('partic2/JsNotebook/workerinit')).initNotebookCodeEnv(_ENV,${JSON.stringify({ ...this.notebookFileData })});`, '');
+            await this.connector.runCode(`await (await import('partic2/JsNotebook/workerinit')).initNotebookCodeEnv(_ENV,${JSON.stringify((0, base_1.objectPickField)(this.notebookFileData, ['codePath', 'startupScript', 'extra']))});`, '');
         }
         async setRawCellsData(data) {
             this.notebookFileData.cells = data;

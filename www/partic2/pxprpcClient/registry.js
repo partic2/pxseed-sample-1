@@ -12,10 +12,10 @@ var __createBinding = (this && this.__createBinding) || (Object.create ? (functi
 var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
-define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "pxprpc/base", "pxprpc/extend", "partic2/CodeRunner/jsutils2", "./pxseedremotefuncs", "./rpcworker", "./pxseedremotefuncs"], function (require, exports, base_1, webutils_1, base_2, extend_1, jsutils2_1, pxseedremotefuncs_1, rpcworker_1, pxseedremotefuncs_2) {
+define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1/base", "partic2/jsutils1/webutils", "pxprpc/base", "pxprpc/extend", "partic2/CodeRunner/jsutils2", "./pxseedremotefuncs", "./pxseedremotefuncs"], function (require, exports, base_1, webutils_1, base_2, extend_1, jsutils2_1, pxseedremotefuncs_1, pxseedremotefuncs_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.ServiceWorkerRpc = exports.WebWorker1Rpc = exports.ServerHostWorker1Rpc = exports.ServerHostRpc = exports.ServiceWorkerRpcName = exports.WebWorker1RpcName = exports.ServerHostWorker1RpcName = exports.ServerHostRpcName = exports.__internal__ = exports.ClientInfo = exports.rpcWorkerInitModule = exports.__name__ = void 0;
+    exports.ServiceWorkerRpc = exports.WebWorker2ForComputeRpc = exports.WebWorker1ForComputeRpc = exports.ServerHostWorker3ForComputeRpc = exports.ServerHostWorker2ForComputeRpc = exports.ServerHostWorker1Rpc = exports.ServerHostRpc = exports.ServiceWorkerRpcName = exports.WebWorker2RpcName = exports.WebWorker1RpcName = exports.ServerHostWorker3RpcName = exports.ServerHostWorker2RpcName = exports.ServerHostWorker1RpcName = exports.ServerHostRpcName = exports.__internal__ = exports.ClientInfo = exports.rpcWorkerInitModule = exports.__name__ = void 0;
     exports.getRegistered = getRegistered;
     exports.listRegistered = listRegistered;
     exports.addClient = addClient;
@@ -58,8 +58,28 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
                 if (this.connected()) {
                     return this.client;
                 }
+                else if (this.url.startsWith('pxseedjs4pxprpc:')) {
+                    let t1 = new URL(this.url);
+                    let t2 = t1.pathname.lastIndexOf('.');
+                    let module = t1.pathname.substring(0, t2);
+                    let field = t1.pathname.substring(t2 + 1);
+                    try {
+                        let t3 = await new Promise((resolve_1, reject_1) => { require([module], resolve_1, reject_1); });
+                        let t4 = t3[field];
+                        if (typeof t4 === 'object' && t4.get != undefined) {
+                            return await t4.get();
+                        }
+                        else if (typeof t4 === 'function') {
+                            return await t4(this.url);
+                        }
+                    }
+                    catch (err) {
+                        await Promise.allSettled(Object.keys(await base_1.requirejs.getFailed()).map(t1 => base_1.requirejs.undef(t1)));
+                        throw err;
+                    }
+                }
                 else {
-                    let io1 = await (0, pxseedremotefuncs_1.openConnectionFromUrl)(this.url.toString());
+                    let io1 = await (0, pxseedremotefuncs_1.openConnectionFromUrl)(this.url);
                     if (io1 == null) {
                         throw new Error('No protocol handler for ' + this.url);
                     }
@@ -150,20 +170,31 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
     async function isServerHost() {
         return getIsServingRpcName(exports.ServerHostRpcName);
     }
-    //"ServerHost" usually refer to the server hosting pxseed web, and shared by all js worker in one pxeed application.
+    //See also ServerHostRpc below
     exports.ServerHostRpcName = 'server host';
-    //"ServerHostWorker1" refer to the worker spawn by ServerHost to handle the most remote requests.
     exports.ServerHostWorker1RpcName = 'server host worker 1';
+    exports.ServerHostWorker2RpcName = 'server host worker 2';
+    exports.ServerHostWorker3RpcName = 'server host worker 3';
     exports.WebWorker1RpcName = 'webworker 1';
+    exports.WebWorker2RpcName = 'webworker 2';
     exports.ServiceWorkerRpcName = 'service worker 1';
     let persistent = {
+        storeName: '',
         save: async function () {
-            let config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
+            let name = exports.__name__;
+            if (persistent.storeName != '') {
+                name = name + '.' + persistent.storeName;
+            }
+            let config = await (0, webutils_1.GetPersistentConfig)(name);
             config.registered = Array.from(registered.values()).filter(t1 => t1.persistent).map(t1 => t1.toJSON());
-            await (0, webutils_1.SavePersistentConfig)(exports.__name__, config);
+            await (0, webutils_1.SavePersistentConfig)(name, config);
         },
         load: async function () {
-            let config = await (0, webutils_1.GetPersistentConfig)(exports.__name__);
+            let name = exports.__name__;
+            if (persistent.storeName != '') {
+                name = name + '.' + persistent.storeName;
+            }
+            let config = await (0, webutils_1.GetPersistentConfig)(name);
             if (config.registered != undefined) {
                 config.registered.forEach(item => {
                     let clie = registered.get(item.name);
@@ -176,14 +207,25 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
                     registered.set(clie.name, clie);
                 });
             }
+        },
+        useStoreName: (name) => {
+            persistent.storeName = name;
         }
     };
-    async function persistentClientStore(call) {
-        return await persistent[call]();
+    async function persistentClientStore(call, argv) {
+        return await persistent[call](...(argv ?? []));
     }
+    /* pxseed server, usually for data forward, basic host api and http server */
     exports.ServerHostRpc = new jsutils2_1.Singleton(async () => (await getPersistentRegistered(exports.ServerHostRpcName)).ensureConnected());
+    /* pxseed server worker, usually for handling the most server requests, except CPU-intensive tasks */
     exports.ServerHostWorker1Rpc = new jsutils2_1.Singleton(async () => (await getPersistentRegistered(exports.ServerHostWorker1RpcName)).ensureConnected());
-    exports.WebWorker1Rpc = new jsutils2_1.Singleton(async () => (await getPersistentRegistered(exports.WebWorker1RpcName)).ensureConnected());
+    /* pxseed server worker, For CPU-intensive tasks */
+    exports.ServerHostWorker2ForComputeRpc = new jsutils2_1.Singleton(async () => (await getPersistentRegistered(exports.ServerHostWorker2RpcName)).ensureConnected());
+    exports.ServerHostWorker3ForComputeRpc = new jsutils2_1.Singleton(async () => (await getPersistentRegistered(exports.ServerHostWorker3RpcName)).ensureConnected());
+    /* local webworker, For CPU-intensive tasks */
+    exports.WebWorker1ForComputeRpc = new jsutils2_1.Singleton(async () => (await getPersistentRegistered(exports.WebWorker1RpcName)).ensureConnected());
+    exports.WebWorker2ForComputeRpc = new jsutils2_1.Singleton(async () => (await getPersistentRegistered(exports.WebWorker2RpcName)).ensureConnected());
+    /* service worker on webui */
     exports.ServiceWorkerRpc = new jsutils2_1.Singleton(async () => (await getPersistentRegistered(exports.ServiceWorkerRpcName)).ensureConnected());
     let addingDefaultPxseedJsBuiltinRpcClient = new base_1.mutex();
     async function addDefaultPxseedJsBuiltinRpcClient() {
@@ -196,12 +238,31 @@ define("partic2/pxprpcClient/registry", ["require", "exports", "partic2/jsutils1
             if (await getRegistered(exports.WebWorker1RpcName) == null) {
                 await addClient({ url: 'webworker:' + exports.__name__ + '/worker/1', name: exports.WebWorker1RpcName });
             }
-            if (await getRegistered(exports.ServerHostRpcName) != null && await getRegistered(exports.ServerHostWorker1RpcName) == null && !rpcworker_1.__internal__.isPxseedWorker) {
-                await addClient({
-                    url: 'iooverpxprpc:' + exports.ServerHostRpcName + '/' +
-                        encodeURIComponent('webworker:' + exports.__name__ + '/worker/1'),
-                    name: exports.ServerHostWorker1RpcName
-                });
+            if (await getRegistered(exports.WebWorker2RpcName) == null) {
+                await addClient({ url: 'webworker:' + exports.__name__ + '/worker/2', name: exports.WebWorker2RpcName });
+            }
+            if (await getRegistered(exports.ServerHostRpcName) != null) {
+                if (await getRegistered(exports.ServerHostWorker1RpcName) == null) {
+                    await addClient({
+                        url: 'iooverpxprpc:' + exports.ServerHostRpcName + '/' +
+                            encodeURIComponent('webworker:' + exports.__name__ + '/worker/1'),
+                        name: exports.ServerHostWorker1RpcName
+                    });
+                }
+                if (await getRegistered(exports.ServerHostWorker2RpcName) == null) {
+                    await addClient({
+                        url: 'iooverpxprpc:' + exports.ServerHostRpcName + '/' +
+                            encodeURIComponent('webworker:' + exports.__name__ + '/worker/2'),
+                        name: exports.ServerHostWorker2RpcName
+                    });
+                }
+                if (await getRegistered(exports.ServerHostWorker3RpcName) == null) {
+                    await addClient({
+                        url: 'iooverpxprpc:' + exports.ServerHostRpcName + '/' +
+                            encodeURIComponent('webworker:' + exports.__name__ + '/worker/3'),
+                        name: exports.ServerHostWorker3RpcName
+                    });
+                }
             }
         });
     }

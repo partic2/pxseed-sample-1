@@ -3,7 +3,6 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.pxseedCorePackagesNames = exports.listener = exports.__name__ = void 0;
     exports.UpgradeCorePackages = UpgradeCorePackages;
-    exports.packPxseedForPxseedLoader = packPxseedForPxseedLoader;
     exports.updatePackagesDatabase = updatePackagesDatabase;
     exports.installLocalPackage = installLocalPackage;
     exports.getUrlTemplateFromScopeName = getUrlTemplateFromScopeName;
@@ -11,7 +10,6 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
     exports.buildPackageAndNotfiy = buildPackageAndNotfiy;
     exports.uninstallPackage = uninstallPackage;
     exports.getPxseedConfigForPackage = getPxseedConfigForPackage;
-    exports.listPackages = listPackages;
     exports.listPackagesArray = listPackagesArray;
     exports.upgradePackage = upgradePackage;
     exports.upgradeAllNonCorePackages = upgradeAllNonCorePackages;
@@ -31,36 +29,37 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
         onInstall: new Array(),
         onUninstall: new Array(),
     };
-    async function copyFilesNewer(destDir, srcDir, ignore, maxDepth) {
+    define('buffer', ['partic2/packageManager/prebuilt/buffer'], function (buffer) { return buffer; });
+    async function copyFilesNewer(destDir, srcDir, ignore, maxDepth) {Promise.__onAsyncEnter();try{
         if (maxDepth == undefined) {
             maxDepth = 20;
         }
         if (maxDepth == 0) {
             return;
         }
-        const { fs, path } = await (0, util_1.getNodeCompatApi)();
-        await fs.mkdir(destDir, { recursive: true });
-        let children = await fs.readdir(srcDir, { withFileTypes: true });
+        const { fs, path } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
+        await  Promise.__onAwait(fs.mkdir(destDir, { recursive: true }));
+        let children = await  Promise.__onAwait(fs.readdir(srcDir, { withFileTypes: true }));
         try {
-            await fs.access(destDir);
+            await  Promise.__onAwait(fs.access(destDir));
         }
         catch (e) {
-            await fs.mkdir(destDir, { recursive: true });
+            await  Promise.__onAwait(fs.mkdir(destDir, { recursive: true }));
         }
         for (let t1 of children) {
             if (ignore != undefined && ignore(t1.name, srcDir + '/' + t1.name)) {
                 continue;
             }
             if (t1.isDirectory()) {
-                await copyFilesNewer(path.join(destDir, t1.name), path.join(srcDir, t1.name), ignore, maxDepth - 1);
+                await  Promise.__onAwait(copyFilesNewer(path.join(destDir, t1.name), path.join(srcDir, t1.name), ignore, maxDepth - 1));
             }
             else {
                 let dest = path.join(destDir, t1.name);
                 let src = path.join(srcDir, t1.name);
                 let needCopy = false;
                 try {
-                    let dfile = await fs.stat(dest);
-                    let sfile2 = await fs.stat(src);
+                    let dfile = await  Promise.__onAwait(fs.stat(dest));
+                    let sfile2 = await  Promise.__onAwait(fs.stat(src));
                     if (dfile.mtimeMs < sfile2.mtimeMs) {
                         needCopy = true;
                     }
@@ -69,12 +68,12 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
                     needCopy = true;
                 }
                 if (needCopy) {
-                    await fs.mkdir(path.dirname(dest), { recursive: true });
-                    await fs.copyFile(src, dest);
+                    await  Promise.__onAwait(fs.mkdir(path.dirname(dest), { recursive: true }));
+                    await  Promise.__onAwait(fs.copyFile(src, dest));
                 }
             }
         }
-    }
+    }finally{Promise.__onAsyncExit();}}
     exports.pxseedCorePackagesNames = new Set([
         "pxprpc", "pxseedBuildScript", "pxseedServer2023", "partic2/CodeRunner", "partic2/JsNotebook", "partic2/jsutils1", "partic2/nodehelper",
         "partic2/pComponentUi", "partic2/packageManager", "partic2/pxprpcBinding", "partic2/pxprpcClient",
@@ -89,12 +88,12 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
         ['source', 'tsconfig.base.json'],
         ...Array.from(exports.pxseedCorePackagesNames).map(t1 => ['source', ...t1.split('/')])
     ];
-    async function UpgradeCorePackages() {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
+    async function UpgradeCorePackages() {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
         let pxseedCorePath = path.join(wwwroot, '..');
         let err = null;
         try {
-            await pkgfetcher_1.__internal__.upgradeGitPackage(pxseedCorePath);
+            await  Promise.__onAwait(pkgfetcher_1.__internal__.upgradeGitPackage(pxseedCorePath));
         }
         catch (e) {
             log.info('UpgradeCorePackages:git pull failed with ' + e.toString());
@@ -104,15 +103,15 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
             err = null;
             let gitcache = path.join(wwwroot, exports.__name__, '/corepkg-gitcache');
             try {
-                await fs.rm(gitcache, { recursive: true });
+                await  Promise.__onAwait(fs.rm(gitcache, { recursive: true }));
             }
             catch (err) { }
             ;
-            let repoInfos = await getRepoInfoFromPkgName('partic2/CorePackages');
+            let repoInfos = await  Promise.__onAwait(getRepoInfoFromPkgName('partic2/CorePackages'));
             let fetchDone = false;
             for (let url of repoInfos.urls) {
                 try {
-                    await pkgfetcher_1.__internal__.fetchGitPackageFromUrl(url, gitcache);
+                    await  Promise.__onAwait(pkgfetcher_1.__internal__.fetchGitPackageFromUrl(url, gitcache));
                     fetchDone = true;
                     break;
                 }
@@ -123,14 +122,14 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
             log.info('UpgradeCorePackages:Fetch successfully.');
             if (fetchDone) {
                 try {
-                    await fs.rm(path.join(pxseedCorePath, '.git'), { recursive: true });
+                    await  Promise.__onAwait(fs.rm(path.join(pxseedCorePath, '.git'), { recursive: true }));
                 }
                 catch (err) { }
                 ;
-                await copyFilesNewer(path.join(pxseedCorePath, '.git'), path.join(gitcache, '.git'), undefined, 30);
-                let git = await new Promise((resolve_1, reject_1) => { require(['isomorphic-git'], resolve_1, reject_1); });
-                await git.checkout({ ...await pkgfetcher_1.defaultGitClient.get(), dir: pxseedCorePath, force: true });
-                await fs.rm(gitcache, { recursive: true });
+                await  Promise.__onAwait(copyFilesNewer(path.join(pxseedCorePath, '.git'), path.join(gitcache, '.git'), undefined, 30));
+                let git = await  Promise.__onAwait(new Promise((resolve_1, reject_1) => { require(['./prebuilt/isomorphic-git'], resolve_1, reject_1); }));
+                await  Promise.__onAwait(git.checkout({ ...await  Promise.__onAwait(pkgfetcher_1.defaultGitClient.get()), dir: pxseedCorePath, force: true }));
+                await  Promise.__onAwait(fs.rm(gitcache, { recursive: true }));
             }
             else {
                 log.error('Fetch failed for all url.');
@@ -138,13 +137,14 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
             }
         }
         if (err === null) {
+            await  Promise.__onAwait(copyFilesNewer(path.join(pxseedCorePath, 'www'), path.join(pxseedCorePath, 'copysource'), undefined, 30));
             for (let t1 of corePackFiles) {
                 if (t1[0] === 'source') {
                     let joinedPath = path.join(pxseedCorePath, ...t1);
-                    let t2 = await fs.stat(joinedPath);
+                    let t2 = await  Promise.__onAwait(fs.stat(joinedPath));
                     if (t2.isDirectory()) {
                         try {
-                            await (0, buildlib_1.processDirectory)(joinedPath);
+                            await  Promise.__onAwait((0, buildlib_1.processDirectory)(joinedPath));
                         }
                         catch (err) {
                             log.error('processDirectory failed with ' + err.toString());
@@ -154,50 +154,10 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
             }
         }
         try {
-            await updatePackagesDatabase();
+            await  Promise.__onAwait(updatePackagesDatabase());
         }
         catch (err) { }
-    }
-    async function packPxseedForPxseedLoader() {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        let pxseedRoot = path.join(wwwroot, '..').replace(/\\/g, '/');
-        let outputRoot = path.join(wwwroot, exports.__name__, 'pxseedPack4PxseedLoader').replace(/\\/g, '/');
-        await copyFilesNewer(outputRoot + '/pxseed', pxseedRoot, (name, path) => {
-            path = path.replace(/\\/g, '/');
-            if (name == '.git') {
-                return true;
-            }
-            return [pxseedRoot + '/npmdeps/node_modules',
-                pxseedRoot + '/www/node_modules',
-                outputRoot].includes(path);
-        });
-        await fs.writeFile(path.join(outputRoot, 'index.html'), new TextEncoder().encode(String.raw `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <script>
-            window.onload=function(){
-                document.getElementById("uainfo").innerHTML=navigator.userAgent
-                document.getElementById("viewinfo").innerHTML=''+window.innerWidth+"X"+window.innerHeight
-                window.open('pxseed/www/index.html?__jsentry=partic2%2FpackageManager%2Fwebui','_self')
-            }
-        </script>
-    </head>
-    <body>
-        <div>
-            this is entry at assets/res/index.html
-        </div>
-        <div>
-            userAgent:<span id="uainfo">
-            </span>
-        </div>
-        view:<span id="viewinfo">
-    
-        </span>
-    </body>
-    </html>
-`));
-    }
+    }finally{Promise.__onAsyncExit();}}
     let pkgdbName = exports.__name__ + '/pkgdb';
     function getPMConfigFromPcfg(config) {
         if (config.extra && (exports.__name__ in config.extra)) {
@@ -230,12 +190,12 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
             } }
     };
     let RepositoriesRegistry = {
-        ensureRepoCfg: async function () {
-            let pkgdb = await (0, webutils_1.kvStore)(pkgdbName);
-            let repoCfg = await pkgdb.getItem('repo');
+        ensureRepoCfg: async function () {Promise.__onAsyncEnter();try{
+            let pkgdb = await  Promise.__onAwait((0, webutils_1.kvStore)(pkgdbName));
+            let repoCfg = await  Promise.__onAwait(pkgdb.getItem('repo'));
             if (repoCfg == null) {
                 repoCfg = initRepoConfig;
-                await pkgdb.setItem('repo', repoCfg);
+                await  Promise.__onAwait(pkgdb.setItem('repo', repoCfg));
             }
             (0, base_1.assert)(repoCfg.version <= 1, 'version not support');
             if (repoCfg.repositories == undefined) {
@@ -244,26 +204,44 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
             if (repoCfg.repositories.scope == undefined) {
                 repoCfg.repositories.scope = initRepoConfig.repositories?.scope;
             }
-            await pkgdb.setItem('repo', repoCfg);
+            await  Promise.__onAwait(pkgdb.setItem('repo', repoCfg));
             return repoCfg;
-        },
-        getScopeRepo: async function (scopeName) {
-            let repoCfg = await this.ensureRepoCfg();
-            return await repoCfg.repositories?.scope?.[scopeName];
-        },
-        setScopeRepo: async function (scopeName, repos) {
-            let repoCfg = await this.ensureRepoCfg();
+        }finally{Promise.__onAsyncExit();}},
+        getScopeRepo: async function (scopeName) {Promise.__onAsyncEnter();try{
+            let repoCfg = await  Promise.__onAwait(this.ensureRepoCfg());
+            return await  Promise.__onAwait(repoCfg.repositories?.scope?.[scopeName]);
+        }finally{Promise.__onAsyncExit();}},
+        setScopeRepo: async function (scopeName, repos) {Promise.__onAsyncEnter();try{
+            let repoCfg = await  Promise.__onAwait(this.ensureRepoCfg());
             repoCfg.repositories.scope[scopeName] = repos;
-            let pkgdb = await (0, webutils_1.kvStore)(pkgdbName);
-            await pkgdb.setItem('repo', repoCfg);
-        }
+            let pkgdb = await  Promise.__onAwait((0, webutils_1.kvStore)(pkgdbName));
+            await  Promise.__onAwait(pkgdb.setItem('repo', repoCfg));
+        }finally{Promise.__onAsyncExit();}},
+        upgradeFromPkgConfig: async function (pkgConfig) {Promise.__onAsyncEnter();try{
+            if (pkgConfig?.repositories != undefined) {
+                for (let scopeName in pkgConfig.repositories) {
+                    let toMerge = pkgConfig.repositories[scopeName];
+                    (0, base_1.assert)(toMerge instanceof Array);
+                    let repos = new Set(await  Promise.__onAwait(RepositoriesRegistry.getScopeRepo(scopeName)));
+                    for (let t1 of toMerge) {
+                        if (t1.charAt(0) === '!') {
+                            repos.delete(t1.substring(1));
+                        }
+                        else {
+                            repos.add(t1);
+                        }
+                    }
+                    await  Promise.__onAwait(RepositoriesRegistry.setScopeRepo(scopeName, Array.from(repos)));
+                }
+            }
+        }finally{Promise.__onAsyncExit();}}
     };
-    async function updatePackagesDatabase(pkgNameOrPxseedConfig) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
+    async function updatePackagesDatabase(pkgNameOrPxseedConfig) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
         if (pkgNameOrPxseedConfig == undefined) {
-            for await (let pkg of listPackages()) {
+            for (let pkg of await  Promise.__onAwait(listPackagesArray(''))) {
                 try {
-                    await updatePackagesDatabase(pkg);
+                    await  Promise.__onAwait(updatePackagesDatabase(pkg));
                 }
                 catch (err) {
                     log.error(err.toString() + err.stack);
@@ -273,75 +251,89 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
         else {
             let pxseedConfig;
             if (typeof pkgNameOrPxseedConfig === 'string') {
-                pxseedConfig = (await getPxseedConfigForPackage(pkgNameOrPxseedConfig));
+                pxseedConfig = (await  Promise.__onAwait(getPxseedConfigForPackage(pkgNameOrPxseedConfig)));
             }
             else {
                 pxseedConfig = pkgNameOrPxseedConfig;
             }
             let pkgConfig = getPMConfigFromPcfg(pxseedConfig);
-            if (pkgConfig?.repositories != undefined) {
-                for (let scopeName in pkgConfig.repositories) {
-                    let toMerge = pkgConfig.repositories[scopeName];
-                    (0, base_1.assert)(toMerge instanceof Array);
-                    let repos = new Set(await RepositoriesRegistry.getScopeRepo(scopeName));
-                    for (let t1 of toMerge) {
-                        if (t1.charAt(0) === '!') {
-                            repos.delete(t1.substring(1));
-                        }
-                        else {
-                            repos.add(t1);
-                        }
-                    }
-                    await RepositoriesRegistry.setScopeRepo(scopeName, Array.from(repos));
-                }
-            }
+            await  Promise.__onAwait(RepositoriesRegistry.upgradeFromPkgConfig(pkgConfig));
         }
-    }
-    async function getSourceDirForPackage(pkgname) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
+    }finally{Promise.__onAsyncExit();}}
+    async function getSourceDirForPackage(pkgname) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
         return path.join(wwwroot, '..', 'source', ...pkgname.split('/'));
-    }
-    async function getOutputDirForPakcage(pkgname) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
+    }finally{Promise.__onAsyncExit();}}
+    async function getOutputDirForPakcage(pkgname) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
         return path.join(wwwroot, ...pkgname.split('/'));
-    }
-    async function installLocalPackage(path2) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        let pxseedConfig = await util_1.__internal__.readJson(path.join(path2, "pxseed.config.json"));
+    }finally{Promise.__onAsyncExit();}}
+    let pendingInstallingTask = new Map();
+    async function installLocalPackage(path2) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
+        let pxseedConfig = await  Promise.__onAwait(util_1.__internal__.readJson(path.join(path2, "pxseed.config.json")));
         let pkgname = pxseedConfig.name;
-        let destDir = await getSourceDirForPackage(pkgname);
-        await fs.mkdir(destDir, { recursive: true });
-        if (path2 != destDir) {
-            await copyFilesNewer(destDir, path2);
+        if (pendingInstallingTask.get(pkgname) != undefined) {
+            log.warning(`Package '${pkgname}' is already being installed. This may indicate a circular dependency or a concurrent installation attempt.`);
+            return;
         }
-        let pkgConfig = getPMConfigFromPcfg(pxseedConfig);
-        if (pkgConfig?.dependencies != undefined) {
-            for (let dep of pkgConfig.dependencies) {
-                let config = await getPxseedConfigForPackage(dep);
-                if (config == null) {
-                    try {
-                        await installPackage(dep);
+        pendingInstallingTask.set(pkgname, new base_1.future());
+        try {
+            let destDir = await  Promise.__onAwait(getSourceDirForPackage(pkgname));
+            await  Promise.__onAwait(fs.mkdir(destDir, { recursive: true }));
+            if (path2 != destDir) {
+                await  Promise.__onAwait(copyFilesNewer(destDir, path2));
+            }
+            //add repositories before dependencies resolving.
+            let pkgConfig = getPMConfigFromPcfg(pxseedConfig);
+            await  Promise.__onAwait(RepositoriesRegistry.upgradeFromPkgConfig(pkgConfig));
+            if (pkgConfig?.dependencies != undefined) {
+                for (let dep of pkgConfig.dependencies) {
+                    let config = await  Promise.__onAwait(getPxseedConfigForPackage(dep));
+                    if (config == null) {
+                        try {
+                            await  Promise.__onAwait(installPackage(dep));
+                        }
+                        catch (e) {
+                            (0, base_1.throwIfAbortError)(e);
+                            log.error(e.toString() + e.stack);
+                        }
                     }
-                    catch (e) {
-                        log.error(e.toString() + e.stack);
+                    else {
+                        try {
+                            await  Promise.__onAwait(upgradePackage(dep));
+                        }
+                        catch (e) {
+                            (0, base_1.throwIfAbortError)(e);
+                            log.error(e.toString() + e.stack);
+                        }
                     }
                 }
             }
+            try {
+                await  Promise.__onAwait(buildPackageAndNotfiy(pkgname));
+            }
+            catch (err) {
+                (0, base_1.throwIfAbortError)(err);
+                log.error(err + err.stack);
+            }
+            exports.listener.onInstall.forEach((l) => new Promise((resolve_2, reject_2) => { require([l.module], resolve_2, reject_2); }).then(m => m[l.func](pkgname)).catch(() => { }));
+            await  Promise.__onAwait(Promise.allSettled((await  Promise.__onAwait(getPackageListeners('onInstalled'))).map(t1 => new Promise((resolve_3, reject_3) => { require([t1.module], resolve_3, reject_3); }).then(t2 => t2[t1.func]()))));
         }
-        await buildPackageAndNotfiy(pkgname);
-        await updatePackagesDatabase(pxseedConfig);
-        exports.listener.onInstall.forEach((l) => new Promise((resolve_2, reject_2) => { require([l.module], resolve_2, reject_2); }).then(m => m[l.func](pkgname)).catch(() => { }));
-        await Promise.allSettled((await getPackageListeners('onInstalled')).map(t1 => new Promise((resolve_3, reject_3) => { require([t1.module], resolve_3, reject_3); }).then(t2 => t2[t1.func]())));
-    }
-    async function getUrlTemplateFromScopeName(scopeName) {
+        finally {
+            pendingInstallingTask.get(pkgname)?.setResult();
+            pendingInstallingTask.delete(pkgname);
+        }
+    }finally{Promise.__onAsyncExit();}}
+    async function getUrlTemplateFromScopeName(scopeName) {Promise.__onAsyncEnter();try{
         return RepositoriesRegistry.getScopeRepo(scopeName);
-    }
-    async function getRepoInfoFromPkgName(pkgFullName) {
+    }finally{Promise.__onAsyncExit();}}
+    async function getRepoInfoFromPkgName(pkgFullName) {Promise.__onAsyncEnter();try{
         let parts = pkgFullName.split('/');
         let [scope, subname] = parts.slice(0, 2);
         let path = parts.slice(2);
         subname = subname ?? '';
-        let repos = await RepositoriesRegistry.getScopeRepo(scope);
+        let repos = await  Promise.__onAwait(RepositoriesRegistry.getScopeRepo(scope));
         function* iterUrl() {
             if (repos == undefined) {
                 return;
@@ -358,67 +350,63 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
         return {
             scope: scope, subname: subname, path: path, urls: Array.from(iterUrl())
         };
-    }
-    async function buildPackageAndNotfiy(pkgName) {
-        let { processDirectory } = await new Promise((resolve_4, reject_4) => { require(['pxseedBuildScript/buildlib'], resolve_4, reject_4); });
-        let { path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        let records = [];
+    }finally{Promise.__onAsyncExit();}}
+    async function buildPackageAndNotfiy(pkgName) {Promise.__onAsyncEnter();try{
+        let { processDirectory } = await  Promise.__onAwait(new Promise((resolve_4, reject_4) => { require(['pxseedBuildScript/buildlib'], resolve_4, reject_4); }));
+        let { path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
         let wrapConsole = { ...globalThis.console };
-        wrapConsole.debug = (...msg) => records.push(msg);
-        wrapConsole.info = (...msg) => records.push(msg);
-        wrapConsole.warn = (...msg) => records.push(msg);
-        wrapConsole.error = (...msg) => records.push(msg);
-        let buildPath = await getSourceDirForPackage(pkgName);
-        await (0, util_1.withConsole)(wrapConsole, () => processDirectory(buildPath));
+        let curTask = base_1.Task.currentTask;
+        wrapConsole.debug = (...msg) => { curTask?.fork(function* () { log.debug(...msg); }).run(); };
+        wrapConsole.info = (...msg) => { curTask?.fork(function* () { log.info(...msg); }).run(); };
+        wrapConsole.warn = (...msg) => { curTask?.fork(function* () { log.warning(...msg); }).run(); };
+        wrapConsole.error = (...msg) => { curTask?.fork(function* () { log.error(...msg); }).run(); };
+        let buildPath = await  Promise.__onAwait(getSourceDirForPackage(pkgName));
+        await  Promise.__onAwait((0, util_1.withConsole)(wrapConsole, () => processDirectory(buildPath)));
         exports.listener.onBuild.forEach((l) => { new Promise((resolve_5, reject_5) => { require([l.module], resolve_5, reject_5); }).then(m => m[l.func](pkgName)).catch(() => { }); });
         try {
-            await updatePackagesDatabase(pkgName);
+            await  Promise.__onAwait(updatePackagesDatabase(pkgName));
         }
         catch (err) { }
-        return records.map(t1 => t1.join(' ')).join('\n');
-    }
-    async function uninstallPackage(pkgname) {
-        const { fs } = await (0, util_1.getNodeCompatApi)();
-        let dir1 = await getSourceDirForPackage(pkgname);
-        await fs.rm(dir1, { recursive: true }).catch(_ => { });
-        dir1 = await getOutputDirForPakcage(pkgname);
-        await (0, buildlib_1.cleanBuildStatus)(dir1).catch(_ => { });
-        await fs.rm(dir1, { recursive: true }).catch(_ => { });
+    }finally{Promise.__onAsyncExit();}}
+    async function uninstallPackage(pkgname) {Promise.__onAsyncEnter();try{
+        const { fs } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
+        let dir1 = await  Promise.__onAwait(getSourceDirForPackage(pkgname));
+        await  Promise.__onAwait(fs.rm(dir1, { recursive: true }).catch(_ => { }));
+        dir1 = await  Promise.__onAwait(getOutputDirForPakcage(pkgname));
+        await  Promise.__onAwait((0, buildlib_1.cleanBuildStatus)(dir1).catch(_ => { }));
         exports.listener.onUninstall.forEach((l) => new Promise((resolve_6, reject_6) => { require([l.module], resolve_6, reject_6); }).then(m => m[l.func](pkgname)));
-    }
-    async function getPxseedConfigForPackage(pkgname) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        let statusFile = path.join(await getOutputDirForPakcage(pkgname), '.pxseed.status.json');
+    }finally{Promise.__onAsyncExit();}}
+    async function getPxseedConfigForPackage(pkgname) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
+        let statusFile = path.join(await  Promise.__onAwait(getOutputDirForPakcage(pkgname)), '.pxseed.status.json');
         try {
-            await fs.access(statusFile);
-            return (await util_1.__internal__.readJson(statusFile)).pxseedConfig;
+            await  Promise.__onAwait(fs.access(statusFile));
+            return (await  Promise.__onAwait(util_1.__internal__.readJson(statusFile))).pxseedConfig;
         }
         catch (e) {
             return null;
         }
-    }
-    async function* listPackagesInDirectory(dir) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        let children = await fs.readdir(dir, { withFileTypes: true });
+    }finally{Promise.__onAsyncExit();}}
+    async function listPackagesInDirectoryArray(dir, filter) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
+        let children = await  Promise.__onAwait(fs.readdir(dir, { withFileTypes: true }));
+        let result = new Array();
         if (children.find(t1 => t1.name == '.pxseed.status.json')) {
-            yield { path: dir, config: (await util_1.__internal__.readJson(path.join(dir, '.pxseed.status.json'))).pxseedConfig };
+            let t1 = { path: dir, config: (await  Promise.__onAwait(util_1.__internal__.readJson(path.join(dir, '.pxseed.status.json')))).pxseedConfig };
+            if (filter == undefined || await  Promise.__onAwait(filter(t1))) {
+                result.push(t1);
+            }
         }
         else {
             for (let t1 of children) {
                 if (t1.isDirectory()) {
-                    yield* listPackagesInDirectory(path.join(dir, t1.name));
+                    result.push(...await  Promise.__onAwait(listPackagesInDirectoryArray(path.join(dir, t1.name), filter)));
                 }
             }
         }
-    }
-    async function* listPackages() {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        for await (let t1 of listPackagesInDirectory(wwwroot)) {
-            yield t1.config;
-        }
-    }
-    async function listPackagesArray(filterString) {
-        let arr = [];
+        return result;
+    }finally{Promise.__onAsyncExit();}}
+    async function listPackagesArray(filterString) {Promise.__onAsyncEnter();try{
         let filterFunc;
         if (filterString.startsWith('javascript:')) {
             filterFunc = new Function('name', 'config', 'pmcfg', filterString.substring('javascript:'.length + 1));
@@ -442,27 +430,26 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
                 };
             })();
         }
-        for await (let t1 of listPackages()) {
-            if (filterFunc(t1.name, t1, t1.extra?.[exports.__name__])) {
-                arr.push(t1);
-            }
-            ;
-        }
-        return arr;
-    }
-    async function upgradePackage(pkgname) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        let pkgdir = await getSourceDirForPackage(pkgname);
-        let pxseedConfig = await util_1.__internal__.readJson(path.join(pkgdir, 'pxseed.config.json'));
-        await fs.access(path.join(pkgdir, '.git'));
-        await pkgfetcher_1.__internal__.upgradeGitPackage(pkgdir);
-        await installLocalPackage(pkgdir);
-    }
-    async function upgradeAllNonCorePackages() {
-        for await (let t1 of listPackages()) {
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
+        return (await  Promise.__onAwait(listPackagesInDirectoryArray(wwwroot, async ({ path, config }) => {Promise.__onAsyncEnter();try{
+            let t1 = config;
+            let t2 = filterFunc(t1.name, t1, t1.extra?.[exports.__name__]);
+            return t2;
+        }finally{Promise.__onAsyncExit();}}))).map(t1 => t1.config);
+    }finally{Promise.__onAsyncExit();}}
+    async function upgradePackage(pkgname) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
+        let pkgdir = await  Promise.__onAwait(getSourceDirForPackage(pkgname));
+        let pxseedConfig = await  Promise.__onAwait(util_1.__internal__.readJson(path.join(pkgdir, 'pxseed.config.json')));
+        await  Promise.__onAwait(fs.access(path.join(pkgdir, '.git')));
+        await  Promise.__onAwait(pkgfetcher_1.__internal__.upgradeGitPackage(pkgdir));
+        await  Promise.__onAwait(installLocalPackage(pkgdir));
+    }finally{Promise.__onAsyncExit();}}
+    async function upgradeAllNonCorePackages() {Promise.__onAsyncEnter();try{
+        for (let t1 of await  Promise.__onAwait(listPackagesArray(''))) {
             if (!exports.pxseedCorePackagesNames.has(t1.name)) {
                 try {
-                    await upgradePackage(t1.name);
+                    await  Promise.__onAwait(upgradePackage(t1.name));
                     log.info(`upgradeAllNonCorePackages success to upgrade ${t1.name}`);
                 }
                 catch (err) {
@@ -470,43 +457,25 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
                 }
             }
         }
-    }
-    async function installPackage(source) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
+    }finally{Promise.__onAsyncExit();}}
+    async function installPackage(source) {Promise.__onAsyncEnter();try{
+        log.info('install request for:' + source);
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
         let installProcessed = false;
         let sourceDir = path.join(wwwroot, '..', 'source');
-        if (source.startsWith('npm:')) {
-            let packageJson = await util_1.__internal__.readJson(path.join(path.dirname(sourceDir), 'npmdeps', 'package.json'));
-            //TODO: npm version check
-            let t1 = source.substring(4);
-            let versionSep = t1.lastIndexOf('@');
-            if (versionSep <= 0) {
-                versionSep = t1.length;
-            }
-            let pkgName = t1.substring(0, versionSep);
-            if (packageJson.dependencies[pkgName] == undefined) {
-                log.info('install npm package ' + source.substring(4));
-                if (globalThis.process?.versions?.node == undefined) {
-                    throw new Error('npm depdendencies are only support on node.js platform');
-                }
-                let returnCode = await util_1.__internal__.runCommand(`npm i ${source.substring(4)}`, { cwd: path.join(path.dirname(sourceDir), 'npmdeps') });
-                if (returnCode !== 0)
-                    log.error('install npm package failed.');
-            }
-            installProcessed = true;
-        }
-        else {
+        {
             let existed = false;
             try {
-                await fs.access(path.join(sourceDir, source, 'pxseed.config.json'));
+                await  Promise.__onAwait(fs.access(path.join(sourceDir, source, 'pxseed.config.json')));
                 existed = true;
             }
             catch (e) {
                 existed = false;
             }
             if (existed) {
+                log.info(`package ${source} existed,upgrade it.`);
                 try {
-                    await upgradePackage(source);
+                    await  Promise.__onAwait(upgradePackage(source));
                     installProcessed = true;
                 }
                 catch (err) {
@@ -515,8 +484,9 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
             }
             if (!installProcessed) {
                 try {
-                    let fetchResult = await (0, pkgfetcher_1.fetchPackage)(source);
-                    await installLocalPackage(fetchResult.localPath);
+                    log.info(`Try to fetch package ${source}.`);
+                    let fetchResult = await  Promise.__onAwait((0, pkgfetcher_1.fetchPackage)(source));
+                    await  Promise.__onAwait(installLocalPackage(fetchResult.localPath));
                     installProcessed = true;
                 }
                 catch (err) {
@@ -528,31 +498,31 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
         if (!installProcessed) {
             throw new Error(`Can not handle url:${source}`);
         }
-    }
-    async function createPackageTemplate1(pxseedConfig) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
+    }finally{Promise.__onAsyncExit();}}
+    async function createPackageTemplate1(pxseedConfig) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
         let pkgloc = path.join(buildlib_1.sourceDir, pxseedConfig.name);
         try {
-            await fs.access(pkgloc);
+            await  Promise.__onAwait(fs.access(pkgloc));
             throw new Error('package is existed.');
         }
         catch (e) {
         }
-        await fs.mkdir(pkgloc, { recursive: true });
-        await fs.mkdir(path.join(pkgloc, 'assets'));
-        await util_1.__internal__.writeJson(path.join(pkgloc, 'pxseed.config.json'), pxseedConfig);
-        await fs.writeFile(path.join(pkgloc, '.gitignore'), `.*
+        await  Promise.__onAwait(fs.mkdir(pkgloc, { recursive: true }));
+        await  Promise.__onAwait(fs.mkdir(path.join(pkgloc, 'assets')));
+        await  Promise.__onAwait(util_1.__internal__.writeJson(path.join(pkgloc, 'pxseed.config.json'), pxseedConfig));
+        await  Promise.__onAwait(fs.writeFile(path.join(pkgloc, '.gitignore'), `.*
 !.gitignore
 tsconfig.json
-`);
+`));
         if (pxseedConfig.extra?.[exports.__name__] != undefined) {
             let cfg = pxseedConfig.extra[exports.__name__];
             if (cfg.webui?.entry != undefined && cfg.webui.entry != '') {
                 let entryMod = cfg.webui.entry;
                 if (entryMod.startsWith(pxseedConfig.name + '/')) {
                     let entModPath = path.join(buildlib_1.sourceDir, ...entryMod.split('/')) + '.tsx';
-                    await fs.mkdir(path.dirname(entModPath), { recursive: true });
-                    await fs.writeFile(entModPath, `
+                    await  Promise.__onAwait(fs.mkdir(path.dirname(entModPath), { recursive: true }));
+                    await  Promise.__onAwait(fs.writeFile(entModPath, `
 import * as React from 'preact'
 import { openNewWindow } from 'partic2/pComponentUi/workspace'
 import { requirejs } from 'partic2/jsutils1/base';
@@ -574,47 +544,47 @@ export function main(args:string){
         setBaseWindowView(<div>WebUI Demo</div>);
     }
 })();
-`);
+`));
                 }
             }
         }
-        await installLocalPackage(pkgloc);
-        await pkgfetcher_1.__internal__.initGitPackage(pkgloc);
-    }
-    async function unloadPackageModules(pkg) {
-        for (let mid in await base_1.requirejs.getDefined()) {
+        await  Promise.__onAwait(installLocalPackage(pkgloc));
+        await  Promise.__onAwait(pkgfetcher_1.__internal__.initGitPackage(pkgloc));
+    }finally{Promise.__onAsyncExit();}}
+    async function unloadPackageModules(pkg) {Promise.__onAsyncEnter();try{
+        for (let mid in await  Promise.__onAwait(base_1.requirejs.getDefined())) {
             if (mid.startsWith(pkg + '/')) {
-                await base_1.requirejs.undef(mid);
+                await  Promise.__onAwait(base_1.requirejs.undef(mid));
             }
         }
-    }
-    async function exportPackagesInstallation() {
-        let repos = await RepositoriesRegistry.ensureRepoCfg();
+    }finally{Promise.__onAsyncExit();}}
+    async function exportPackagesInstallation() {Promise.__onAsyncEnter();try{
+        let repos = await  Promise.__onAwait(RepositoriesRegistry.ensureRepoCfg());
         let pkgs = [];
-        for await (let t1 of listPackages()) {
+        for (let t1 of await  Promise.__onAwait(listPackagesArray(''))) {
             pkgs.push(t1.name);
         }
         return { repos, pkgs };
-    }
-    async function importPackagesInstallation(installationInfo) {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
+    }finally{Promise.__onAsyncExit();}}
+    async function importPackagesInstallation(installationInfo) {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
         let { repos, pkgs } = installationInfo;
         for (let name in repos.repositories.scope) {
             let repoUrls = repos.repositories.scope[name];
-            await RepositoriesRegistry.setScopeRepo(name, repoUrls);
+            await  Promise.__onAwait(RepositoriesRegistry.setScopeRepo(name, repoUrls));
         }
         for (let pkg of pkgs) {
             try {
                 let existed = false;
                 try {
-                    fs.access(path.join(buildlib_1.sourceDir, ...pkg.split('/')));
+                    await  Promise.__onAwait(fs.access(path.join(buildlib_1.sourceDir, ...pkg.split('/'))));
                     existed = true;
                 }
                 catch (e) { }
                 if (!existed) {
-                    let fetchResult = await (0, pkgfetcher_1.fetchPackage)(pkg);
+                    let fetchResult = await  Promise.__onAwait((0, pkgfetcher_1.fetchPackage)(pkg));
                     (0, base_1.assert)(fetchResult != null);
-                    await installLocalPackage(fetchResult.localPath);
+                    await  Promise.__onAwait(installLocalPackage(fetchResult.localPath));
                 }
             }
             catch (e) {
@@ -622,48 +592,58 @@ export function main(args:string){
             }
             ;
         }
-    }
-    async function cleanPackageInstallCache() {
-        const { fs, path, wwwroot } = await (0, util_1.getNodeCompatApi)();
-        await fs.rm(path.join(wwwroot, ...exports.__name__.split('/'), '..', '__temp'), { recursive: true });
-    }
-    async function getPackageListeners(eventType) {
-        let result = new Array();
-        for await (let pkg of listPackages()) {
-            let pmcfg = getPMConfigFromPcfg(pkg);
-            if (pmcfg != null) {
-                if (pmcfg[eventType] != null) {
-                    try {
-                        let t1 = { ...pmcfg[eventType] };
-                        if (/^\.\.?\//.test(t1.module)) {
-                            t1.module = webutils_1.path.join(pkg.name, t1.module);
+    }finally{Promise.__onAsyncExit();}}
+    async function cleanPackageInstallCache() {Promise.__onAsyncEnter();try{
+        const { fs, path, wwwroot } = await  Promise.__onAwait((0, util_1.getNodeCompatApi)());
+        await  Promise.__onAwait(fs.rm(path.join(wwwroot, ...exports.__name__.split('/'), '..', '__temp'), { recursive: true }));
+    }finally{Promise.__onAsyncExit();}}
+    let cachedListenersList = new Map();
+    let cachedListenersUpdateTime = 0;
+    async function getPackageListeners(eventType) {Promise.__onAsyncEnter();try{
+        let lastBuildTime = await  Promise.__onAwait((0, buildlib_1.getWWWLastBuildTime)());
+        if (lastBuildTime > cachedListenersUpdateTime) {
+            cachedListenersList.clear();
+            cachedListenersUpdateTime = (0, base_1.GetCurrentTime)().getTime();
+        }
+        if (cachedListenersList.get(eventType) == undefined) {
+            let result = new Array();
+            for (let pkg of await  Promise.__onAwait(listPackagesArray(''))) {
+                let pmcfg = getPMConfigFromPcfg(pkg);
+                if (pmcfg != null) {
+                    if (pmcfg[eventType] != null) {
+                        try {
+                            let t1 = { ...pmcfg[eventType] };
+                            if (/^\.\.?\//.test(t1.module)) {
+                                t1.module = webutils_1.path.join(pkg.name, t1.module);
+                            }
+                            result.push(t1);
                         }
-                        result.push(t1);
+                        catch (err) { }
+                        ;
                     }
-                    catch (err) { }
-                    ;
                 }
             }
+            cachedListenersList.set(eventType, { listeners: result });
         }
-        return result;
-    }
-    async function blockHttpAccessToStaticFileInWWW(path2) {
-        await (0, registry_1.easyCallRemoteJsonFunction)(await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName)).ensureConnected(), webutils_1.path.join(exports.__name__, '..', 'onServerStartup'), '__blockHttpAccessToStaticFileInWWW', [path2]);
-    }
-    async function sendOnStartupEventForAllPackages() {
-        await Promise.allSettled((await getPackageListeners('onServerStartup')).map(t1 => new Promise((resolve_7, reject_7) => { require([t1.module], resolve_7, reject_7); }).then(t2 => t2[t1.func]())));
-        await (0, JsEnviron_1.ensureDefaultFileSystem)();
+        return cachedListenersList.get(eventType).listeners;
+    }finally{Promise.__onAsyncExit();}}
+    async function blockHttpAccessToStaticFileInWWW(path2) {Promise.__onAsyncEnter();try{
+        await  Promise.__onAwait((0, registry_1.easyCallRemoteJsonFunction)(await  Promise.__onAwait((await  Promise.__onAwait((0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName))).ensureConnected()), webutils_1.path.join(exports.__name__, '..', 'onServerStartup'), '__blockHttpAccessToStaticFileInWWW', [path2]));
+    }finally{Promise.__onAsyncExit();}}
+    async function sendOnStartupEventForAllPackages() {Promise.__onAsyncEnter();try{
+        await  Promise.__onAwait(Promise.allSettled((await  Promise.__onAwait(getPackageListeners('onServerStartup'))).map(t1 => new Promise((resolve_7, reject_7) => { require([t1.module], resolve_7, reject_7); }).then(t2 => t2[t1.func]()))));
+        await  Promise.__onAwait((0, JsEnviron_1.ensureDefaultFileSystem)());
         let startupNotebook = (0, JsEnviron_1.getSimpleFileSysteNormalizedWWWRoot)() + '/' + webutils_1.path.join(exports.__name__, '..', 'notebook', 'startup.ijsnb');
-        if (await JsEnviron_1.defaultFileSystem.filetype(startupNotebook) == 'none') {
+        if (await  Promise.__onAwait(JsEnviron_1.defaultFileSystem.filetype(startupNotebook)) == 'none') {
             let nbd = new workerinit_1.NotebookFileData();
             let ccld = CodeContext_1.newCodeCellListData.get()();
             ccld.cellList.push({ cellInput: `//All cells in this notebook will be executed when server(and packageManager) started.`, cellOutput: [null, ''], key: (0, base_1.GenerateRandomString)() });
             nbd.setCellsData(ccld);
             nbd.rpc = registry_1.ServerHostWorker1RpcName;
-            await JsEnviron_1.defaultFileSystem.writeAll(startupNotebook, nbd.dump());
+            await  Promise.__onAwait(JsEnviron_1.defaultFileSystem.writeAll(startupNotebook, nbd.dump()));
         }
         else {
-            await (0, workerinit_1.runNotebook)(startupNotebook, 'all cells');
+            await  Promise.__onAwait((0, workerinit_1.runNotebook)(startupNotebook, 'all cells'));
         }
-    }
+    }finally{Promise.__onAsyncExit();}}
 });

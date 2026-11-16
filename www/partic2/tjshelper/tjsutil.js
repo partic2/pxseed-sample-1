@@ -40,6 +40,7 @@ define("partic2/tjshelper/tjsutil", ["require", "exports", "partic2/jsutils1/bas
             this.r = r;
             this.w = w;
             this.c = c;
+            this.sendMutex = new base_1.mutex();
         }
         async receive() {
             let buf1 = new Uint8Array(4);
@@ -57,19 +58,21 @@ define("partic2/tjshelper/tjsutil", ["require", "exports", "partic2/jsutils1/bas
             return buf1;
         }
         async send(data) {
-            let size = data.reduce((prev, curr) => prev + curr.byteLength, 0);
-            let buf1 = new Uint8Array(4);
-            new DataView(buf1.buffer).setInt32(0, size, true);
-            //XXX:Should I take care about the result of write?
-            if (size < 1024) {
-                await this.w.write(new Uint8Array((0, base_1.ArrayBufferConcat)([buf1, ...data])));
-            }
-            else {
-                await this.w.write(buf1);
-                for (let t1 of data) {
-                    await this.w.write(t1);
+            await this.sendMutex.exec(async () => {
+                let size = data.reduce((prev, curr) => prev + curr.byteLength, 0);
+                let buf1 = new Uint8Array(4);
+                new DataView(buf1.buffer).setInt32(0, size, true);
+                //XXX:Should I take care about the result of write?
+                if (size < 1024) {
+                    await this.w.write(new Uint8Array((0, base_1.ArrayBufferConcat)([buf1, ...data])));
                 }
-            }
+                else {
+                    await this.w.write(buf1);
+                    for (let t1 of data) {
+                        await this.w.write(t1);
+                    }
+                }
+            });
         }
         close() {
             this.c.close();

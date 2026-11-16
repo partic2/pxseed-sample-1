@@ -220,7 +220,7 @@ console.info(Array.from(jsutils2.u8hexconv(u8)))`,
     }
     let defaultOpenWorkspaceWindowFor = async function (supportedContext) {
         if (supportedContext === 'local window') {
-            supportedContext = new workerinit_1.__internal__.LoopbackRpcClient('local window', 'loopback:local window');
+            supportedContext = new workerinit_1.__internal__.LoopbackRpcClient();
         }
         let workspace = new WorkspaceContext(supportedContext);
         await workspace.ensureInited();

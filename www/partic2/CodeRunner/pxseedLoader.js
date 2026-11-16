@@ -1,5 +1,5 @@
 //Some function to process source 
-define("partic2/CodeRunner/pxseedLoader", ["require", "exports", "acorn", "acorn-walk", "partic2/jsutils1/base", "./jsutils2"], function (require, exports, acorn, acornWalk, base_1, jsutils2_1) {
+define("partic2/CodeRunner/pxseedLoader", ["require", "exports", "./prebuilt/acorn", "./prebuilt/acorn-walk", "partic2/jsutils1/base", "pxseedBuildScript/util", "./jsutils2"], function (require, exports, acorn, acornWalk, base_1, util_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.setupAsyncHook = exports.JsSourceReplacePlan = void 0;
@@ -87,6 +87,11 @@ define("partic2/CodeRunner/pxseedLoader", ["require", "exports", "acorn", "acorn
                         end: node.argument.end,
                         newString: ')'
                     });
+                }
+            },
+            ForOfStatement(node, state, ancestor) {
+                if (node.await === true) {
+                    throw new Error('"for await" is NOT supported yet');
                 }
             }
         });
@@ -197,11 +202,11 @@ define("partic2/CodeRunner/pxseedLoader", ["require", "exports", "acorn", "acorn
         }
         const { simpleGlob } = await new Promise((resolve_3, reject_3) => { require(['pxseedBuildScript/util'], resolve_3, reject_3); });
         let lastCompleteTime = status.loadersData[__name__ + '.addAsyncHookPxseedLoader']?.completeTime ?? 1;
-        for (let file1 of await simpleGlob(config.include, { cwd: packageOutput })) {
+        for (let file1 of await simpleGlob(config.include, { cwd: packageOutput, exclude: config.exclude })) {
             let fpath = path.join(packageOutput, file1);
             let finfo = await fs.stat(fpath);
             if (finfo.mtime.getTime() > lastCompleteTime) {
-                console.info('addAsyncHook:', file1);
+                util_1.console.info('addAsyncHook:', file1);
                 let source = new TextDecoder().decode(await fs.readFile(fpath));
                 let replacePlan = new JsSourceReplacePlan(source);
                 replacePlan.parsedAst = acorn.parse(source, { allowAwaitOutsideFunction: true, ecmaVersion: 'latest', allowReturnOutsideFunction: true });
@@ -222,11 +227,11 @@ define("partic2/CodeRunner/pxseedLoader", ["require", "exports", "acorn", "acorn
         }
         const { simpleGlob } = await new Promise((resolve_6, reject_6) => { require(['pxseedBuildScript/util'], resolve_6, reject_6); });
         let lastCompleteTime = status.loadersData[__name__ + '.addAutoAsyncAwaitPxseedLoader']?.completeTime ?? 1;
-        for (let file1 of await simpleGlob(config.include, { cwd: packageOutput })) {
+        for (let file1 of await simpleGlob(config.include, { cwd: packageOutput, exclude: config.exclude })) {
             let fpath = path.join(packageOutput, file1);
             let finfo = await fs.stat(fpath);
             if (finfo.mtime.getTime() > lastCompleteTime) {
-                console.info('addAutoAsyncAwait:', file1);
+                util_1.console.info('addAutoAsyncAwait:', file1);
                 let source = new TextDecoder().decode(await fs.readFile(fpath));
                 let replacePlan = new JsSourceReplacePlan(source);
                 replacePlan.parsedAst = acorn.parse(source, { allowAwaitOutsideFunction: true, ecmaVersion: 'latest', allowReturnOutsideFunction: true });

@@ -73,13 +73,24 @@ define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "parti
                 return;
             if (filetype == 'dir') {
                 let newPath = path;
-                let children;
+                let children = undefined;
                 try {
                     children = await this.props.fs.listdir(newPath);
                 }
                 catch (e1) {
-                    newPath = '';
-                    children = await this.props.fs.listdir(newPath);
+                    (0, base_1.throwIfAbortError)(e1);
+                }
+                if (children == undefined) {
+                    try {
+                        newPath = '';
+                        children = await this.props.fs.listdir(newPath);
+                    }
+                    catch (err) {
+                        (0, base_1.throwIfAbortError)(err);
+                    }
+                }
+                if (children == undefined) {
+                    children = [];
                 }
                 if (this._latestOpeningFile != path)
                     return;
@@ -292,7 +303,12 @@ define("partic2/JsNotebook/filebrowser", ["require", "exports", "preact", "parti
             dlg.close();
         }
         async componentDidMount() {
-            await this.reloadFileInfo();
+            try {
+                await this.reloadFileInfo();
+            }
+            catch (err) {
+                (0, base_1.throwIfAbortError)(err);
+            }
         }
         render() {
             return (React.createElement("div", { className: domui_1.css.flexColumn, style: { height: '100%' } },
