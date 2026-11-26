@@ -1,7 +1,7 @@
 define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/extend", "pxprpc/base", "partic2/pxprpcClient/registry", "partic2/jsutils1/webutils", "partic2/tjshelper/httpprot", "partic2/tjshelper/tjsbuilder", "partic2/jsutils1/base", "partic2/CodeRunner/JsEnviron", "partic2/pxprpcClient/rpcworker"], function (require, exports, extend_1, base_1, registry_1, webutils_1, httpprot_1, tjsbuilder_1, base_2, JsEnviron_1, rpcworker_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.serverCommandRegistry = exports.wsPipe = exports.defaultHttpHandler = exports.defaultRouter = exports.blockStaticFileAccessIf = exports.rootConfig = exports.config = exports.subprocessMagic = exports.__name__ = void 0;
+    exports.serverCommandRegistry = exports.defaultHttpHandler = exports.defaultRouter = exports.blockStaticFileAccessIf = exports.rootConfig = exports.config = exports.__name__ = void 0;
     exports.setupServerPxprpcClient = setupServerPxprpcClient;
     exports.loadConfig = loadConfig;
     exports.saveConfig = saveConfig;
@@ -9,16 +9,17 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
     exports.pxseedRunStartupModules = pxseedRunStartupModules;
     exports.serverCommand = serverCommand;
     exports.getConnectionForServerHost = getConnectionForServerHost;
-    exports.initNotebookCodeEnv = initNotebookCodeEnv;
+    exports.__serverHostSetServerInformation = __serverHostSetServerInformation;
+    exports.__serverHostGetServerInformation = __serverHostGetServerInformation;
+    exports.__serverHostBroadcastToQueryServerInformation = __serverHostBroadcastToQueryServerInformation;
     exports.__name__ = base_2.requirejs.getLocalRequireModule(require);
     if (!registry_1.rpcWorkerInitModule.includes(exports.__name__)) {
         registry_1.rpcWorkerInitModule.push(exports.__name__);
     }
-    exports.subprocessMagic = '--subprocessrnd197izpzgbvbhglw0w';
     ;
     exports.config = {
         pxseedBase: '/pxseed',
-        listenOn: { host: '127.0.0.1', port: 2081 },
+        listenOn: { host: '0.0.0.0', port: 2081 },
         initModule: [],
         pxprpcKey: null,
         deamonMode: {
@@ -85,41 +86,6 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
             serv.serve().catch(() => { });
         }
     }
-    exports.wsPipe = new Map();
-    async function wsPipeHandler(ctl) {
-        let url = ctl.request.url;
-        if (url == undefined)
-            return;
-        let id = (0, webutils_1.GetUrlQueryVariable2)(url, 'id');
-        if (id == undefined)
-            return;
-        id = decodeURIComponent(id);
-        await serveWsPipe(await ctl.accept(), id);
-    }
-    async function serveWsPipe(io, id) {
-        let pipes = exports.wsPipe.get(id);
-        if (pipes == undefined) {
-            pipes = new Set();
-            exports.wsPipe.set(id, pipes);
-        }
-        pipes.add(io);
-        try {
-            while (true) {
-                let msg = await io.receive();
-                for (let t1 of pipes) {
-                    if (t1 != io) {
-                        await t1.send([msg]);
-                    }
-                }
-            }
-        }
-        catch (e) {
-            pipes.delete(io);
-            if (pipes.size == 0) {
-                exports.wsPipe.delete(id);
-            }
-        }
-    }
     async function setupHttpServerHandler() {
         let serverworker1 = await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName);
         if (serverworker1 == null) {
@@ -127,7 +93,6 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
             serverworker1 = await (0, registry_1.getRegistered)(registry_1.ServerHostWorker1RpcName);
         }
         exports.defaultRouter.setHandler(exports.config.pxseedBase + '/pxprpc/0', { websocket: pxprpcHandler });
-        exports.defaultRouter.setHandler(exports.config.pxseedBase + '/ws/pipe', { websocket: wsPipeHandler });
         let tjs = await (0, tjsbuilder_1.buildTjs)();
         let tjsfs = new JsEnviron_1.TjsSfs();
         tjsfs.from(tjs);
@@ -266,6 +231,7 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
             await loadConfig();
             return 'done';
         },
+        //restartListener:close the server socket and restart it. Implemented by 
     };
     function pxseedRunStartupModules() {
         Promise.allSettled(exports.config.initModule.map(mod => new Promise((resolve_7, reject_7) => { require([mod], resolve_7, reject_7); })));
@@ -290,7 +256,60 @@ define("pxseedServer2023/pxseedhttpserver", ["require", "exports", "pxprpc/exten
             return parent;
         }
     }
-    async function initNotebookCodeEnv(_ENV) {
-        Object.assign(_ENV, exports.serverCommandRegistry);
+    //Server information API should only used through "./clientFunction" module
+    let serverInformation = new Array();
+    let udpBroadcastEndpoint = null;
+    let cachedRemoteServerInformation = {};
+    async function ensureUdpBroadcastEndpoint() {
+        if (udpBroadcastEndpoint != null)
+            return;
+        let tjs = await (0, tjsbuilder_1.buildTjs)();
+        udpBroadcastEndpoint = await tjs.listen('udp', '0.0.0.0', exports.config.listenOn?.port ?? 2081);
+        await udpBroadcastEndpoint.setBroadcast(true);
+        (async () => {
+            let { utf8conv } = await new Promise((resolve_9, reject_9) => { require(['partic2/CodeRunner/jsutils2'], resolve_9, reject_9); });
+            while (udpBroadcastEndpoint != null) {
+                let recvBuf = new Uint8Array(1000);
+                let rinfo = await udpBroadcastEndpoint.recv(recvBuf);
+                let remoteAddr = rinfo.addr;
+                let msg = utf8conv(new Uint8Array(recvBuf.buffer, 0, rinfo.nread));
+                if (msg == '?') {
+                    for (let t1 of serverInformation) {
+                        udpBroadcastEndpoint.send(utf8conv(t1), remoteAddr);
+                    }
+                }
+                else {
+                    let source = 'udp://' + remoteAddr.ip + ':' + remoteAddr.port;
+                    if (cachedRemoteServerInformation[source] == undefined) {
+                        cachedRemoteServerInformation[source] = [];
+                    }
+                    cachedRemoteServerInformation[source].push(msg);
+                }
+            }
+        })();
+    }
+    async function __serverHostSetServerInformation(info) {
+        await ensureUdpBroadcastEndpoint();
+        (0, base_2.assert)(!info.includes('?'), '"?" is reserved for broadcast query.');
+        serverInformation = info;
+    }
+    async function __serverHostGetServerInformation() {
+        return serverInformation;
+    }
+    async function __serverHostBroadcastToQueryServerInformation(waitSecond) {
+        let { utf8conv } = await new Promise((resolve_10, reject_10) => { require(['partic2/CodeRunner/jsutils2'], resolve_10, reject_10); });
+        waitSecond = waitSecond ?? 1;
+        await ensureUdpBroadcastEndpoint();
+        cachedRemoteServerInformation = {};
+        udpBroadcastEndpoint.send(utf8conv('?'), { family: 4, ip: '255.255.255.255', port: exports.config.listenOn?.port ?? 2081 });
+        if (exports.config.broadcastUdpPorts != undefined) {
+            for (let k1 of exports.config.broadcastUdpPorts) {
+                udpBroadcastEndpoint.send(utf8conv('?'), { family: 4, ip: '255.255.255.255', port: k1 });
+            }
+        }
+        await (0, base_2.sleep)(waitSecond * 1000);
+        let result = cachedRemoteServerInformation;
+        cachedRemoteServerInformation = {};
+        return result;
     }
 });

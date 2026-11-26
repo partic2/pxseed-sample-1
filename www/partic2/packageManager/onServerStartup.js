@@ -5,7 +5,7 @@ define("partic2/packageManager/onServerStartup", ["require", "exports", "partic2
     exports.__blockHttpAccessToStaticFileInWWW = __blockHttpAccessToStaticFileInWWW;
     let __name__ = base_1.requirejs.getLocalRequireModule(require);
     exports._blockedStaticFiles = {};
-    async function packageManagerFileBlocker(path) {
+    async function packageManagerFileBlocker(path) {Promise.__onAsyncEnter();try{
         let pathPart = path.split(/\/+/).filter(t1 => t1 !== '').slice(1);
         let blocked = exports._blockedStaticFiles;
         for (let t1 of pathPart) {
@@ -18,7 +18,7 @@ define("partic2/packageManager/onServerStartup", ["require", "exports", "partic2
             }
         }
         return false;
-    }
+    }finally{Promise.__onAsyncExit();}}
     function __blockHttpAccessToStaticFileInWWW(path) {
         let pathPart = path.split(/\/+/);
         let t1 = exports._blockedStaticFiles;
@@ -34,10 +34,10 @@ define("partic2/packageManager/onServerStartup", ["require", "exports", "partic2
         }
         t1[pathPart.at(-1)] = 1;
     }
-    exports.__inited__ = (async () => {
-        let { blockStaticFileAccessIf } = await new Promise((resolve_1, reject_1) => { require(['pxseedServer2023/pxseedhttpserver'], resolve_1, reject_1); });
+    exports.__inited__ = (async () => {Promise.__onAsyncEnter();try{
+        let { blockStaticFileAccessIf } = await  Promise.__onAwait(new Promise((resolve_1, reject_1) => { require(['pxseedServer2023/pxseedhttpserver'], resolve_1, reject_1); }));
         blockStaticFileAccessIf.set(__name__ + '.fileBlocker', packageManagerFileBlocker);
-        let client1 = await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName)).ensureConnected();
-        await (0, registry_1.easyCallRemoteJsonFunction)(client1, 'partic2/packageManager/registry', 'sendOnStartupEventForAllPackages', []);
-    })();
+        let client1 = await  Promise.__onAwait((await  Promise.__onAwait((0, registry_1.getPersistentRegistered)(registry_1.ServerHostWorker1RpcName))).ensureConnected());
+        await  Promise.__onAwait((0, registry_1.easyCallRemoteJsonFunction)(client1, 'partic2/packageManager/registry', 'sendOnStartupEventForAllPackages', []));
+    }finally{Promise.__onAsyncExit();}})();
 });

@@ -133,7 +133,7 @@ define("partic2/nodehelper/kvdb", ["require", "exports", "partic2/jsutils1/base"
                     data = new TextDecoder().decode(await this.tjs1.readFile(this.baseDir + '/config.json'));
                     this.config = JSON.parse(data);
                     if (this.config?.version !== 1) {
-                        log.warning('Invalid kvdb file, ignored.', this.baseDir + '/config.json');
+                        log.warn('Invalid kvdb file, ignored.', this.baseDir + '/config.json');
                         this.config = { version: 1, time: (0, base_1.GetCurrentTime)().getTime(), fileList: {} };
                     }
                 }

@@ -33,6 +33,8 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         String.prototype.at = function (index) {
             if (index < 0)
                 index += this.length;
+            if (index >= this.length)
+                return undefined;
             return this.charAt(index);
         };
         function arrayAt(index) {
@@ -85,7 +87,7 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
                     signalReason.name = 'AbortError';
                 }
                 const event = new Event('abort');
-                event.reason = reason;
+                event.reason = signalReason;
                 this.signal.reason = signalReason;
                 this.signal.dispatchEvent(event);
             }
@@ -93,9 +95,16 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
                 return '[object AbortController]';
             }
         }
-        if (globalThis.AbortSignal == undefined || globalThis.AbortSignal.prototype.throwIfAborted == undefined) {
+        if (globalThis.AbortController == undefined || globalThis.AbortSignal == undefined) {
             globalThis.AbortController = AbortController;
             globalThis.AbortSignal = AbortSignal;
+        }
+        else if (globalThis.AbortSignal.prototype.throwIfAborted == undefined) {
+            globalThis.AbortSignal.prototype.throwIfAborted = function () {
+                if (!this.aborted)
+                    return;
+                throw this.reason;
+            };
         }
     })();
     let __name__ = 'partic2/jsutils1/base';
@@ -134,22 +143,22 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             });
             this.__resolver = resolver;
         }
-        __step(tNext, error) {
+        __step(tNext, error, isError) {
             let savedTask = Task.currentTask;
             Task.currentTask = this;
             try {
-                if (this.__abortController.signal.aborted) {
-                    this.__iter.throw(this.__abortController.signal.reason);
-                }
                 let yieldResult;
-                if (error != undefined) {
+                if (this.__abortController.signal.aborted) {
+                    yieldResult = this.__iter.throw(this.__abortController.signal.reason);
+                }
+                else if (isError) {
                     yieldResult = this.__iter.throw(error);
                 }
                 else {
                     yieldResult = this.__iter.next(tNext);
                 }
                 if (!yieldResult.done) {
-                    yieldResult.value.then(r => this.__step(r, undefined), reason => this.__step(undefined, reason));
+                    yieldResult.value.then(r => this.__step(r, undefined, false), reason => this.__step(undefined, reason, true));
                 }
                 else {
                     Task.currentTask = null;
@@ -225,6 +234,10 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
     function copy(src, dst, depth) {
         if (depth <= 0)
             return dst;
+        if (src instanceof Date)
+            return new Date(src.getTime());
+        if (src instanceof ArrayBuffer)
+            return src.slice(0);
         if (Array.isArray(src)) {
             if (!Array.isArray(dst))
                 dst = [];
@@ -272,14 +285,14 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             "MM": date.getMonth() + 1,
             "dd": date.getDate(),
             "HH": date.getHours(),
-            "hh": date.getHours() % 12,
+            "hh": date.getHours() % 12 || 12,
             "mm": date.getMinutes(),
             "ss": date.getSeconds(),
             "SSS": date.getMilliseconds()
         };
-        outstr = outstr.replace(/yyyy/, date.getFullYear().toString().padStart(4, '0'));
+        outstr = outstr.replace(/yyyy/g, date.getFullYear().toString().padStart(4, '0'));
         for (var k in o) {
-            outstr = outstr.replace(new RegExp(k), o[k].toString().padStart(2, '0'));
+            outstr = outstr.replace(new RegExp(k, 'g'), o[k].toString().padStart(k === 'SSS' ? 3 : 2, '0'));
         }
         return outstr;
     }
@@ -292,7 +305,7 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         pos = layout.indexOf('dd');
         let date = pos >= 0 ? Number.parseInt(dateStr.substring(pos, pos + 2)) : 0;
         pos = layout.indexOf('HH');
-        let hour = Number.parseInt(dateStr.substring(pos, pos + 2));
+        let hour = pos >= 0 ? Number.parseInt(dateStr.substring(pos, pos + 2)) : 0;
         pos = layout.indexOf('mm');
         let minute = pos >= 0 ? Number.parseInt(dateStr.substring(pos, pos + 2)) : 0;
         pos = layout.indexOf('ss');
@@ -301,19 +314,19 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         let millisecond = pos >= 0 ? Number.parseInt(dateStr.substring(pos, pos + 3)) : 0;
         return new Date(year, month, date, hour, minute, second, millisecond);
     }
+    //Short sleep will not be aborted.
     async function sleep(milliSeconds, arg) {
         let defer = new Array();
         return new Promise(((resolve, reject) => {
-            const onAbort = (ev) => { reject(ev.reason); };
-            let currentTask = Task.currentTask;
-            if (currentTask != undefined) {
-                if (currentTask.getAbortSignal().aborted) {
-                    reject(currentTask.getAbortSignal().reason);
+            let abortSignal = Task.currentTask?.getAbortSignal();
+            const onAbort = () => { reject(abortSignal.reason); };
+            if (abortSignal != undefined) {
+                if (abortSignal.aborted) {
+                    reject(abortSignal.reason);
                 }
                 else if (milliSeconds > 1000) {
-                    //Better performance?
-                    currentTask.getAbortSignal().addEventListener('abort', onAbort);
-                    defer.push(() => currentTask.getAbortSignal().removeEventListener('abort', onAbort));
+                    abortSignal.addEventListener('abort', onAbort);
+                    defer.push(() => abortSignal.removeEventListener('abort', onAbort));
                 }
             }
             const timer = setTimeout(() => resolve(arg), milliSeconds);
@@ -350,6 +363,9 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             }
         }
         reset() {
+            if (!this.done && this.rejectCallback != undefined) {
+                this.rejectCallback(new CanceledError());
+            }
             this.done = false;
             this.result = undefined;
             this.exception = undefined;
@@ -415,9 +431,6 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         queueSignalPush(elem) {
             this.arr().push(elem);
             this.emitQueueChange();
-        }
-        [Symbol.iterator]() {
-            return this.arr()[Symbol.iterator];
         }
         static *IntSequence(start, end, step) {
             if (end == undefined) {
@@ -492,7 +505,7 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             return require.getFailed();
         },
         clearFailed: async function () {
-            Object.keys(require.getFailed()).forEach(t1 => require.undef(t1));
+            Object.keys(await require.getFailed()).forEach(t1 => require.undef(t1));
         },
         undef: async function (mod) {
             require.undef(mod);
@@ -703,9 +716,6 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         if (typeof Uint8Array.fromBase64 === 'function') {
             return Uint8Array.fromBase64(base64).buffer;
         }
-        for (let i = 0; i < b64chars.length; i++) {
-            b64lookup[b64chars.charCodeAt(i)] = i;
-        }
         let bufferLength = base64.length * 0.75, len = base64.length, i, p = 0, encoded1, encoded2, encoded3, encoded4;
         if (base64[base64.length - 1] === '=') {
             bufferLength--;
@@ -759,11 +769,9 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
     }
     function ToDataUrl(data, mediaType) {
         if (typeof data === 'string') {
-            return 'data:' + mediaType + ';base64,' + btoa(data);
+            data = new TextEncoder().encode(data);
         }
-        else {
-            return 'data:' + mediaType + ';base64,' + ArrayBufferToBase64(data);
-        }
+        return 'data:' + mediaType + ';base64,' + ArrayBufferToBase64(data);
     }
     ;
     exports.TaskLocalLogHandler = new TaskLocalRef(null);
@@ -800,7 +808,7 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             return {
                 debug: (...msg) => { that._handler({ msg, label, level: 'debug' }); },
                 info: (...msg) => { that._handler({ msg, label, level: 'info' }); },
-                warning: (...msg) => { that._handler({ msg, label, level: 'warning' }); },
+                warn: (...msg) => { that._handler({ msg, label, level: 'warning' }); },
                 error: (...msg) => { that._handler({ msg, label, level: 'error' }); },
             };
         }
@@ -817,7 +825,7 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
         clearListener(name) {
             this.eventStore.delete(name);
         }
-        clearListenrs() { this.eventStore.clear(); }
+        clearListeners() { this.eventStore.clear(); }
         listListeners() {
             return this.eventStore.entries();
         }

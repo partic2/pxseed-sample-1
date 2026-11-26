@@ -83,6 +83,14 @@ define("pxseedServer2023/webui", ["require", "exports", "preact", "partic2/pComp
                 window.location.reload();
             });
         }
+        async restartListener() {
+            let ur = await (0, window_1.confirm)('restart server listener?');
+            if (ur == 'cancel')
+                return;
+            await this.rpcFunc.restartListener();
+            await (0, base_1.sleep)(1000);
+            window.location.reload();
+        }
         renderConnected() {
             return React.createElement("div", { className: domui_1.css.flexColumn },
                 React.createElement("h2", null, "Server config"),
@@ -98,20 +106,13 @@ define("pxseedServer2023/webui", ["require", "exports", "preact", "partic2/pComp
                     React.createElement("a", { href: "javascript:;", onClick: () => this.buildPackage() }, "build packages"),
                     React.createElement("a", { href: "javascript:;", onClick: () => this.forceRebuildPackages() }, "force rebuild pakcages"),
                     React.createElement("a", { href: "javascript:;", onClick: () => this.restartServerHostWorker1() }, "restart server host worker 1"),
-                    (this.state.serverConfig?.deamonMode?.enabled == true) ? this.state.serverConfig.deamonMode.subprocessConfig.map((cfg, index) => {
-                        return React.createElement("a", { href: "javascript:;", onClick: () => this.restartSubprocess(index) },
-                            "restart subprocess ",
-                            index,
-                            " on ",
-                            `${cfg.listenOn?.host}:${cfg.listenOn?.port}`);
-                    }) : null,
+                    React.createElement("a", { href: "javascript:;", onClick: () => this.restartListener() }, "restart server listener"),
                     React.createElement("a", { href: "javascript:;", onClick: () => this.openNotebookWorkspace() }, "notebook"),
                     React.createElement("a", { href: "javascript:;", onClick: () => this.clearPxprpcKey() }, "clear pxprpc key")));
         }
         async openNotebookWorkspace() {
             let wb = await workspace_2.openWorkspaceWithProfile.openJSNotebookFirstProfileWorkspace({
                 defaultRpc: registry_1.ServerHostWorker1RpcName,
-                defaultStartupScript: `await (await import('pxseedServer2023/pxseedhttpserver')).initNotebookCodeEnv(_ENV)`,
                 notebookDirectory: webutils_1.path.join(__name__, '..', 'notebook')
             });
             wb.start();
@@ -127,9 +128,8 @@ define("pxseedServer2023/webui", ["require", "exports", "preact", "partic2/pComp
         async tryConnect() {
             try {
                 if (this.rpcFunc == undefined) {
-                    let rpc = await (await (0, registry_1.getPersistentRegistered)(registry_1.ServerHostRpcName)).ensureConnected();
                     this.rpcFunc = new clientFunction_1.PxseedServer2023Function();
-                    await this.rpcFunc.init(rpc);
+                    await this.rpcFunc.init();
                 }
                 let cfg = await this.rpcFunc.getConfig();
                 this.setState({

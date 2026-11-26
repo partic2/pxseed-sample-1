@@ -132,7 +132,7 @@ define("partic2/JsNotebook/tjseasyapi", ["require", "exports", "partic2/CodeRunn
                     base_2.Task.fork(function* () {
                         while (true) {
                             let r = yield* base_2.Task.yieldWrap(that.readStderrUtf8());
-                            log.warning(r);
+                            log.warn(r);
                         }
                     }).run()
                 ]);

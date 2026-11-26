@@ -77,6 +77,33 @@ define("pxseedServer2023/pxseedloaderentry", ["require", "exports", "partic2/jsu
             console.error(err);
         }
     }
+    async function startListening() {
+        let http = new httpprot_1.HttpServer();
+        http.onfetch = pxseedhttpserver.defaultRouter.onfetch;
+        http.onwebsocket = pxseedhttpserver.defaultRouter.onwebsocket;
+        let ssoc = null;
+        let port1 = pxseedhttpserver.config.listenOn.port;
+        for (; port1 < 20000; port1 += 2048) {
+            try {
+                ssoc = await tjs.listen('tcp', pxseedhttpserver.config.listenOn.host, port1);
+                break;
+            }
+            catch (err) { }
+        }
+        if (ssoc == null) {
+            console.error('No available tcp port to bind');
+            tjs.exit(0);
+            return { port: 0 };
+        }
+        pxseedhttpserver.config.listenOn.port = port1;
+        base_1.Task.fork(http.serveTjs(ssoc)).run();
+        pxseedhttpserver.serverCommandRegistry.restartListener = async () => {
+            await ssoc.close();
+            await (0, base_1.sleep)(100);
+            startListening();
+        };
+        return { port: port1 };
+    }
     exports.__inited__ = (async () => {
         await tjsenv_1.__inited__;
         (0, base_1.assert)(globalThis.__pxprpc4tjs__ != undefined);
@@ -85,9 +112,6 @@ define("pxseedServer2023/pxseedloaderentry", ["require", "exports", "partic2/jsu
         await jseiorpcserver_1.inited;
         registry_1.rpcWorkerInitModule.push('partic2/tjshelper/jseiorpcserver');
         let pxseedBase = '/pxseed';
-        let http = new httpprot_1.HttpServer();
-        http.onfetch = pxseedhttpserver.defaultRouter.onfetch;
-        http.onwebsocket = pxseedhttpserver.defaultRouter.onwebsocket;
         let wwwroot = (0, webutils_1.getWWWRoot)().replace(/\\/g, '/');
         let tjs = await (0, tjsbuilder_1.buildTjs)();
         await pxseedhttpserver.loadConfig();
@@ -161,22 +185,7 @@ define("pxseedServer2023/pxseedloaderentry", ["require", "exports", "partic2/jsu
                 }
             }
         });
-        let ssoc = null;
-        let port1 = pxseedhttpserver.config.listenOn.port;
-        for (; port1 < 20000; port1 += 2048) {
-            try {
-                ssoc = await tjs.listen('tcp', pxseedhttpserver.config.listenOn.host, port1);
-                break;
-            }
-            catch (err) { }
-        }
-        if (ssoc == null) {
-            console.error('No available tcp port to bind');
-            tjs.exit(0);
-            return;
-        }
-        pxseedhttpserver.config.listenOn.port = port1;
-        base_1.Task.fork(http.serveTjs(ssoc)).run();
+        let listening = await startListening();
         await tjs.makeDir(webutils_1.path.join(wwwroot, __name__, '..', 'state'), { recursive: true });
         let pxseedloaderStateFile = await tjs.open(webutils_1.path.join(wwwroot, __name__, '..', 'state', 'pxseedloader.json'), 'w');
         try {
@@ -185,9 +194,9 @@ define("pxseedServer2023/pxseedloaderentry", ["require", "exports", "partic2/jsu
         catch (err) {
             console.error(err.toString());
         }
-        console.warn('serving on :' + port1);
+        console.warn('serving on :' + listening.port);
         let webuientry = 'partic2/packageManager/webui';
-        let entryUrl = `http://127.0.0.1:${port1}${pxseedBase}/www/index.html?__jsentry=pxseedServer2023%2fwebentry&__redirectjsentry=${encodeURIComponent(webuientry)}&__pxprpcKey=${pxseedhttpserver.config.pxprpcKey}`;
+        let entryUrl = `http://127.0.0.1:${listening.port}${pxseedBase}/www/index.html?__jsentry=pxseedServer2023%2fwebentry&__redirectjsentry=${encodeURIComponent(webuientry)}&__pxprpcKey=${pxseedhttpserver.config.pxprpcKey}`;
         console.warn('entry url:' + entryUrl);
         await pxseedhttpserver.setupHttpServerHandler();
         pxseedhttpserver.pxseedRunStartupModules();

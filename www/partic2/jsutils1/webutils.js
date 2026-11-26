@@ -143,6 +143,9 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
                     if (!(next != undefined && next.stop === true)) {
                         this.result.continue();
                     }
+                    else {
+                        onKey(null);
+                    }
                 }
                 else {
                     onKey(null);
@@ -247,9 +250,17 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
         let fileInput = document.createElement('input');
         fileInput.type = 'file';
         fileInput.multiple = true;
-        return new Promise((resolve, reject) => {
-            fileInput.addEventListener('change', (ev) => {
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+        return new Promise((resolve) => {
+            const cleanup = () => { fileInput.remove(); };
+            fileInput.addEventListener('change', () => {
                 resolve(fileInput.files);
+                cleanup();
+            });
+            fileInput.addEventListener('cancel', () => {
+                resolve(null);
+                cleanup();
             });
             fileInput.click();
         });
@@ -264,8 +275,15 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
         var matched = new Array();
         for (let i = 0; i < document.styleSheets.length; i++) {
             let style = document.styleSheets.item(i);
-            for (let i2 = 0; i2 < style.cssRules.length; i2++) {
-                var rule = style.cssRules.item(i2);
+            let cssRules;
+            try {
+                cssRules = style.cssRules;
+            }
+            catch (e) {
+                continue;
+            }
+            for (let i2 = 0; i2 < cssRules.length; i2++) {
+                var rule = cssRules.item(i2);
                 if (rule != null && rule.constructor == CSSStyleRule) {
                     let cssRule = rule;
                     if (cssRule.selectorText.split(',').findIndex(function (v) {
@@ -604,7 +622,7 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
             return;
         useDeviceWidthTag = document.createElement('meta');
         useDeviceWidthTag.name = 'viewport';
-        useDeviceWidthTag.content = 'width=device-width initial-scale=1';
+        useDeviceWidthTag.content = 'width=device-width, initial-scale=1';
         document.head.append(useDeviceWidthTag);
     }
     function useCssFile(cssUrl) {
@@ -667,12 +685,11 @@ define("partic2/jsutils1/webutils", ["require", "exports", "./base"], function (
                 this.mouseState.y = ev.clientY;
                 this.mouseState.left = (ev.buttons & 1) != 0;
                 this.mouseState.right = (ev.buttons & 2) != 0;
-                this.mouseState.center = (ev.buttons & 3) != 0;
+                this.mouseState.center = (ev.buttons & 4) != 0;
                 this.onStateChange.forEach((cb) => cb());
                 ;
             };
             this.touchHandler = (ev) => {
-                ev.touches.item(0);
                 this.touchsPosition.splice(0, this.touchsPosition.length);
                 for (let t1 = 0; t1 < ev.touches.length; t1++) {
                     let t2 = ev.touches.item(t1);

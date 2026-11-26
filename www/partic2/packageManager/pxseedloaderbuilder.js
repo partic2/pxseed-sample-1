@@ -138,7 +138,7 @@ define("partic2/packageManager/pxseedloaderbuilder", ["require", "exports", "par
                         await  Promise.__onAwait(tjsi.copyFile(src, dest));
                     }
                     catch (err) {
-                        log.warning(err);
+                        log.warn(err);
                     }
                 }
             }

@@ -5,9 +5,10 @@ define("partic2/packageManager/webui", ["require", "exports", "partic2/jsutils1/
     exports.setPackageManagerWebuiEntry = setPackageManagerWebuiEntry;
     exports.navigateWindowToThisWebui = navigateWindowToThisWebui;
     const __name__ = base_1.requirejs.getLocalRequireModule(require);
-    exports.packageManagerWebuiEntry = {
+    let packageManagerFallbackWebuiEntry = {
         module: 'partic2/packageManager/webui2', func: 'main'
     };
+    exports.packageManagerWebuiEntry = { ...packageManagerFallbackWebuiEntry };
     let persistentConfig = {};
     exports.config = {
         warningBeforeUnload: true
@@ -41,7 +42,9 @@ define("partic2/packageManager/webui", ["require", "exports", "partic2/jsutils1/
                 }
             }
             catch (err) { }
-            new Promise((resolve_3, reject_3) => { require([exports.packageManagerWebuiEntry.module], resolve_3, reject_3); }).then((mod) => mod[exports.packageManagerWebuiEntry.func]('webui')).catch(() => { });
+            new Promise((resolve_3, reject_3) => { require([exports.packageManagerWebuiEntry.module], resolve_3, reject_3); }).then((mod) => mod[exports.packageManagerWebuiEntry.func]('webui')).catch(() => {
+                new Promise((resolve_4, reject_4) => { require([packageManagerFallbackWebuiEntry.module], resolve_4, reject_4); }).then((mod) => mod[packageManagerFallbackWebuiEntry.func]('webui')).catch(() => { });
+            });
         }
     }finally{Promise.__onAsyncExit();}})();
     async function setPackageManagerWebuiEntry(entry) {Promise.__onAsyncEnter();try{

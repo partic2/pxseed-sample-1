@@ -1,4 +1,4 @@
-define("partic2/nodehelper/tjsadapt", ["require", "exports", "partic2/jsutils1/base", "os", "path", "fs/promises", "child_process", "./nodeio", "net"], function (require, exports, base_1, os_1, path_1, promises_1, child_process_1, nodeio_1, net_1) {
+define("partic2/nodehelper/tjsadapt", ["require", "exports", "partic2/jsutils1/base", "os", "path", "fs/promises", "child_process", "./nodeio", "net", "dgram"], function (require, exports, base_1, os_1, path_1, promises_1, child_process_1, nodeio_1, net_1, dgram) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.tjsFrom = tjsFrom;
@@ -402,6 +402,9 @@ define("partic2/nodehelper/tjsadapt", ["require", "exports", "partic2/jsutils1/b
                 await p;
                 return r;
             }
+            else if (transport == 'udp') {
+                return await new NodeUdpSocket().connect(Number(port ?? 0), host);
+            }
             else {
                 throw new Error('Not implemented');
             }
@@ -447,6 +450,119 @@ define("partic2/nodehelper/tjsadapt", ["require", "exports", "partic2/jsutils1/b
                 throw new Error("Method not implemented.");
             }
         }
+        class NodeUdpSocket {
+            constructor() {
+                this.recvQueue = new base_1.ArrayWrap2();
+                this.localAddress = { family: 0, ip: '', port: 0 };
+            }
+            async setMembership(multicast_addr, interface_addr, join) {
+                throw new Error("Method not implemented.");
+            }
+            async setBroadcast(enable) {
+                this.dsock?.setBroadcast(enable);
+            }
+            async listen(port, bindTo) {
+                let type = bindTo.includes(':') ? 'udp6' : 'udp4';
+                if (type = 'udp4') {
+                    this.localAddress.family = 4;
+                }
+                else {
+                    this.localAddress.family = 6;
+                }
+                let dsock = dgram.createSocket({ type });
+                await new Promise((resolve, reject) => {
+                    dsock.on('error', reject);
+                    dsock.bind(port, bindTo, resolve);
+                }).finally(() => {
+                    dsock.removeAllListeners('error');
+                });
+                this.dsock = dsock;
+                this.localAddress.ip = this.dsock.address().address;
+                this.localAddress.port = this.dsock.address().port;
+                this.dsock.on('message', (msg, rinfo) => {
+                    this.recvQueue.queueSignalPush({ msg, rinfo });
+                });
+                this.dsock.on('error', (error) => {
+                    this.recvQueue.queueSignalPush({ error });
+                });
+                return this;
+            }
+            async connect(port, connectTo) {
+                let type = connectTo.includes(':') ? 'udp6' : 'udp4';
+                if (type = 'udp4') {
+                    this.localAddress.family = 4;
+                }
+                else {
+                    this.localAddress.family = 6;
+                }
+                let dsock = dgram.createSocket({ type });
+                await new Promise((resolve, reject) => {
+                    dsock.on('error', reject);
+                    dsock.connect(port, connectTo, resolve);
+                }).finally(() => {
+                    dsock.removeAllListeners('error');
+                });
+                this.dsock = dsock;
+                this.remoteAddress = { ip: connectTo, port, family: this.localAddress.family };
+                this.dsock.setBroadcast(true);
+                this.localAddress.ip = this.dsock.address().address;
+                this.localAddress.port = this.dsock.address().port;
+                this.dsock.on('message', (msg, rinfo) => {
+                    this.recvQueue.queueSignalPush({ msg, rinfo });
+                });
+                this.dsock.on('error', (error) => {
+                    this.recvQueue.queueSignalPush({ error });
+                });
+                return this;
+            }
+            async recv(buf) {
+                let next = await this.recvQueue.queueBlockShift();
+                if ('error' in next) {
+                    this.recvQueue.queueSignalPush(next);
+                    throw next.error;
+                }
+                else {
+                    let len = Math.min(buf.length, next.msg.byteLength);
+                    let toCopy = new Uint8Array(next.msg.buffer, 0, len);
+                    buf.set(toCopy, 0);
+                    return {
+                        partial: len < next.msg.byteLength,
+                        nread: len,
+                        addr: { ip: next.rinfo.address, port: next.rinfo.port, family: next.rinfo.family.includes('4') ? 4 : 6 }
+                    };
+                }
+            }
+            async send(buf, addr) {
+                if (addr == undefined) {
+                    return new Promise((resolve, reject) => {
+                        this.dsock.send(buf, undefined, undefined, (err, bytes) => {
+                            if (err != null) {
+                                reject(err);
+                            }
+                            else {
+                                resolve(bytes);
+                            }
+                        });
+                    });
+                }
+                else {
+                    return new Promise((resolve, reject) => {
+                        this.dsock.send(buf, addr.port, addr.ip, (err, bytes) => {
+                            if (err != null) {
+                                reject(err);
+                            }
+                            else {
+                                resolve(bytes);
+                            }
+                        });
+                    });
+                }
+            }
+            close() {
+                throw new Error("Method not implemented.");
+            }
+            ;
+        }
         /**
         * Listens for incoming connections on the selected transport.
         *
@@ -483,6 +599,9 @@ define("partic2/nodehelper/tjsadapt", ["require", "exports", "partic2/jsutils1/b
                     path: host
                 });
                 return await result.get();
+            }
+            else if (transport == 'udp') {
+                return await new NodeUdpSocket().listen(Number(port ?? 0), host);
             }
             else {
                 throw new Error('Not implemented');

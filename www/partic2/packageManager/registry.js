@@ -274,7 +274,7 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
         let pxseedConfig = await  Promise.__onAwait(util_1.__internal__.readJson(path.join(path2, "pxseed.config.json")));
         let pkgname = pxseedConfig.name;
         if (pendingInstallingTask.get(pkgname) != undefined) {
-            log.warning(`Package '${pkgname}' is already being installed. This may indicate a circular dependency or a concurrent installation attempt.`);
+            log.warn(`Package '${pkgname}' is already being installed. This may indicate a circular dependency or a concurrent installation attempt.`);
             return;
         }
         pendingInstallingTask.set(pkgname, new base_1.future());
@@ -358,7 +358,7 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
         let curTask = base_1.Task.currentTask;
         wrapConsole.debug = (...msg) => { curTask?.fork(function* () { log.debug(...msg); }).run(); };
         wrapConsole.info = (...msg) => { curTask?.fork(function* () { log.info(...msg); }).run(); };
-        wrapConsole.warn = (...msg) => { curTask?.fork(function* () { log.warning(...msg); }).run(); };
+        wrapConsole.warn = (...msg) => { curTask?.fork(function* () { log.warn(...msg); }).run(); };
         wrapConsole.error = (...msg) => { curTask?.fork(function* () { log.error(...msg); }).run(); };
         let buildPath = await  Promise.__onAwait(getSourceDirForPackage(pkgName));
         await  Promise.__onAwait((0, util_1.withConsole)(wrapConsole, () => processDirectory(buildPath)));
@@ -453,7 +453,7 @@ define("partic2/packageManager/registry", ["require", "exports", "pxseedBuildScr
                     log.info(`upgradeAllNonCorePackages success to upgrade ${t1.name}`);
                 }
                 catch (err) {
-                    log.warning(`upgradeAllNonCorePackages failed when upgrade ${t1.name}, message:${err.toString()} stack:${err.stack}`);
+                    log.warn(`upgradeAllNonCorePackages failed when upgrade ${t1.name}, message:${err.toString()} stack:${err.stack}`);
                 }
             }
         }
@@ -588,7 +588,7 @@ export function main(args:string){
                 }
             }
             catch (e) {
-                log.warning(`importPackagesInstallation install package ${pkg} failed.` + e.toString());
+                log.warn(`importPackagesInstallation install package ${pkg} failed.` + e.toString());
             }
             ;
         }

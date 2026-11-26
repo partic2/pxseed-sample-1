@@ -1,4 +1,4 @@
-define("pxseedServer2023/nodeentry", ["require", "exports", "partic2/nodehelper/env", "./pxseedhttpserver", "partic2/jsutils1/base", "pxprpc/base", "stream", "http", "path", "partic2/jsutils1/webutils", "child_process", "partic2/nodehelper/nodeio", "pxprpc/extend", "pxprpc/backend", "./pxseedhttpserver", "partic2/tjshelper/httpprot", "partic2/CodeRunner/jsutils2"], function (require, exports, env_1, pxseedhttpserver_1, base_1, base_2, stream_1, http_1, path_1, webutils_1, child_process_1, nodeio_1, extend_1, backend_1, pxseedhttpserver_2, httpprot_1, jsutils2_1) {
+define("pxseedServer2023/nodeentry", ["require", "exports", "partic2/nodehelper/env", "./pxseedhttpserver", "partic2/jsutils1/base", "stream", "http", "path", "partic2/jsutils1/webutils", "child_process", "partic2/nodehelper/nodeio", "./pxseedhttpserver", "partic2/tjshelper/httpprot", "partic2/CodeRunner/jsutils2"], function (require, exports, env_1, pxseedhttpserver_1, base_1, stream_1, http_1, path_1, webutils_1, child_process_1, nodeio_1, pxseedhttpserver_2, httpprot_1, jsutils2_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.__inited__ = exports.httpOnRequest = exports.httpServ = exports.ensureInit = exports.config = exports.__name__ = void 0;
@@ -86,8 +86,6 @@ define("pxseedServer2023/nodeentry", ["require", "exports", "partic2/nodehelper/
         return stdoutbuffer.join('');
     }
     async function startServer() {
-        //(await import('inspector')).open(9229,'127.0.0.1',true);
-        console.info('argv', process.argv);
         await (0, pxseedhttpserver_1.loadConfig)();
         exports.httpServ.on('upgrade', async (nodereq, socket, head) => {
             if (nodereq.headers['upgrade']?.toLowerCase() === 'websocket') {
@@ -183,40 +181,12 @@ define("pxseedServer2023/nodeentry", ["require", "exports", "partic2/nodehelper/
                 console.info('http server closed');
             });
         });
-        if (pxseedhttpserver_1.config.deamonMode.enabled) {
-            let subprocs = [];
-            for (let t1 = 0; t1 < pxseedhttpserver_1.config.deamonMode.subprocessConfig.length; t1++) {
-                let subprocess = nodeRun(exports.__name__, [pxseedhttpserver_1.subprocessMagic, String(t1)]);
-                subprocs.push(subprocess);
-            }
-            pxseedhttpserver_1.serverCommandRegistry.subprocessWaitExitCode = async (index) => {
-                let subp = subprocs[index];
-                if (subp.exitCode != null) {
-                    return subp.exitCode;
-                }
-                else {
-                    return new Promise((resolve) => subp.once('exit', (exitCode) => { resolve(exitCode ?? -1); }));
-                }
-            };
-            pxseedhttpserver_1.serverCommandRegistry.subprocessRestart = async (index) => {
-                if (subprocs[index].exitCode == null) {
-                    let subCfg = pxseedhttpserver_1.rootConfig.deamonMode.subprocessConfig[index];
-                    let client1 = new extend_1.RpcExtendClient1(new base_2.Client(await new backend_1.WebSocketIo().connect(`ws://127.0.0.1:${subCfg.listenOn.port}${subCfg.pxseedBase ?? pxseedhttpserver_1.config.pxseedBase}/pxprpc/0?key=${encodeURIComponent(subCfg.pxprpcKey ?? pxseedhttpserver_1.config.pxprpcKey ?? '')}`)));
-                    await client1.init();
-                    let { PxseedServer2023Function } = await new Promise((resolve_1, reject_1) => { require(['./clientFunction'], resolve_1, reject_1); });
-                    let func = new PxseedServer2023Function();
-                    await func.init(client1);
-                    await func.exit();
-                    await (0, base_1.sleep)(1500);
-                }
-                if (subprocs[index].exitCode == null) {
-                    subprocs[index].kill();
-                    await (0, base_1.sleep)(500);
-                }
-                let subprocess = nodeRun(exports.__name__, [pxseedhttpserver_1.subprocessMagic, String(index)]);
-                subprocs[index] = subprocess;
-            };
-        }
+        pxseedhttpserver_1.serverCommandRegistry.restartListener = async () => {
+            exports.httpServ.close();
+            await (0, base_1.sleep)(300);
+            exports.httpServ = new http_1.Server();
+            startServer();
+        };
     }
     exports.__inited__ = (async () => {
         await env_1.__inited__;

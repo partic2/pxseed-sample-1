@@ -70,7 +70,7 @@ define("partic2/jsutils1/webutilssw", ["require", "exports", "./base", "./webuti
             this.port.addEventListener('message', cb);
             this.funcCall = new webutils_1.FunctionCallOverMessagePort(this.port);
             for (let t1 = 0; t1 < 50 && !this.waitReady.done; t1++) {
-                this.call('partic2/jsutils1/serviceworker', 'setWorkerInfo', [this.workerId]).then(() => this.waitReady.setResult(0));
+                this.call('partic2/jsutils1/serviceworker', 'setWorkerInfo', [this.workerId]).then(() => this.waitReady.setResult(0), () => { });
                 await Promise.race([this.waitReady.get(), (0, base_1.sleep)(200)]);
             }
             if (!this.waitReady.done)

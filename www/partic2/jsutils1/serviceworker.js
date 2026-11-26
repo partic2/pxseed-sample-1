@@ -19,15 +19,17 @@ define("partic2/jsutils1/serviceworker", ["require", "exports", "./webutils"], f
             super(type, eventInit);
         }
     }
-    __pxseedInit.onmessage = function (msg) {
-        let ev = new MessageEventWithSource(msg.type, { data: msg.data });
-        ev._source = msg.source;
-        exports.proxyMessageEventTarget.dispatchEvent(ev);
-    };
+    if ('__pxseedInit' in globalThis && __pxseedInit.env == 'service worker') {
+        __pxseedInit.onmessage = function (msg) {
+            let ev = new MessageEventWithSource(msg.type, { data: msg.data });
+            ev._source = msg.source;
+            exports.proxyMessageEventTarget.dispatchEvent(ev);
+        };
+    }
     let spawnerFunctionCall = new webutils_1.FunctionCallOverMessagePort({
         postMessage: () => { },
         addEventListener: exports.proxyMessageEventTarget.addEventListener.bind(exports.proxyMessageEventTarget),
-        removeEventListener: exports.proxyMessageEventTarget.addEventListener.bind(removeEventListener),
+        removeEventListener: exports.proxyMessageEventTarget.removeEventListener.bind(exports.proxyMessageEventTarget),
     });
     async function setWorkerInfo(id) {
         globalThis.__workerId = id;
@@ -35,7 +37,9 @@ define("partic2/jsutils1/serviceworker", ["require", "exports", "./webutils"], f
     }
     exports.__internal__ = { spawnerFunctionCall };
     async function requestExit() {
-        globalThis.close();
+        if (typeof globalThis.close === 'function') {
+            globalThis.close();
+        }
     }
     let swconfig = {};
     exports.onfetchHandlers = new Array();
