@@ -822,7 +822,7 @@ define("partic2/jsutils1/base", ["require", "exports"], function (require, expor
             this.eventStore.set(name, cb);
             return name;
         }
-        clearListener(name) {
+        deleteListener(name) {
             this.eventStore.delete(name);
         }
         clearListeners() { this.eventStore.clear(); }

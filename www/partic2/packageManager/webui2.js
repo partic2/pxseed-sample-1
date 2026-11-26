@@ -96,7 +96,7 @@ define("partic2/packageManager/webui2", ["require", "exports", "preact", "partic
         }finally{Promise.__onAsyncExit();}}
         componentWillUnmount() {
             this.mounted = false;
-            workspace_1.NewWindowHandleLists.onChange.clearListener(exports.__name__ + '.WindowListIcon');
+            workspace_1.NewWindowHandleLists.onChange.deleteListener(exports.__name__ + '.WindowListIcon');
             window.removeEventListener('resize', this.onWindowResize);
         }
         render(props, state, context) {

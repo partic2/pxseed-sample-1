@@ -21,15 +21,8 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
         return bracketMatch;
     }
     class CodeCell extends domui_1.JsxClassComponent {
-        set codeContext(v) {
-            let prev = this.__codeContext;
-            this.__codeContext = v;
-        }
-        get codeContext() {
-            return this.__codeContext;
-        }
-        constructor(prop, ctx) {
-            super(prop, ctx);
+        constructor() {
+            super(...arguments);
             this.rref = {
                 codeInput: new domui_1.ReactRefEx(),
                 container: new domui_1.ReactRefEx(),
@@ -43,7 +36,6 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             this.extraTooltips = null;
             this.focusin = false;
             this.errorCatched = null;
-            this.initialized = new base_1.future();
             this.ensureCandidateScroll = new jsutils2_1.ThrottleCall(async () => {
                 let focusDiv = await this.rref.focusingCompletionCandidateDiv.waitValid();
                 let tooltips = await this.rref.tooltipsDiv.waitValid();
@@ -56,9 +48,13 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 requestTooltips: new jsutils2_1.DebounceCall(async () => this.requestTooltips(), 200),
             };
             this.__focusIn = 'blur';
-            this.initialize().then(() => this.initialized.setResult(), (err) => this.initialized.setException(err)).then(() => this.setState({}));
         }
-        async initialize() {
+        set codeContext(v) {
+            let prev = this.__codeContext;
+            this.__codeContext = v;
+        }
+        get codeContext() {
+            return this.__codeContext;
         }
         getContainerDiv() {
             return this.rref.container.current;
@@ -383,27 +379,13 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
     }
     exports.CodeCell = CodeCell;
     class DefaultCodeCellList extends domui_1.JsxClassComponent {
-        set codeContext(cur) {
-            let pre = this.__codeContext;
-            this.__codeContext = cur;
-            if (pre != null) {
-                this.detachCodeContext(pre);
-            }
-            if (cur != null) {
-                this.attachCodeContext(cur);
-            }
-        }
-        get codeContext() {
-            return this.__codeContext;
-        }
-        constructor(prop, ctx) {
-            super(prop, ctx);
+        constructor() {
+            super(...arguments);
             this.list = [];
             this.consoleOutput = {};
             this.error = null;
             this.lastFocusCellKey = null;
             this.lastRunCellKey = '';
-            this.initialized = new base_1.future();
             this.__currentCodeContext = null;
             this.rref = {
                 container: new domui_1.ReactRefEx()
@@ -423,10 +405,36 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 this.consoleOutput[cell.key].content += `[${event.data?.level ?? ''}]:${event.data?.message ?? ''}\n`;
                 this.forceUpdate();
             };
-            this.initialize().then(() => this.initialized.setResult(), (err) => this.initialized.setException(err)).then(() => this.setState({}));
         }
-        async initialize() {
+        set codeContext(cur) {
+            let pre = this.__codeContext;
+            this.__codeContext = cur;
+            if (pre != null) {
+                this.detachCodeContext(pre);
+            }
+            if (cur != null) {
+                this.attachCodeContext(cur);
+            }
+        }
+        get codeContext() {
+            return this.__codeContext;
+        }
+        async _initialize() {
             this.setState({ list: [], consoleOutput: {}, error: null, codeContext: null, lastFocusCellKey: '' });
+            this.reactComponentLifecycleEvent.componentDidUpdate.setListener(__name__ + '.DefaultCodeCellList', async () => {
+                if (this.getCellList().length == 0) {
+                    await this.newCell();
+                }
+            });
+            this.reactComponentLifecycleEvent.componentWillUnmount.setListener(__name__ + '.DefaultCodeCellList', () => {
+                this.detachCodeContext(this.codeContext);
+                if (this.codeContext != null) {
+                    this.detachCodeContext(this.codeContext);
+                }
+                if (this.codeContext != null) {
+                    this.detachCodeContext(this.codeContext);
+                }
+            });
         }
         async detachCodeContext(codeContext) {
             codeContext.event.removeEventListener('console.data', this.onConsoleData);
@@ -439,22 +447,9 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             this.codeContext.event.addEventListener(`${__name__}.CodeCellList.callWebuiFunction`, this.codeContextCallMethodEvent);
             this.codeContext.event.dispatchEvent(new CodeContext_1.CodeContextEvent(`${__name__}.CodeCellList.webuiAttached`));
         }
-        async componentDidUpdate() {
-            if (this.getCellList().length == 0) {
-                await this.newCell();
-            }
-        }
-        componentWillUnmount() {
-            if (this.codeContext != null) {
-                this.detachCodeContext(this.codeContext);
-            }
-            if (this.codeContext != null) {
-                this.detachCodeContext(this.codeContext);
-            }
-        }
-        async newCell(afterCellKey) {
+        async newCell(afterCellKey, newKey) {
             let pos = afterCellKey == undefined ? -1 : this.list.findIndex(v => v.key === afterCellKey);
-            let newKey = (0, base_1.GenerateRandomString)();
+            newKey = newKey ?? (0, base_1.GenerateRandomString)();
             if (pos < 0) {
                 this.list.push({ ref: new domui_1.ReactRefEx(), key: newKey });
             }
@@ -524,19 +519,25 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                 }
             }
         }
+        getCellCustomBtns(key) {
+            return [
+                { label: 'New', cb: () => this.newCell(key) },
+                { label: 'Del', cb: () => this.deleteCell(key) }
+            ];
+        }
+        async onCellRun(key) {
+            this.onRun?.(key);
+            this.lastRunCellKey = key;
+            if (key == this.list.at(-1)?.key) {
+                await this.newCell(key);
+                let ccelem = this.list.at(-1);
+                let cc = await ccelem.ref.waitValid();
+                await cc.setAsEditTarget();
+            }
+        }
         renderCodeCell(v, index, cellCssStyle) {
-            return React.createElement(CodeCell, { ref: v.ref, key: v.key, codeContext: this.codeContext, customBtns: [
-                    { label: 'New', cb: () => this.newCell(v.key) },
-                    { label: 'Del', cb: () => this.deleteCell(v.key) }
-                ], onClearOutputs: () => this.clearConsoleOutput(v.key), onRun: async () => {
-                    this.onRun?.(v.key);
-                    this.lastRunCellKey = v.key;
-                    if (v.key == this.list.at(-1)?.key) {
-                        await this.newCell(v.key);
-                        let ccelem = this.list.at(-1);
-                        let cc = await ccelem.ref.waitValid();
-                        await cc.setAsEditTarget();
-                    }
+            return React.createElement(CodeCell, { ref: v.ref, key: v.key, codeContext: this.codeContext, customBtns: this.getCellCustomBtns(v.key), onClearOutputs: () => this.clearConsoleOutput(v.key), onRun: async () => {
+                    await this.onCellRun(v.key);
                 }, onFocusChange: (focusin) => {
                     this.onCellFocusChange?.({ cellKey: v.key, focusIn: focusin });
                     if (focusin) {
@@ -592,9 +593,13 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
             try {
                 let cellData = CodeContext_1.newCodeCellListData.get()();
                 cellData.loadFrom(data);
-                while (this.getCellList().length < cellData.cellList.length) {
-                    await this.newCell();
+                for (let t1 of this.list.map(t1 => t1.key)) {
+                    await this.deleteCell(t1);
                 }
+                for (let t1 of cellData.cellList.map(t1 => t1.key)) {
+                    await this.newCell(undefined, t1);
+                }
+                let cellList = this.getCellList();
                 let consoleOutput = {};
                 for (let k1 in cellData.consoleOutput) {
                     let index = cellData.cellList.findIndex(v => v.key === k1);
@@ -602,7 +607,6 @@ define("partic2/CodeRunner/WebUi", ["require", "exports", "partic2/jsutils1/base
                         consoleOutput[this.list[index].key] = cellData.consoleOutput[k1];
                     }
                 }
-                let cellList = this.getCellList();
                 for (let t1 = 0; t1 < cellData.cellList.length; t1++) {
                     let cell = await cellList[t1].ref.waitValid();
                     let val = cellData.cellList[t1];

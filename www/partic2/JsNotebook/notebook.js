@@ -162,17 +162,19 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
                 await (0, window_1.alert)([e.toString(), e.stack, (e.remoteStack ?? '')].join('\n'), 'Error');
             }
         }
-        componentDidMount() {
-            this.doLoad();
-        }
-        componentWillUnmount() {
-            if (this.codeContext != undefined) {
-                try {
-                    this.codeContext.event.dispatchEvent(new CodeContext_1.CodeContextEvent(`${exports.__name__}.NotebookViewer.disconnect`));
-                    this.codeContext.event.removeEventListener(`${exports.__name__}.NotebookViewer`, this.__notebookViewerEventHandler);
+        async _initialize() {
+            this.reactComponentLifecycleEvent.componentDidMount.setListener(exports.__name__ + '.NotebookViewer', () => {
+                this.doLoad();
+            });
+            this.reactComponentLifecycleEvent.componentWillUnmount.setListener(exports.__name__ + '.NotebookViewer', () => {
+                if (this.codeContext != undefined) {
+                    try {
+                        this.codeContext.event.dispatchEvent(new CodeContext_1.CodeContextEvent(`${exports.__name__}.NotebookViewer.disconnect`));
+                        this.codeContext.event.removeEventListener(`${exports.__name__}.NotebookViewer`, this.__notebookViewerEventHandler);
+                    }
+                    catch (err) { }
                 }
-                catch (err) { }
-            }
+            });
         }
         async doLoad() {
             try {
@@ -315,8 +317,6 @@ define("partic2/JsNotebook/notebook", ["require", "exports", "partic2/CodeRunner
             let cc = await cl.getCellList().at(-1).ref.waitValid();
             cc.setCellInput(code);
             await cc.runCode();
-        }
-        componentWillUnmount() {
         }
         async onCellInputChange(codeCell) {
             this.codeCellHighlightQueue.add(codeCell);

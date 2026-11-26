@@ -34,8 +34,8 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
             this.userResizeEvent.setListener(DefaultWorkspaceWindowComponent.componentClassName, () => { this.beforeMaximizeSize = null; });
         }
         componentWillUnmount() {
-            this.userMoveEvent.clearListener(DefaultWorkspaceWindowComponent.componentClassName);
-            this.userResizeEvent.clearListener(DefaultWorkspaceWindowComponent.componentClassName);
+            this.userMoveEvent.deleteListener(DefaultWorkspaceWindowComponent.componentClassName);
+            this.userResizeEvent.deleteListener(DefaultWorkspaceWindowComponent.componentClassName);
             super.componentWillUnmount();
         }
         async setMaximized(maximized) {
@@ -216,8 +216,8 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
                     window1.moveEvent.setListener(layoutHintTracer, () => { saveLayout.call(); });
                     window1.resizeEvent.setListener(layoutHintTracer, () => { saveLayout.call(); });
                     context.result.waitClose().then(() => {
-                        window1.moveEvent.clearListener(layoutHintTracer);
-                        window1.resizeEvent.clearListener(layoutHintTracer);
+                        window1.moveEvent.deleteListener(layoutHintTracer);
+                        window1.resizeEvent.deleteListener(layoutHintTracer);
                     });
                 }
             }
@@ -305,7 +305,7 @@ define("partic2/pComponentUi/workspace", ["require", "exports", "preact", "./dom
                 if (!hasDialog) {
                     this.dialogContainerWindow.close();
                     this.dialogContainerWindow = null;
-                    exports.NewWindowHandleLists.onChange.clearListener(__name__ + '.defaultDialogBoxImplemention.newWindowHandleListsChange');
+                    exports.NewWindowHandleLists.onChange.deleteListener(__name__ + '.defaultDialogBoxImplemention.newWindowHandleListsChange');
                 }
             }
         },

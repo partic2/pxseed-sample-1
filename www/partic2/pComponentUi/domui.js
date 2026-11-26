@@ -169,7 +169,7 @@ define("partic2/pComponentUi/domui", ["require", "exports", "preact", "partic2/j
     })();
     exports.JsxClassComponentParent = React.createContext(null);
     class JsxClassComponent extends React.Component {
-        __updateStateToField(state) {
+        __updateStateToFields(state) {
             for (let k1 in state) {
                 let v1 = state[k1];
                 if (v1 !== undefined && this[k1] != v1) {
@@ -179,6 +179,33 @@ define("partic2/pComponentUi/domui", ["require", "exports", "preact", "partic2/j
         }
         static defineEventSlot() {
             return new base_1.EventSource();
+        }
+        componentDidMount() {
+            this.reactComponentLifecycleEvent.componentDidMount.dispatch({ component: this });
+        }
+        componentWillUnmount() {
+            this.reactComponentLifecycleEvent.componentWillUnmount.dispatch({ component: this });
+        }
+        componentDidUpdate(pp, ps, ss) {
+            this.reactComponentLifecycleEvent.componentDidUpdate.dispatch({ component: this, prevProps: pp, prevState: ps, snapshot: ss });
+        }
+        async _initialize() {
+        }
+        constructor(props, ctx) {
+            super(props, ctx);
+            this.reactComponentLifecycleEvent = {
+                componentDidMount: JsxClassComponent.defineEventSlot(),
+                componentWillUnmount: JsxClassComponent.defineEventSlot(),
+                componentDidUpdate: JsxClassComponent.defineEventSlot()
+            };
+            this.initialized = new base_1.future();
+            this._initialize().then(() => {
+                this.initialized.setResult();
+                this.setState({});
+            }, (err) => {
+                this.initialized.setException(err);
+                this.setState({});
+            });
         }
         getAncestorJsxClassComponents(options) {
             let result = new Array();
@@ -195,11 +222,16 @@ define("partic2/pComponentUi/domui", ["require", "exports", "preact", "partic2/j
             return result;
         }
         render() {
-            this.__updateStateToField(this.props);
-            return React.createElement(exports.JsxClassComponentParent.Provider, { value: this }, this.jsx());
+            this.__updateStateToFields(this.props);
+            if (this.initialized.done && this.initialized.exception == undefined) {
+                return React.createElement(exports.JsxClassComponentParent.Provider, { value: this }, this.jsx());
+            }
+            else {
+                return null;
+            }
         }
         setState(state, callback) {
-            this.__updateStateToField(state);
+            this.__updateStateToFields(state);
             super.setState({}, callback);
         }
     }
